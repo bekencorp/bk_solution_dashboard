@@ -1,0 +1,13 @@
+menu "BK_MP3_Play"
+
+	config MP3_PLAY
+		depends on ADK_RAW_STREAM && ADK_MP3_DECODER && ADK_ONBOARD_SPEAKER_STREAM
+		bool "Enable MP3 Play"
+		default n
+
+	config MP3_PLAY_TEST
+		depends on MP3_PLAY
+		bool "Enable MP3 Play Test"
+		default n
+
+endmenu

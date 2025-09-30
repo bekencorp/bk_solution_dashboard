@@ -1,0 +1,27 @@
+menu "Blue Audio Recorder Service"
+
+    config BLUE_AUDIO_RECORDER_SERVICE
+        depends on ADK_RAW_STREAM && ADK_ONBOARD_MIC_STREAM
+        bool "Enable Blue Audio Recorder Service"
+        default y
+        help
+            Enable Blue Audio Recorder Service to record audio frame data and encode it for Bluetooth transmission
+
+    config BLUE_AUDIO_RECORDER_SERVICE_TEST
+        depends on BLUE_AUDIO_RECORDER_SERVICE
+        bool "Enable Blue Audio Recorder Service Test"
+        default n
+        help
+            Enable Blue Audio Recorder Service test to test Blue Audio Recorder Service by cli command
+
+    config BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_UAC_MIC
+        depends on BLUE_AUDIO_RECORDER_SERVICE && ADK_UAC_MIC_STREAM
+        bool "Enable Blue Audio Recorder Service to support uac mic"
+        default n
+
+    config BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_MSBC_ENCODER
+        depends on BLUE_AUDIO_RECORDER_SERVICE && ADK_SBC_ENCODER
+        bool "Enable Blue Audio Recorder Service to support msbc encoder"
+        default n
+
+endmenu

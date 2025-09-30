@@ -1,0 +1,204 @@
+#include <os/os.h>
+#include "media_evt.h"
+#if (CONFIG_TP)
+#include "driver/drv_tp.h"
+#endif
+#include "media_devices.h"
+#include "frame_buffer.h"
+#include "yuv_encode.h"
+#include "lv_vendor.h"
+#include "components/bk_display.h"
+#include "lcd_panel_devices.h"
+#include "driver/gpio.h"
+#include "gpio_driver.h"
+
+#if CONFIG_AVI_PLAYER
+#include "avi_player.h"
+#include "bk_posix.h"
+#endif
+
+
+extern void lv_example_meter(void);
+extern void lv_example_meter_exit(void);
+
+extern lv_vnd_config_t vendor_config;
+
+#if CONFIG_AVI_PLAYER
+static lv_obj_t *avi_img = NULL;
+static lv_timer_t *avi_timer = NULL;
+static bk_avi_player_t *handle = NULL;
+
+static lv_img_dsc_t avi_img_dsc =
+{
+    .header.cf = LV_IMG_CF_TRUE_COLOR,
+    .header.always_zero = 0,
+    .header.w = 0,
+    .header.h = 0,
+    .data_size = 0,
+    .data = NULL,
+};
+#endif
+
+#define LCD_BL_IO GPIO_37
+#define LCD_LDO_IO GPIO_39
+
+bk_display_rgb_ctlr_config_t rgb_config = {
+    .lcd_device = &lcd_device_st7282,
+    .clk_pin = -1,
+    .cs_pin = -1,
+    .sda_pin = -1,
+    .rst_pin = -1,
+};
+
+static avdk_err_t gpio_up(uint8_t io)
+{
+    gpio_dev_unmap(io);
+    BK_LOG_ON_ERR(bk_gpio_enable_output(io));
+    BK_LOG_ON_ERR(bk_gpio_pull_up(io));
+    BK_LOG_ON_ERR(bk_gpio_set_output_high(io));
+    return AVDK_ERR_OK;
+}
+
+static avdk_err_t lcd_backlight_open(uint8_t bl_io)
+{
+    return gpio_up(bl_io);
+}
+
+static avdk_err_t lcd_ldo_open(int8_t lcd_ldo_pin)
+{
+    return gpio_up(lcd_ldo_pin);
+}
+
+static avdk_err_t lcd_ldo_close(int8_t lcd_ldo_pin)
+{
+     bk_gpio_set_output_low(lcd_ldo_pin);
+     return AVDK_ERR_OK;
+}
+
+static avdk_err_t lcd_backlight_close(uint8_t bl_io)
+{
+    bk_gpio_set_output_low(bl_io);
+    return AVDK_ERR_OK;
+}
+
+#if CONFIG_AVI_PLAYER
+static void lv_timer_cb(lv_timer_t *timer)
+{
+    bk_err_t ret = BK_OK;
+
+    handle->pos++;
+    if (handle->pos < handle->video_num) {
+        ret = bk_avi_player_video_parse();
+        if (ret != BK_OK) {
+            os_printf("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
+            return;
+        }
+
+        lv_img_set_src(avi_img, &avi_img_dsc);
+    } else {
+        lv_timer_del(avi_timer);
+        lv_obj_del(avi_img);
+        bk_avi_player_close();
+        lv_example_meter();
+    }
+}
+#endif
+
+void lvgl_app_init(void)
+{
+    lv_vnd_config_t lv_vnd_config = {0};
+
+    lv_vnd_config.width = rgb_config.lcd_device->width;
+    lv_vnd_config.height = rgb_config.lcd_device->height;
+    lv_vnd_config.render_mode = RENDER_DIRECT_MODE;
+    lv_vnd_config.rotation = ROTATE_NONE;
+    for (int i = 0; i < CONFIG_LVGL_FRAME_BUFFER_NUM; i++) {
+        lv_vnd_config.frame_buffer[i] = frame_buffer_display_malloc(lv_vnd_config.width * lv_vnd_config.height * sizeof(bk_color_t));
+        if (lv_vnd_config.frame_buffer[i] == NULL) {
+            os_printf("lv_frame_buffer[%d] malloc failed\r\n", i);
+            return;
+        }
+    }
+    bk_display_rgb_new(&lv_vnd_config.handle, &rgb_config);
+    lv_vendor_init(&lv_vnd_config);
+
+#if CONFIG_AVI_PLAYER
+    bk_avi_player_config_t avi_player_config = {0};
+    bk_err_t ret;
+
+    avi_player_config.file_path = PATH_SD_FILE("animation.avi");
+    avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_RGB565;
+    avi_player_config.segment_flag = false;
+    avi_player_config.rgb565_byte_swap_flag = false;
+    ret = bk_avi_player_open(&avi_player_config);
+    if (ret != BK_OK) {
+        os_printf("%s %d bk_avi_player_open failed\r\n", __func__, __LINE__);
+        return;
+    }
+
+    handle = bk_avi_player_get_handle();
+    avi_img_dsc.header.w = handle->avi->width;
+    avi_img_dsc.header.h = handle->avi->height;
+    avi_img_dsc.data_size = handle->avi->width * handle->avi->height * 2;
+    avi_img_dsc.data = (const uint8_t *)handle->framebuffer;
+
+    ret = bk_avi_player_video_parse();
+    if (ret != BK_OK) {
+        os_printf("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
+        return;
+    }
+#endif
+    lcd_ldo_open(LCD_LDO_IO);
+    bk_display_open(lv_vnd_config.handle);
+    lcd_backlight_open(LCD_BL_IO);
+
+#if (CONFIG_TP)
+    drv_tp_open(lv_vnd_config.width, lv_vnd_config.height, TP_MIRROR_NONE);
+#endif
+
+    lv_vendor_disp_lock();
+#if CONFIG_AVI_PLAYER
+    avi_img = lv_img_create(lv_scr_act());
+    lv_img_set_src(avi_img, &avi_img_dsc);
+    lv_obj_align(avi_img, LV_ALIGN_CENTER, 0, 0);
+
+    avi_timer = lv_timer_create(lv_timer_cb, 1000 / (uint32_t)handle->avi->fps, NULL);
+#else
+    lv_example_meter();
+#endif
+    lv_vendor_disp_unlock();
+
+    lv_vendor_start();
+}
+
+bk_err_t lvgl_app_deinit(void)
+{
+    lcd_backlight_close(LCD_BL_IO);
+
+    lv_vendor_disp_lock();
+    lv_example_meter_exit();
+    lv_vendor_disp_unlock();
+    rtos_delay_milliseconds(10);
+
+#if (CONFIG_TP)
+    drv_tp_close();
+#endif
+
+    lv_vendor_stop();
+
+    lv_vendor_deinit();
+
+    return BK_OK;
+}
+
+bk_err_t lvgl_app_suspend_display(void)
+{
+    lv_vendor_stop();
+    return BK_OK;
+}
+
+bk_err_t lvgl_app_resume_display(void)
+{
+    lv_vendor_start();
+    return BK_OK;
+}
