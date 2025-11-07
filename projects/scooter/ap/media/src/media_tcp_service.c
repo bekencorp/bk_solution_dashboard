@@ -26,6 +26,12 @@
 
 #define TAG "db-tcp"
 
+// TCP keepalive and heartbeat configuration
+#define TCP_KEEPALIVE_IDLE_TIME    10   // Start keepalive probe after 10 seconds of no data
+#define TCP_KEEPALIVE_INTERVAL     5    // Send probe packet every 5 seconds
+#define TCP_KEEPALIVE_COUNT        3    // Consider connection broken after 3 failed probes
+#define TCP_HEARTBEAT_TIMEOUT      30   // Application layer timeout: 30 seconds without data
+
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
@@ -43,6 +49,7 @@ typedef struct
 	uint16_t img_status : 1;
 	uint16_t rotate;
 	db_channel_t *img_channel;
+	uint32_t last_recv_time;  // Timestamp of last received data (application layer heartbeat)
 } db_tcp_service_t;
 
 db_tcp_service_t *db_tcp_service = NULL;
@@ -168,6 +175,50 @@ static bk_err_t av_server_wifi_event_cb(void *arg, event_module_t event_module,
 	return BK_OK;
 }
 
+// Set socket keepalive parameters
+static int av_server_tcp_set_keepalive(int sockfd)
+{
+	int keepalive = 1;
+	int keepidle = TCP_KEEPALIVE_IDLE_TIME;
+	int keepintvl = TCP_KEEPALIVE_INTERVAL;
+	int keepcnt = TCP_KEEPALIVE_COUNT;
+	int ret;
+
+	// Enable SO_KEEPALIVE
+	ret = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+	if (ret < 0)
+	{
+		LOGE("setsockopt SO_KEEPALIVE failed: %d\n", errno);
+		return ret;
+	}
+
+	// Set keepalive idle time
+	ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+	if (ret < 0)
+	{
+		LOGW("setsockopt TCP_KEEPIDLE failed: %d\n", errno);
+	}
+
+	// Set keepalive probe interval
+	ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+	if (ret < 0)
+	{
+		LOGW("setsockopt TCP_KEEPINTVL failed: %d\n", errno);
+	}
+
+	// Set keepalive probe count
+	ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
+	if (ret < 0)
+	{
+		LOGW("setsockopt TCP_KEEPCNT failed: %d\n", errno);
+	}
+
+	LOGI("TCP keepalive enabled: idle=%ds, interval=%ds, count=%d\n", 
+		keepidle, keepintvl, keepcnt);
+
+	return BK_OK;
+}
+
 static void av_server_image_server_thread(beken_thread_arg_t data)
 {
 	int rcv_len = 0;
@@ -175,6 +226,7 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 	bk_err_t ret = BK_OK;
 	u8 *rcv_buf = NULL;
 	fd_set watchfd;
+	struct timeval select_timeout;
 
 	LOGI("%s entry\n", __func__);
 	db_tcp_service_t *tcp_service = (db_tcp_service_t *)data;
@@ -230,6 +282,8 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 		}
 
 		LOGI("waiting for a new connection\n");
+
+		// Use blocking mode for accept
 		ret = select(tcp_service->img_server_fd + 1, &watchfd, NULL, NULL, NULL);
 		if (ret <= 0)
 		{
@@ -255,6 +309,12 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 				}
 
 				LOGI("accept a new connection fd:%d\n", tcp_service->img_fd);
+
+				// Solution 1: Set TCP keepalive
+				av_server_tcp_set_keepalive(tcp_service->img_fd);
+
+				// Initialize application layer heartbeat timestamp
+				tcp_service->last_recv_time = rtos_get_time();
 
 				{
 					media_msg_t msg;
@@ -284,10 +344,54 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 
 				while (tcp_service->img_status == BK_TRUE)
 				{
+					// Solution 2: Application layer heartbeat - use select timeout mechanism
+					FD_ZERO(&watchfd);
+					FD_SET(tcp_service->img_fd, &watchfd);
+
+					// Set select timeout to 2 seconds for periodic connection status check
+					select_timeout.tv_sec = 2;
+					select_timeout.tv_usec = 0;
+
+					ret = select(tcp_service->img_fd + 1, &watchfd, NULL, NULL, &select_timeout);
+
+					if (ret < 0)
+					{
+						// select error
+						LOGE("select error: %d, errno: %d\n", ret, errno);
+						break;
+					}
+					else if (ret == 0)
+					{
+						// Timeout, check application layer heartbeat
+						uint32_t current_time = rtos_get_time();
+						uint32_t elapsed_time = current_time - tcp_service->last_recv_time;
+
+						if (elapsed_time > TCP_HEARTBEAT_TIMEOUT * 1000)
+						{
+							LOGE("Heartbeat timeout: no data received for %d seconds, closing connection\n",
+								elapsed_time / 1000);
+							tcp_service->img_status = BK_FALSE;
+							break;
+						}
+
+						// Not timeout yet, continue waiting
+						continue;
+					}
+
+					// Data available to read
+					if (!FD_ISSET(tcp_service->img_fd, &watchfd))
+					{
+						continue;
+					}
+
 					rcv_len = recv(tcp_service->img_fd, rcv_buf, AV_SERVER_TCP_BUFFER, 0);
 					if (rcv_len > 0)
 					{
 						LOGV("got video length: %d\n", rcv_len);
+
+						// Update application layer heartbeat timestamp
+						tcp_service->last_recv_time = rtos_get_time();
+
 						av_server_transmission_unpack(tcp_service->img_channel, rcv_buf, rcv_len, av_server_tcp_video_receiver);
 					}
 					else

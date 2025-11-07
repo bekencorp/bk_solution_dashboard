@@ -28,6 +28,12 @@
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
+// TCP keepalive and heartbeat configuration
+#define TCP_KEEPALIVE_IDLE_TIME    10   // Start keepalive probe after 10 seconds of no data
+#define TCP_KEEPALIVE_INTERVAL     5    // Send probe packet every 5 seconds
+#define TCP_KEEPALIVE_COUNT        3    // Consider connection broken after 3 failed probes
+#define TCP_HEARTBEAT_TIMEOUT      30   // Application layer timeout: 30 seconds without data
+
 
 typedef struct
 {
@@ -40,10 +46,55 @@ typedef struct
     beken_timer_t timer;
     uint32_t intval_ms;
     in_addr_t remote_address;
+    uint32_t last_recv_time;  // Timestamp of last received data (application layer heartbeat)
 } media_cmd_info_t;
 
 
 media_cmd_info_t *media_cmd_info = NULL;
+
+    // Set socket keepalive parameters
+static int media_cmd_set_keepalive(int sockfd)
+{
+    int keepalive = 1;
+    int keepidle = TCP_KEEPALIVE_IDLE_TIME;
+    int keepintvl = TCP_KEEPALIVE_INTERVAL;
+    int keepcnt = TCP_KEEPALIVE_COUNT;
+    int ret;
+
+    // Enable SO_KEEPALIVE
+    ret = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+    if (ret < 0)
+    {
+        LOGE("setsockopt SO_KEEPALIVE failed: %d\n", errno);
+        return ret;
+    }
+
+    // Set keepalive idle time
+    ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+    if (ret < 0)
+    {
+        LOGW("setsockopt TCP_KEEPIDLE failed: %d\n", errno);
+    }
+
+    // Set keepalive probe interval
+    ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+    if (ret < 0)
+    {
+        LOGW("setsockopt TCP_KEEPINTVL failed: %d\n", errno);
+    }
+
+    // Set keepalive probe count
+    ret = setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
+    if (ret < 0)
+    {
+        LOGW("setsockopt TCP_KEEPCNT failed: %d\n", errno);
+    }
+
+    LOGI("CMD TCP keepalive enabled: idle=%ds, interval=%ds, count=%d\n", 
+        keepidle, keepintvl, keepcnt);
+
+    return BK_OK;
+}
 
 static void media_cmd_server_thread(beken_thread_arg_t data)
 {
@@ -52,6 +103,7 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
     bk_err_t ret = BK_OK;
     u8 *rcv_buf = NULL;
     fd_set watchfd;
+    struct timeval select_timeout;
 
     LOGI("%s entry\n", __func__);
     (void)(data);
@@ -128,6 +180,12 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
 
                 media_cmd_info->remote_address = client_addr.sin_addr.s_addr;
 
+                // Solution 1: Set TCP keepalive
+                media_cmd_set_keepalive(media_cmd_info->client_fd);
+
+                // Initialize application layer heartbeat timestamp
+                media_cmd_info->last_recv_time = rtos_get_time();
+
                 if (media_cmd_info->server_state == BK_FALSE)
                 {
                     media_msg_t msg;
@@ -141,11 +199,54 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
 
                 while (media_cmd_info->server_state == BK_TRUE)
                 {
+                    // Solution 2: Application layer heartbeat - use select timeout mechanism
+                    FD_ZERO(&watchfd);
+                    FD_SET(media_cmd_info->client_fd, &watchfd);
+
+                    // Set select timeout to 2 seconds for periodic connection status check
+                    select_timeout.tv_sec = 2;
+                    select_timeout.tv_usec = 0;
+
+                    ret = select(media_cmd_info->client_fd + 1, &watchfd, NULL, NULL, &select_timeout);
+
+                    if (ret < 0)
+                    {
+                        // select error
+                        LOGE("select error: %d, errno: %d\n", ret, errno);
+                        break;
+                    }
+                    else if (ret == 0)
+                    {
+                        // Timeout, check application layer heartbeat
+                        uint32_t current_time = rtos_get_time();
+                        uint32_t elapsed_time = current_time - media_cmd_info->last_recv_time;
+
+                        if (elapsed_time > TCP_HEARTBEAT_TIMEOUT * 1000)
+                        {
+                            LOGE("CMD Heartbeat timeout: no data received for %d seconds, closing connection\n",
+                                elapsed_time / 1000);
+                            media_cmd_info->server_state = BK_FALSE;
+                            break;
+                        }
+
+                        // Not timeout yet, continue waiting
+                        continue;
+                    }
+
+                    // Data available to read
+                    if (!FD_ISSET(media_cmd_info->client_fd, &watchfd))
+                    {
+                        continue;
+                    }
+
                     rcv_len = recv(media_cmd_info->client_fd, rcv_buf, MEDIA_CMD_BUFFER, 0);
                     if (rcv_len > 0)
                     {
                         //bk_net_send_data(rcv_buf, rcv_len, TVIDEO_SND_TCP);
                         LOGI("%s, got length: %d\n", __func__, rcv_len);
+
+                        // Update application layer heartbeat timestamp
+                        media_cmd_info->last_recv_time = rtos_get_time();
                     }
                     else
                     {
