@@ -2240,7 +2240,7 @@ int bk3515_ota_init(void)
 #if CONFIG_UART_SW_FLOW_CTRL
     mb_flash_register_op_uart_notify(set_uart_sw_flow_state);
 #endif
-    bk_http_register_save_slave_bin_info_callback(save_slave_bin_info_to_ef);
+    //bk_http_register_save_slave_bin_info_callback(save_slave_bin_info_to_ef);
     return 0;
 }
 

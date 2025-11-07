@@ -308,6 +308,7 @@ static void boarding_message_handle(void)
                         wboard_logw("ota_image_size :0x%x!\r\n", s_ble_ota->image_size);
                         if(f_ota_fun_ptr->init(s_ble_ota) == BK_OK)
                         {
+                            s_ble_ota->ota_type = OTA_TYPE_BLE;
                             bk_boarding_event_notify(BOARDING_OP_OTA_START_DOWNLOAD, F_OTA_COMM_OK);
                         }
                         else
@@ -341,7 +342,7 @@ static void boarding_message_handle(void)
 
                     os_memcpy(s_ble_ota->wr_tmp_buf, (uint8_t *)(msg.param + OTA_SEQUENCE_NUMBER), (msg.length - OTA_SEQUENCE_NUMBER));
 
-                    if(f_ota_fun_ptr->data_process(s_ble_ota, (msg.length - OTA_SEQUENCE_NUMBER)) == BK_OK)
+                    if(f_ota_fun_ptr->data_process(s_ble_ota, (msg.length - OTA_SEQUENCE_NUMBER), s_ble_ota->ota_type, NULL) == BK_OK)
                     {
                         bk_boarding_event_notify_with_data(BOARDING_OP_OTA_DO_DOWNLOADING, F_OTA_COMM_OK, (char*)&s_ble_ota->curr_sequence_number, msg.length);
                     }
@@ -379,6 +380,7 @@ static void boarding_message_handle(void)
                         }
                         OTA_FREE(s_ble_ota->magic_code);
                         f_ota_fun_ptr->deinit(s_ble_ota);
+                        OTA_FREE(s_ble_ota);
                         OTA_FREE(s_ota_data_ptr);
                         bk_boarding_event_notify(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_COMM_OK);
                         wboard_logw("ota success !\r\n");
