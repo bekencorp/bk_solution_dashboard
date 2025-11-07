@@ -12,7 +12,7 @@
 #include "driver/gpio.h"
 #include "gpio_driver.h"
 #include "setup_scr_screen.h"
-
+#include "driver/flash_partition.h"
 #if CONFIG_AVI_PLAYER
 #include "avi_player.h"
 #include "bk_posix.h"
@@ -79,6 +79,56 @@ static avdk_err_t lcd_backlight_close(uint8_t bl_io)
     return AVDK_ERR_OK;
 }
 
+static int _fs_mount(void)
+{
+    struct bk_fatfs_partition partition;
+    char *fs_name = NULL;
+    int ret;
+
+    fs_name = "fatfs";
+    partition.part_type = FATFS_DEVICE;
+
+    partition.part_dev.device_name = FATFS_DEV_SDCARD;
+    partition.mount_path = VFS_SD_0_PATITION_0;
+
+    ret = mount("SOURCE_NONE", partition.mount_path, fs_name, 0, &partition);
+
+    return ret;
+}
+
+static bk_err_t bk_avi_player_vfs_init(void)
+{
+    bk_err_t ret = BK_FAIL;
+
+    do {
+        ret = _fs_mount();
+        if (BK_OK != ret)
+        {
+            BK_LOGD(NULL, "[%s][%d] mount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
+            break;
+        }
+
+        BK_LOGD(NULL, "[%s][%d] mount success\r\n", __FUNCTION__, __LINE__);
+    } while(0);
+
+    return ret;
+}
+
+static bk_err_t bk_avi_player_vfs_deinit(void)
+{
+    bk_err_t ret = BK_FAIL;
+
+    ret = umount(VFS_SD_0_PATITION_0);
+    if (BK_OK != ret) {
+        BK_LOGD(NULL, "[%s][%d] unmount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
+        return ret;
+    }
+
+    BK_LOGD(NULL, "[%s][%d] unmount success\r\n", __FUNCTION__, __LINE__);
+
+    return ret;
+}
+
 #if CONFIG_AVI_PLAYER
 static void lv_timer_cb(lv_timer_t *timer)
 {
@@ -97,6 +147,7 @@ static void lv_timer_cb(lv_timer_t *timer)
         lv_timer_del(avi_timer);
         lv_obj_del(avi_img);
         bk_avi_player_close();
+        bk_avi_player_vfs_deinit();
         lv_setup_ui();
     }
 }
@@ -130,6 +181,12 @@ void lvgl_app_init(void)
 #if CONFIG_AVI_PLAYER
     bk_avi_player_config_t avi_player_config = {0};
     bk_err_t ret;
+
+    ret = bk_avi_player_vfs_init();
+    if (ret != BK_OK) {
+        os_printf("%s %d bk_avi_player_vfs_init failed\r\n", __func__, __LINE__);
+        goto avi_player_fail;
+    }
 
     avi_player_config.file_path = PATH_SD_FILE("animation.avi");
     avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_RGB565;
