@@ -345,6 +345,7 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
 
 fail:
     blue_audio_player_destroy(gl_audio_player_handle);
+    gl_audio_player_handle = NULL;
     return BK_FAIL;
 }
 
