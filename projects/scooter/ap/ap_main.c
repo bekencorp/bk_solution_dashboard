@@ -412,7 +412,7 @@ void cli_test_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **arg
             ret = lvgl_app_resume_display();
 
         }
-        else if (os_strcmp(argv[2], "camera") == 0)
+        else if (os_strcmp(argv[2], "wifi") == 0)
         {
             ret = lvgl_app_suspend_display();
             av_server_jpeg_decode_manager_resume();
