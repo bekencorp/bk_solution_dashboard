@@ -1,0 +1,1 @@
+Please put the animation.avi file to sdcard root path.

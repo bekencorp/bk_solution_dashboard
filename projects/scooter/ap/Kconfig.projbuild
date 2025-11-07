@@ -41,11 +41,6 @@ menu "scooter Example Configuration"
         depends on BLUETOOTH_MULTI_CONTROLLER
         default 2000000
 
-    config LV_USE_DEMO_METER
-        bool "LVGL Meter"
-        depends on LVGL
-        default n
-
     config MEDIA_RECEIVE_DEMO
         bool "media receive other device data"
         depends on MEDIA

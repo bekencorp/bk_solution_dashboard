@@ -11,15 +11,12 @@
 #include "lcd_panel_devices.h"
 #include "driver/gpio.h"
 #include "gpio_driver.h"
+#include "setup_scr_screen.h"
 
 #if CONFIG_AVI_PLAYER
 #include "avi_player.h"
 #include "bk_posix.h"
 #endif
-
-
-extern void lv_example_meter(void);
-extern void lv_example_meter_exit(void);
 
 extern lv_vnd_config_t vendor_config;
 
@@ -28,10 +25,11 @@ static lv_obj_t *avi_img = NULL;
 static lv_timer_t *avi_timer = NULL;
 static bk_avi_player_t *handle = NULL;
 
-static lv_img_dsc_t avi_img_dsc =
+static lv_image_dsc_t avi_img_dsc =
 {
-    .header.cf = LV_IMG_CF_TRUE_COLOR,
-    .header.always_zero = 0,
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.cf = LV_COLOR_FORMAT_RGB565,
+    .header.stride = 0,
     .header.w = 0,
     .header.h = 0,
     .data_size = 0,
@@ -99,7 +97,7 @@ static void lv_timer_cb(lv_timer_t *timer)
         lv_timer_del(avi_timer);
         lv_obj_del(avi_img);
         bk_avi_player_close();
-        lv_example_meter();
+        lv_setup_ui();
     }
 }
 #endif
@@ -122,6 +120,13 @@ void lvgl_app_init(void)
     bk_display_rgb_new(&lv_vnd_config.handle, &rgb_config);
     lv_vendor_init(&lv_vnd_config);
 
+#if (CONFIG_TP)
+    drv_tp_open(lv_vnd_config.width, lv_vnd_config.height, TP_MIRROR_NONE);
+#endif
+
+    lcd_ldo_open(LCD_LDO_IO);
+    bk_display_open(lv_vnd_config.handle);
+
 #if CONFIG_AVI_PLAYER
     bk_avi_player_config_t avi_player_config = {0};
     bk_err_t ret;
@@ -133,40 +138,45 @@ void lvgl_app_init(void)
     ret = bk_avi_player_open(&avi_player_config);
     if (ret != BK_OK) {
         os_printf("%s %d bk_avi_player_open failed\r\n", __func__, __LINE__);
-        return;
+        goto avi_player_fail;
     }
 
     handle = bk_avi_player_get_handle();
     avi_img_dsc.header.w = handle->avi->width;
     avi_img_dsc.header.h = handle->avi->height;
+    avi_img_dsc.header.stride = avi_img_dsc.header.w * 2;
     avi_img_dsc.data_size = handle->avi->width * handle->avi->height * 2;
     avi_img_dsc.data = (const uint8_t *)handle->framebuffer;
 
     ret = bk_avi_player_video_parse();
     if (ret != BK_OK) {
         os_printf("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
-        return;
+        goto avi_player_fail;
     }
-#endif
-    lcd_ldo_open(LCD_LDO_IO);
-    bk_display_open(lv_vnd_config.handle);
-    lcd_backlight_open(LCD_BL_IO);
-
-#if (CONFIG_TP)
-    drv_tp_open(lv_vnd_config.width, lv_vnd_config.height, TP_MIRROR_NONE);
-#endif
 
     lv_vendor_disp_lock();
-#if CONFIG_AVI_PLAYER
     avi_img = lv_img_create(lv_scr_act());
     lv_img_set_src(avi_img, &avi_img_dsc);
     lv_obj_align(avi_img, LV_ALIGN_CENTER, 0, 0);
 
     avi_timer = lv_timer_create(lv_timer_cb, 1000 / (uint32_t)handle->avi->fps, NULL);
-#else
-    lv_example_meter();
-#endif
     lv_vendor_disp_unlock();
+
+    lcd_backlight_open(LCD_BL_IO);
+    lv_vendor_start();
+    return;
+
+avi_player_fail:
+    lv_vendor_disp_lock();
+    lv_setup_ui();
+    lv_vendor_disp_unlock();
+#else
+    lv_vendor_disp_lock();
+    lv_setup_ui();
+    lv_vendor_disp_unlock();
+#endif
+
+    lcd_backlight_open(LCD_BL_IO);
 
     lv_vendor_start();
 }
@@ -175,16 +185,15 @@ bk_err_t lvgl_app_deinit(void)
 {
     lcd_backlight_close(LCD_BL_IO);
 
-    lv_vendor_disp_lock();
-    lv_example_meter_exit();
-    lv_vendor_disp_unlock();
-    rtos_delay_milliseconds(10);
+    lv_vendor_stop();
 
 #if (CONFIG_TP)
     drv_tp_close();
 #endif
 
-    lv_vendor_stop();
+    bk_display_close(vendor_config.handle);
+    bk_display_delete(vendor_config.handle);
+    lcd_ldo_close(LCD_LDO_IO);
 
     lv_vendor_deinit();
 

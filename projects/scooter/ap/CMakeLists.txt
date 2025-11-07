@@ -82,20 +82,31 @@ if (CONFIG_BLE OR CONFIG_BT)
 endif()
 
 if (CONFIG_LVGL)
-    list(APPEND incs
-        lvgl
-    )
+    list(APPEND incs lvgl)
 
     list(APPEND srcs
         lvgl/lvgl_app_ui.c
-    )
+        lvgl/setup_scr_screen.c
 
-if (CONFIG_LV_USE_DEMO_METER)
-    list(APPEND srcs
-        lvgl/lv_example_meter.c
-    )
-endif()
+        lvgl/fonts/lv_font_Abel_regular_16.c
+        lvgl/fonts/lv_font_montserratMedium_13.c
+        lvgl/fonts/lv_font_montserratMedium_14.c
+        lvgl/fonts/lv_font_montserratMedium_16.c
+        lvgl/fonts/lv_font_montserratMedium_21.c
+        lvgl/fonts/lv_font_montserratMedium_24.c
+        lvgl/fonts/lv_font_montserratMedium_32.c
 
+        lvgl/images/_battery_bak_RGB565A8_26x14.c
+        lvgl/images/_battery_ind_RGB565A8_26x14.c
+        lvgl/images/_beken_logo_blue_RGB565A8_73x36.c
+        lvgl/images/_bluetooth_1_RGB565A8_21x20.c
+        lvgl/images/_kmbg_RGB565A8_100x100.c
+        lvgl/images/_light_11_RGB565A8_28x23.c
+        lvgl/images/_light_green_RGB565A8_49x40.c
+        lvgl/images/_light_grey_RGB565A8_49x40.c
+        lvgl/images/_moto_RGB565A8_480x272.c
+        lvgl/images/_wifi_1_RGB565A8_20x20.c
+    )
 endif()
 
 if (1)
