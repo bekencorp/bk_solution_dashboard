@@ -30,7 +30,6 @@
 #define TCP_KEEPALIVE_IDLE_TIME    10   // Start keepalive probe after 10 seconds of no data
 #define TCP_KEEPALIVE_INTERVAL     5    // Send probe packet every 5 seconds
 #define TCP_KEEPALIVE_COUNT        3    // Consider connection broken after 3 failed probes
-#define TCP_HEARTBEAT_TIMEOUT      30   // Application layer timeout: 30 seconds without data
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -49,7 +48,6 @@ typedef struct
 	uint16_t img_status : 1;
 	uint16_t rotate;
 	db_channel_t *img_channel;
-	uint32_t last_recv_time;  // Timestamp of last received data (application layer heartbeat)
 } db_tcp_service_t;
 
 db_tcp_service_t *db_tcp_service = NULL;
@@ -226,7 +224,6 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 	bk_err_t ret = BK_OK;
 	u8 *rcv_buf = NULL;
 	fd_set watchfd;
-	struct timeval select_timeout;
 
 	LOGI("%s entry\n", __func__);
 	db_tcp_service_t *tcp_service = (db_tcp_service_t *)data;
@@ -283,7 +280,6 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 
 		LOGI("waiting for a new connection\n");
 
-		// Use blocking mode for accept
 		ret = select(tcp_service->img_server_fd + 1, &watchfd, NULL, NULL, NULL);
 		if (ret <= 0)
 		{
@@ -313,9 +309,6 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 				// Solution 1: Set TCP keepalive
 				av_server_tcp_set_keepalive(tcp_service->img_fd);
 
-				// Initialize application layer heartbeat timestamp
-				tcp_service->last_recv_time = rtos_get_time();
-
 				{
 					media_msg_t msg;
 					msg.event = MEDIA_EVT_REMOTE_DEVICE_CONNECTED;
@@ -344,103 +337,56 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 
 				while (tcp_service->img_status == BK_TRUE)
 				{
-					// Solution 2: Application layer heartbeat - use select timeout mechanism
-					FD_ZERO(&watchfd);
-					FD_SET(tcp_service->img_fd, &watchfd);
-
-					// Set select timeout to 2 seconds for periodic connection status check
-					select_timeout.tv_sec = 2;
-					select_timeout.tv_usec = 0;
-
-					ret = select(tcp_service->img_fd + 1, &watchfd, NULL, NULL, &select_timeout);
-
-					if (ret < 0)
-					{
-						LOGE("select error: %d, errno: %d\n", ret, errno);
-						goto exit_con;
-					}
-					else if (ret == 0)
-					{
-						// Timeout, check application layer heartbeat
-						uint32_t current_time = rtos_get_time();
-						uint32_t elapsed_time = current_time - tcp_service->last_recv_time;
-
-						if (elapsed_time > TCP_HEARTBEAT_TIMEOUT * 1000)
-						{
-							LOGE("Heartbeat timeout: no data received for %d seconds, closing connection\n",
-								elapsed_time / 1000);
-							tcp_service->img_status = BK_FALSE;
-							goto exit_con;
-						}
-
-						// Not timeout yet, continue waiting
-						continue;
-					}
-
-					// Data available to read
-					if (!FD_ISSET(tcp_service->img_fd, &watchfd))
-					{
-						continue;
-					}
-
 					rcv_len = recv(tcp_service->img_fd, rcv_buf, AV_SERVER_TCP_BUFFER, 0);
 					if (rcv_len > 0)
 					{
 						LOGV("got video length: %d\n", rcv_len);
-
-						// Update application layer heartbeat timestamp
-						tcp_service->last_recv_time = rtos_get_time();
 
 						av_server_transmission_unpack(tcp_service->img_channel, rcv_buf, rcv_len, av_server_tcp_video_receiver);
 					}
 					else
 					{
 						// Connection closed or error occurred
-						goto exit_con;
+						int errno_temp = errno;
+						// close this socket
+						LOGI("vid recv close fd:%d, rcv_len:%d, error_code:%d\n", tcp_service->img_fd, rcv_len, errno);
+						close(tcp_service->img_fd);
+						tcp_service->img_fd = -1;
+	
+						ret = av_server_jpeg_decode_manager_turn_off();
+						if (ret != BK_OK)
+						{
+							LOGE("turn off jpeg_decode_manager failed\n");
+						}
+	
+						lvgl_app_resume_display();
+	
+						ret = video_data_process_close();
+	
+						if (ret != BK_OK)
+						{
+							LOGE("turn off camera failed\n");
+						}
+	
+						if(tcp_service->img_channel)
+						{
+							LOGI("TCP server clear old ccount %d\r\n",tcp_service->img_channel->ccount);
+							tcp_service->img_channel->ccount = 0;
+						}
+	
+						media_msg_t msg;
+						if (errno_temp == ENOTCONN)
+						{
+							msg.event = MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED;
+						}
+						else
+						{
+							msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
+						}
+						msg.param = BK_OK;
+						media_send_msg(&msg);
+						break;
 					}
-				}
-
-				// Connection cleanup and exit
-				exit_con:
-				{
-					int errno_temp = errno;
-					// close this socket
-					LOGI("vid recv close fd:%d, rcv_len:%d, error_code:%d\n", tcp_service->img_fd, rcv_len, errno);
-					close(tcp_service->img_fd);
-					tcp_service->img_fd = -1;
-
-					ret = av_server_jpeg_decode_manager_turn_off();
-					if (ret != BK_OK)
-					{
-						LOGE("turn off jpeg_decode_manager failed\n");
-					}
-
-					lvgl_app_resume_display();
-
-					ret = video_data_process_close();
-
-					if (ret != BK_OK)
-					{
-						LOGE("turn off camera failed\n");
-					}
-
-					if(tcp_service->img_channel)
-					{
-						LOGI("TCP server clear old ccount %d\r\n",tcp_service->img_channel->ccount);
-						tcp_service->img_channel->ccount = 0;
-					}
-
-					media_msg_t msg;
-					if (errno_temp == ENOTCONN)
-					{
-						msg.event = MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED;
-					}
-					else
-					{
-						msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
-					}
-					msg.param = BK_OK;
-					media_send_msg(&msg);
 				}
 			}
 		}
