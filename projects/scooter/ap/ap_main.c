@@ -36,6 +36,10 @@
     #include "download.h"
 #endif
 
+#if CONFIG_BUTTON
+    #include "key_app_service.h"
+#endif
+
 #if CONFIG_MEDIA_RECEIVE_DEMO
     #include "media_tcp_service.h"
     #include "media_udp_service.h"
@@ -643,6 +647,10 @@ extern int cli_network_provisioning_init(void);
     bk_ble_provisioning_set_msg_handle_cb(ble_msg_handle_demo_cb);
     bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
     cli_network_provisioning_init();
+#endif
+
+#if CONFIG_BUTTON
+    bk_key_service_init();
 #endif
     return 0;
 }

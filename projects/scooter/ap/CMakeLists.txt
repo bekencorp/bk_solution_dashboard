@@ -170,10 +170,19 @@ if (CONFIG_BK_BLE_PROVISIONING)
     )
 endif()
 
+if (CONFIG_BUTTON)
+    list(APPEND incs
+        key_app
+    )
+    list(APPEND srcs
+        key_app/key_app_service.c
+    )
+endif()
+
 armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
-    PRIV_REQUIRES bk_init media_service multimedia bk_cli audio_play audio_record lwip_intf_v2_1 ota wifi_transfer bk_display lvgl bk_mp3_play bk_camera bk_video_pipeline bk_vfs blue_audio_player_service blue_audio_recorder_service sbc_encoder bk_common bk_wifi bk_https easy_flash bk_video_player bluetooth_secondary_controller bk_network_provisioning json
+    PRIV_REQUIRES bk_init media_service multimedia bk_cli audio_play audio_record lwip_intf_v2_1 ota wifi_transfer bk_display lvgl bk_mp3_play bk_camera bk_video_pipeline bk_vfs blue_audio_player_service blue_audio_recorder_service sbc_encoder bk_common bk_wifi bk_https easy_flash bk_video_player bluetooth_secondary_controller bk_network_provisioning json key
 )
 
 get_filename_component(config_component_name ${CMAKE_CURRENT_LIST_DIR} NAME)

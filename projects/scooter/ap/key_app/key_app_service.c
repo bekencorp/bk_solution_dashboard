@@ -1,0 +1,53 @@
+#include <common/sys_config.h>
+#include <components/log.h>
+#include "key_app_service.h"
+#include "key_app_config.h"
+
+#define TAG "key_service"
+
+#define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
+#define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
+#define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
+#define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+
+
+static void config_network(void)
+{
+    LOGI("USER_CONFIG_NETWORK\r\n");
+}
+
+static void release_info(void)
+{
+    LOGI("USER_REASE_INFO\r\n");
+}
+
+static KeyConfig_t key_configs[] = KEY_DEFAULT_CONFIG_TABLE;
+
+static void key_event_handler(uint8_t event)
+{
+    if (IS_INVALID_EVENT(event))
+    {
+        LOGI("Invalid event: %d\r\n", event);
+        return;
+    }
+    
+    switch(event) {
+        case USER_CONFIG_NETWORK:
+            config_network();
+            break;
+        case USER_ERASE_INFO:
+            release_info();
+            break;
+        default:
+            break;
+    }
+}
+
+
+void bk_key_service_init(void)
+{
+
+    bk_key_driver_init(key_configs, sizeof(key_configs)/sizeof(KeyConfig_t));
+
+    bk_key_register_event_handler(key_event_handler);
+}
