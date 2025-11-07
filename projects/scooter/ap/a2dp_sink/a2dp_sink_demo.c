@@ -275,6 +275,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     if (decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC)
     {
         blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 0;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
         temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_SBC_MAX_FRAME_NUMS;
         audio_player_cfg = temp_audio_player_cfg;
@@ -283,6 +288,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     {
 #if CONFIG_AAC_DECODER
         blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_AAC_ONBOARD_SPK_CONFIG();
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 0;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
         temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_AAC_MAX_FRAME_NUMS;
         audio_player_cfg = temp_audio_player_cfg;
