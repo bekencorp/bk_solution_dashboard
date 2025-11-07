@@ -213,7 +213,7 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
                     {
                         // select error
                         LOGE("select error: %d, errno: %d\n", ret, errno);
-                        break;
+                        goto exit_con;
                     }
                     else if (ret == 0)
                     {
@@ -226,7 +226,7 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
                             LOGE("CMD Heartbeat timeout: no data received for %d seconds, closing connection\n",
                                 elapsed_time / 1000);
                             media_cmd_info->server_state = BK_FALSE;
-                            break;
+                            goto exit_con;
                         }
 
                         // Not timeout yet, continue waiting
@@ -250,24 +250,28 @@ static void media_cmd_server_thread(beken_thread_arg_t data)
                     }
                     else
                     {
-                        // close this socket
-                        LOGD("%s, recv close fd:%d, rcv_len:%d, error:%d\n", __func__, media_cmd_info->client_fd, rcv_len, errno);
-                        close(media_cmd_info->client_fd);
-                        media_cmd_info->client_fd = -1;
-
-                        if (media_cmd_info->server_state == BK_TRUE)
-                        {
-                            media_msg_t msg;
-
-                            media_cmd_info->server_state = BK_FALSE;
-
-                            msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
-                            msg.param = BK_OK;
-                            media_send_msg(&msg);
-                        }
-                        break;
+                        goto exit_con;
                     }
 
+                }
+
+                exit_con:
+                {
+                    // close this socket
+                    LOGD("%s, recv close fd:%d, rcv_len:%d, error:%d\n", __func__, media_cmd_info->client_fd, rcv_len, errno);
+                    close(media_cmd_info->client_fd);
+                    media_cmd_info->client_fd = -1;
+
+                    if (media_cmd_info->server_state == BK_TRUE)
+                    {
+                        media_msg_t msg;
+
+                        media_cmd_info->server_state = BK_FALSE;
+
+                        msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
+                        msg.param = BK_OK;
+                        media_send_msg(&msg);
+                    }
                 }
             }
         }

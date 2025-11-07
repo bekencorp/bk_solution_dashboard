@@ -356,9 +356,8 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 
 					if (ret < 0)
 					{
-						// select error
 						LOGE("select error: %d, errno: %d\n", ret, errno);
-						break;
+						goto exit_con;
 					}
 					else if (ret == 0)
 					{
@@ -371,7 +370,7 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 							LOGE("Heartbeat timeout: no data received for %d seconds, closing connection\n",
 								elapsed_time / 1000);
 							tcp_service->img_status = BK_FALSE;
-							break;
+							goto exit_con;
 						}
 
 						// Not timeout yet, continue waiting
@@ -396,47 +395,52 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 					}
 					else
 					{
-						int errno_temp = errno;
-						// close this socket
-						LOGI("vid recv close fd:%d, rcv_len:%d, error_code:%d\n", tcp_service->img_fd, rcv_len, errno);
-						close(tcp_service->img_fd);
-						tcp_service->img_fd = -1;
-
-						ret = av_server_jpeg_decode_manager_turn_off();
-						if (ret != BK_OK)
-						{
-							LOGE("turn off jpeg_decode_manager failed\n");
-						}
-
-						lvgl_app_resume_display();
-
-						ret = video_data_process_close();
-
-						if (ret != BK_OK)
-						{
-							LOGE("turn off camera failed\n");
-						}
-
-						if(tcp_service->img_channel)
-						{
-							LOGI("TCP server clear old ccount %d\r\n",tcp_service->img_channel->ccount);
-							tcp_service->img_channel->ccount = 0;
-						}
-
-						media_msg_t msg;
-						if (errno_temp == ENOTCONN)
-						{
-							msg.event = MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED;
-						}
-						else
-						{
-							msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
-						}
-						msg.param = BK_OK;
-						media_send_msg(&msg);
-
-						break;
+						// Connection closed or error occurred
+						goto exit_con;
 					}
+				}
+
+				// Connection cleanup and exit
+				exit_con:
+				{
+					int errno_temp = errno;
+					// close this socket
+					LOGI("vid recv close fd:%d, rcv_len:%d, error_code:%d\n", tcp_service->img_fd, rcv_len, errno);
+					close(tcp_service->img_fd);
+					tcp_service->img_fd = -1;
+
+					ret = av_server_jpeg_decode_manager_turn_off();
+					if (ret != BK_OK)
+					{
+						LOGE("turn off jpeg_decode_manager failed\n");
+					}
+
+					lvgl_app_resume_display();
+
+					ret = video_data_process_close();
+
+					if (ret != BK_OK)
+					{
+						LOGE("turn off camera failed\n");
+					}
+
+					if(tcp_service->img_channel)
+					{
+						LOGI("TCP server clear old ccount %d\r\n",tcp_service->img_channel->ccount);
+						tcp_service->img_channel->ccount = 0;
+					}
+
+					media_msg_t msg;
+					if (errno_temp == ENOTCONN)
+					{
+						msg.event = MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED;
+					}
+					else
+					{
+						msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
+					}
+					msg.param = BK_OK;
+					media_send_msg(&msg);
 				}
 			}
 		}
