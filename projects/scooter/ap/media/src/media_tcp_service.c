@@ -22,6 +22,7 @@
 #include <modules/wifi_types.h>
 #include "wifi_transfer.h"
 
+#include "media_msg.h"
 
 #define TAG "db-tcp"
 
@@ -221,6 +222,13 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 		FD_ZERO(&watchfd);
 		FD_SET(tcp_service->img_server_fd, &watchfd);
 
+		{
+			media_msg_t msg;
+			msg.event = MEDIA_EVT_TCP_SERVICE_START;
+			msg.param = 0;
+			media_send_msg(&msg);
+		}
+
 		LOGI("waiting for a new connection\n");
 		ret = select(tcp_service->img_server_fd + 1, &watchfd, NULL, NULL, NULL);
 		if (ret <= 0)
@@ -247,6 +255,13 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 				}
 
 				LOGI("accept a new connection fd:%d\n", tcp_service->img_fd);
+
+				{
+					media_msg_t msg;
+					msg.event = MEDIA_EVT_REMOTE_DEVICE_CONNECTED;
+					msg.param = client_addr.sin_addr.s_addr;
+					media_send_msg(&msg);
+				}
 
 				ret = video_data_process_open(480, 272, IMAGE_MJPEG);
 
@@ -277,6 +292,7 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 					}
 					else
 					{
+						int errno_temp = errno;
 						// close this socket
 						LOGI("vid recv close fd:%d, rcv_len:%d, error_code:%d\n", tcp_service->img_fd, rcv_len, errno);
 						close(tcp_service->img_fd);
@@ -302,6 +318,19 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 							LOGI("TCP server clear old ccount %d\r\n",tcp_service->img_channel->ccount);
 							tcp_service->img_channel->ccount = 0;
 						}
+
+						media_msg_t msg;
+						if (errno_temp == ENOTCONN)
+						{
+							msg.event = MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED;
+						}
+						else
+						{
+							msg.event = MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED;
+						}
+						msg.param = BK_OK;
+						media_send_msg(&msg);
+
 						break;
 					}
 				}

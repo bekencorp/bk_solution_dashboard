@@ -12,6 +12,8 @@
 #define AV_SERVER_SEND_MAX_RETRY (2000)
 #define AV_SERVER_SEND_MAX_DELAY (20)
 
+#define AV_SERVER_CMD_PORT               (7100)
+
 #define AV_SERVER_UDP_IMG_PORT           (7180)
 #define AV_SERVER_UDP_AUD_PORT           (7170)
 

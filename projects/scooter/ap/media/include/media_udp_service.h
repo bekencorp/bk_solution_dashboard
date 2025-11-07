@@ -10,6 +10,7 @@
 
 extern beken_semaphore_t s_av_server_service_sem;
 
+void media_udp_update_remote_address(in_addr_t address);
 bk_err_t av_server_udp_service_init(uint16_t rotate);
 void av_server_udp_service_deinit(void);
 

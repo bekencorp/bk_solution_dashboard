@@ -116,6 +116,7 @@ if (1)
 if (1)
     list(APPEND srcs
         media/src/media_comm.c
+        media/src/media_sdp.c
         media/src/media_transmission.c
         media/src/media_udp_service.c
         media/src/media_tcp_service.c
@@ -125,6 +126,8 @@ if (1)
         media/src/trans_list.c
         media/src/wifi_co_list.c
         media/src/test_jpeg.c
+        media/src/media_msg.c
+        media/src/media_cmd.c
     )
 endif()#CONFIG_MEDIA_APP
 

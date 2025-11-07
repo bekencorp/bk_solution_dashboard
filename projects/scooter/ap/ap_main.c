@@ -25,6 +25,10 @@
 #include "driver/uart.h"
 #include "bk_rtos_debug.h"
 #include "media_manager.h"
+
+#include "media_msg.h"
+#include "media_cmd.h"
+
 #if CONFIG_BK3515_OTA
     #include "download.h"
 #endif
@@ -94,6 +98,7 @@ void media_receive_sta_demo_init(void)
     bk_wifi_sta_start();
     LOGD("---connect ssid:%s, key:%s\n", wifi_ssid, wifi_key);
 
+    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
     av_server_tcp_service_init(ROTATE_NONE);
 #else
@@ -117,6 +122,8 @@ void media_receive_softap_demo_init(void)
     bk_wifi_ap_set_config(&ap_config);
     bk_wifi_ap_start();
     LOGD("---connected\n");
+
+    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
     av_server_tcp_service_init(ROTATE_NONE);
 #else
@@ -131,6 +138,7 @@ void media_receive_p2p_demo_init(void)
     BK_LOG_ON_ERR(bk_wifi_p2p_enable(p2p_ssid));
     BK_LOG_ON_ERR(bk_wifi_p2p_find());
 
+    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
     av_server_tcp_service_init(ROTATE_NONE);
 #else
@@ -608,6 +616,8 @@ int main(void)
 #if CONFIG_MEDIA_RECEIVE_DEMO
     //        media_receive_demo_init();
 #endif
+
+    media_msg_init();
 
     cli_test_cmd_init();
 

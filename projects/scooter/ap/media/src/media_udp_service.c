@@ -18,6 +18,9 @@
 //#include "media_app.h"
 #include "wifi_transfer.h"
 
+#include "media_cmd.h"
+#include "media_msg.h"
+
 #define TAG "av_server-UDP"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -38,6 +41,12 @@ typedef struct
 
 db_udp_service_t *db_udp_service = NULL;
 static struct sockaddr_in video_sender;
+
+void media_udp_update_remote_address(in_addr_t address)
+{
+    LOGD("%s\n", __func__);
+    db_udp_service->img_remote.sin_addr.s_addr = address;
+}
 
 int av_server_udp_img_send_packet(uint8_t *data, uint32_t len)
 {
@@ -117,6 +126,7 @@ static void av_server_udp_service_main(beken_thread_arg_t data)
 	fd_set watchfd;
 	struct timeval timeout;
 	u8 *rcv_buf = NULL;
+	in_addr_t remote = media_cmd_get_socket_address();
 
 	LOGI("%s, img: %d, aud: %d\n",__func__, AV_SERVER_UDP_IMG_PORT, AV_SERVER_UDP_AUD_PORT);
 	(void)(data);
@@ -143,11 +153,20 @@ static void av_server_udp_service_main(beken_thread_arg_t data)
 
 	db_udp_service->img_remote.sin_family = AF_INET;
 	db_udp_service->img_remote.sin_port = htons(AV_SERVER_UDP_IMG_PORT);
-	db_udp_service->img_remote.sin_addr.s_addr = inet_addr("0.0.0.0");
+
+	if (remote == 0)
+	{
+		db_udp_service->img_remote.sin_addr.s_addr = htonl(INADDR_ANY);
+	}
+	else
+	{
+		db_udp_service->img_remote.sin_addr.s_addr = remote;
+	}
 
 	video_sender.sin_family = AF_INET;
 	video_sender.sin_port = htons(AV_SERVER_UDP_IMG_PORT);
 	video_sender.sin_addr.s_addr = inet_addr("192.168.188.100");
+
 
 	srvaddr_len = (socklen_t)sizeof(struct sockaddr_in);
 
@@ -167,6 +186,14 @@ static void av_server_udp_service_main(beken_thread_arg_t data)
 	db_udp_service->img_status = 1;
 	db_udp_service->running = 1;
 	GLOBAL_INT_RESTORE();
+
+	{
+		media_msg_t msg;
+
+		msg.event = MEDIA_EVT_UDP_SERVICE_START;
+		msg.param = 0;
+		media_send_msg(&msg);
+	}
 
 	ret = video_data_process_open(480, 272, IMAGE_MJPEG);
 
