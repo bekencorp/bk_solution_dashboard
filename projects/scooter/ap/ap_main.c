@@ -570,6 +570,8 @@ static void ap_bt_startup_task(void *arg)
 
     ap_bt_app_init();
 
+    media_msg_init();
+
 #if CONFIG_BK_BLE_PROVISIONING
 extern void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data);
 extern void ble_msg_handle_demo_cb(ble_prov_msg_t *msg);
@@ -635,8 +637,6 @@ int main(void)
 #if CONFIG_MEDIA_RECEIVE_DEMO
     //        media_receive_demo_init();
 #endif
-
-    media_msg_init();
 
     cli_test_cmd_init();
 
