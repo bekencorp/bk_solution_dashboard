@@ -75,6 +75,7 @@ static char wifi_key[KEY_MAX_LEN] = DEFAULT_WIFI_KEY;
 #define WLAN_DEFAULT_IP         "192.168.188.1"
 #define WLAN_DEFAULT_GW         "192.168.188.1"
 #define WLAN_DEFAULT_MASK       "255.255.255.0"
+static char p2p_ssid[SSID_MAX_LEN] = "dashboard_p2p";
 
 enum
 {
@@ -127,7 +128,6 @@ void media_receive_softap_demo_init(void)
 void media_receive_p2p_demo_init(void)
 {
     LOGD("+++start p2p connect\n");
-    char *p2p_ssid = "dashboard_p2p";
     BK_LOG_ON_ERR(bk_wifi_p2p_enable(p2p_ssid));
     BK_LOG_ON_ERR(bk_wifi_p2p_find());
 
@@ -289,6 +289,25 @@ void cli_test_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **arg
 #if CONFIG_P2P
     else if (os_strcmp(argv[1], "p2p") == 0)
     {
+        if (argc >= 3)
+        {
+            int p2p_ssid_len = os_strlen(argv[2]);
+            if (p2p_ssid_len > 0)
+            {
+                if (p2p_ssid_len >= SSID_MAX_LEN)
+                {
+                    p2p_ssid_len = SSID_MAX_LEN - 1;
+                }
+                os_memcpy(p2p_ssid, argv[2], p2p_ssid_len);
+                p2p_ssid[p2p_ssid_len] = '\0';
+            }
+        }
+        else
+        {
+            os_memcpy(p2p_ssid, "dashboard_p2p", os_strlen("dashboard_p2p"));
+            p2p_ssid[os_strlen("dashboard_p2p")] = '\0';
+        }
+
         if (media_demo_thread == NULL)
         {
             ret = rtos_create_thread(&media_demo_thread,
