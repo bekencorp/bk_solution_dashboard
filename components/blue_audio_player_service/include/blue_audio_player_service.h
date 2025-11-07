@@ -151,7 +151,7 @@ typedef struct
     .chl_num = 1,                                           \
     .sample_rate = 44100,                                   \
     .dig_gain = 0x2d,                                       \
-    .ana_gain = 0x07,                                       \
+    .ana_gain = 0x00,                                       \
     .work_mode = AUD_DAC_WORK_MODE_DIFFEN,                  \
     .bits = 16,                                             \
     .clk_src = AUD_CLK_XTAL,                                \
