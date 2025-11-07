@@ -1737,6 +1737,7 @@ int32_t dm_ble_gap_get_rpa(uint8_t *rpa)
     }
 }
 
+#if !defined(CONFIG_BK_BLE_PROVISIONING)
 void dm_ble_gap_get_identity_addr(uint8_t *addr)
 {
     uint8_t *identity_addr = addr;
@@ -1749,6 +1750,7 @@ void dm_ble_gap_get_identity_addr(uint8_t *addr)
         identity_addr[BK_BD_ADDR_LEN - 1 - i] = tmp;
     }
 }
+#endif
 
 int16_t dm_ble_gap_get_current_conn_id(void)
 {

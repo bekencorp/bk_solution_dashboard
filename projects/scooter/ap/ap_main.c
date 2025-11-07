@@ -15,6 +15,9 @@
 #include "wifi_boarding//wifi_boarding_demo_service.h"
 #include "modules/wifi.h"
 #include "components/netif.h"
+#if CONFIG_BK_BLE_PROVISIONING
+#include "bk_network_provisioning.h"
+#endif
 
 #include "components/bk_display.h"
 #include "lcd_panel_devices.h"
@@ -630,5 +633,16 @@ int main(void)
     cli_mp3_play_init();
 #endif
 
+#if CONFIG_BK_BLE_PROVISIONING
+extern void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data);
+extern void ble_msg_handle_demo_cb(ble_prov_msg_t *msg);
+extern int cli_network_provisioning_init(void);
+    //for user to receive network provisioning status change event
+    bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
+    //if default provisioning type is ble, then set msg handle cb
+    bk_ble_provisioning_set_msg_handle_cb(ble_msg_handle_demo_cb);
+    bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
+    cli_network_provisioning_init();
+#endif
     return 0;
 }

@@ -102,6 +102,7 @@ static const bk_gatts_attr_db_t s_gatts_attr_db_service_boarding[] =
 
 static uint16_t s_boarding_attr_handle_list[sizeof(s_gatts_attr_db_service_boarding) / sizeof(s_gatts_attr_db_service_boarding[0])];
 
+#if !defined(CONFIG_BK_BLE_PROVISIONING)
 int wifi_boarding_notify(uint8_t *data, uint16_t length)
 {
     int16_t current_conn_id = dm_ble_gap_get_current_conn_id();
@@ -118,6 +119,7 @@ int wifi_boarding_notify(uint8_t *data, uint16_t length)
         return BK_OK;
     }
 }
+#endif
 
 static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk_ble_gatts_cb_param_t *comm_param)
 {
@@ -498,7 +500,8 @@ int32_t wifi_boarding_demo_deinit(uint8_t deinit_bluetooth_future)
 
 int32_t wifi_boarding_demo_deinit_because_bluetooth_deinit_future(void)
 {
+#if WIFI_BOARDING_DEMO_ENABLE
     s_db_init = 0;
-
+#endif
     return 0;
 }

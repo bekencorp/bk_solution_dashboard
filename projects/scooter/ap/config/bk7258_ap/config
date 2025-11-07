@@ -492,7 +492,8 @@ CONFIG_NETIF_LWIP=y
 #
 # Beken Components Network Provisioning
 #
-# CONFIG_BK_NETWORK_PROVISIONING is not set
+CONFIG_BK_NETWORK_PROVISIONING=y
+CONFIG_BK_BLE_PROVISIONING=y
 # end of Beken Components Network Provisioning
 
 #
@@ -924,7 +925,7 @@ CONFIG_HTTP_OTA_WITH_BLE=y
 #
 # json
 #
-# CONFIG_CJSON_USE is not set
+CONFIG_CJSON_USE=y
 # end of json
 
 # CONFIG_BUTTON is not set
