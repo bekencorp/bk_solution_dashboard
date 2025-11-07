@@ -2,6 +2,9 @@
 #include <components/log.h>
 #include "key_app_service.h"
 #include "key_app_config.h"
+#if CONFIG_BK_NETWORK_PROVISIONING
+#include "bk_network_provisioning.h"
+#endif
 
 #define TAG "key_service"
 
@@ -14,11 +17,18 @@
 static void config_network(void)
 {
     LOGI("USER_CONFIG_NETWORK\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+    bk_reboot();
+#endif
 }
 
 static void release_info(void)
 {
     LOGI("USER_REASE_INFO\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+#endif
 }
 
 static KeyConfig_t key_configs[] = KEY_DEFAULT_CONFIG_TABLE;
