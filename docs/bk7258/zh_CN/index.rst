@@ -45,6 +45,20 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
     make clean
     make bk7258
 
+使用docker编译方式如下
+
+    linux或macos系统下在终端执行以下命令::
+
+        export SDK_DIR=~/armino/bk_avdk_smp
+        ./dbuild.sh make clean
+        ./dbuild.sh make bk7258
+
+    Windows下使用powershell执行以下命令::
+
+        $env:SDK_DIR = "C:\armino\bk_avdk_smp"
+        ./dbuild.ps1 make clean
+        ./dbuild.ps1 make bk7258
+
 .. note::
 
     如果SDK的代码未放在 ~/armino/bk_avdk_smp 目录下, 需要在 make 命令中指定 SDK_DIR 参数为SMP SDK实际路径。

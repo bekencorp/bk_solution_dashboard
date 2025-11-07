@@ -49,6 +49,20 @@ Alternatively, you can specify the SDK path using the export command::
     make clean
     make bk7258
 
+Compile using Docker as follows::
+
+    On Linux or macOS systems, execute the following commands in the terminal::
+
+        export SDK_DIR=~/armino/bk_avdk_smp
+        ./dbuild.sh make clean
+        ./dbuild.sh make bk7258
+
+    On Windows, use PowerShell to execute the following commands::
+
+        $env:SDK_DIR = "C:\armino\bk_avdk_smp"
+        ./dbuild.ps1 make clean
+        ./dbuild.ps1 make bk7258
+
 .. note::
 
     If the SDK code is not placed in the ~/armino/bk_avdk_smp directory, you need to specify the SDK_DIR parameter in the make command as the actual path of the SMP SDK.
