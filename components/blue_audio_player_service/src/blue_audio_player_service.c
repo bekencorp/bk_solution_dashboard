@@ -27,6 +27,11 @@
 #include <components/bk_audio/audio_pipeline/audio_error.h>
 #include <components/bk_audio/audio_algorithms/mix_algorithm.h>
 #include <components/bk_audio/audio_pipeline/bsd_queue.h>
+
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+#include <components/bk_audio/audio_algorithms/eq_algorithm.h>
+#endif
+
 #include <blue_audio_player_service.h>
 
 #define TAG "blue_audio_player"
@@ -82,6 +87,10 @@ struct blue_audio_player
     audio_pipeline_handle_t     pipeline;           /*!< Audio pipeline handle */
     audio_element_handle_t      raw_strm;           /*!< Raw stream handle */
     audio_element_handle_t      decoder;            /*!< Decoder handle */
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    bool                        eq_en;              /*!< EQ enable flag */
+    audio_element_handle_t      eq_alg;             /*!< EQ algorithm handle */
+#endif
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     audio_element_handle_t      mix_alg;            /*!< Mix algorithm handle */
 #endif
@@ -289,6 +298,17 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_player_handle_t player)
         }
     }
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    if (player->eq_en && player->eq_alg)
+    {
+        if (BK_OK != audio_pipeline_unregister(player->pipeline, player->eq_alg))
+        {
+            BK_LOGE(TAG, "%s, %d, Unregister EQ algorithm failed\n", __func__, __LINE__);
+            return BK_FAIL;
+        }
+    }
+#endif
+
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     if (player->mix_alg)
     {
@@ -354,6 +374,18 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_player_handle_t player)
         player->decoder = NULL;
     }
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    if (player->eq_en && player->eq_alg)
+    {
+        if (BK_OK != audio_element_deinit(player->eq_alg))
+        {
+            BK_LOGE(TAG, "%s, %d, EQ algorithm deinit failed\n", __func__, __LINE__);
+            return BK_FAIL;
+        }
+        player->eq_alg = NULL;
+    }
+#endif
+
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     if (player->mix_alg)
     {
@@ -396,6 +428,11 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
     BK_LOGD(TAG, "%s\n", __func__);
     BLUE_AUDIO_PLAYER_CHECK_NULL(player, return BK_FAIL);
     BLUE_AUDIO_PLAYER_CHECK_NULL(config, return BK_FAIL);
+
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    // Store EQ enable flag
+    player->eq_en = config->eq_en;
+#endif
 
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     // Store mix enable flag
@@ -454,6 +491,19 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         BK_LOGD(TAG, "%s, PCM format selected, no decoder needed\n", __func__);
     }
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    // Initialize EQ algorithm if enabled
+    if (player->eq_en)
+    {
+        player->eq_alg = eq_algorithm_init(&config->eq_cfg.eq_alg_cfg);
+        if (!player->eq_alg)
+        {
+            BK_LOGE(TAG, "%s, %d, EQ algorithm init failed\n", __func__, __LINE__);
+            goto fail;
+        }
+    }
+#endif
+
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     // Initialize mix algorithm if enabled
     if (player->mix_en)
@@ -507,6 +557,17 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         }
     }
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    if (player->eq_en && player->eq_alg)
+    {
+        if (BK_OK != audio_pipeline_register(player->pipeline, player->eq_alg, "eq_alg"))
+        {
+            BK_LOGE(TAG, "%s, %d, Register EQ algorithm failed\n", __func__, __LINE__);
+            goto fail;
+        }
+    }
+#endif
+
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     if (player->mix_en)
     {
@@ -524,33 +585,70 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         goto fail;
     }
 
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
-    // Link elements in pipeline based on decoder type and mix enable
-    if (player->mix_en)
+    // Link elements in pipeline based on decoder type, EQ enable, and mix enable
+    // Data flow: raw_strm -> [decoder] -> [eq_alg] -> [mix_alg] -> speaker
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    if (player->eq_en && player->eq_alg)
     {
-        if (player->decoder)
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
+        if (player->mix_en)
         {
-            // For compressed formats with mix: raw_strm -> decoder -> mix_alg -> speaker
-            ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "mix_alg", "speaker"}, 4);
+            if (player->decoder)
+            {
+                // raw_strm -> decoder -> eq_alg -> mix_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "mix_alg", "speaker"}, 5);
+            }
+            else
+            {
+                // raw_strm -> eq_alg -> mix_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "mix_alg", "speaker"}, 4);
+            }
         }
         else
+#endif
         {
-            // For PCM format with mix: raw_strm -> mix_alg -> speaker
-            ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "mix_alg", "speaker"}, 3);
+            if (player->decoder)
+            {
+                // raw_strm -> decoder -> eq_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "speaker"}, 4);
+            }
+            else
+            {
+                // raw_strm -> eq_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "speaker"}, 3);
+            }
         }
     }
     else
 #endif
     {
-        if (player->decoder)
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
+        if (player->mix_en)
         {
-            // For compressed formats without mix: raw_strm -> decoder -> speaker
-            ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "speaker"}, 3);
+            if (player->decoder)
+            {
+                // raw_strm -> decoder -> mix_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "mix_alg", "speaker"}, 4);
+            }
+            else
+            {
+                // raw_strm -> mix_alg -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "mix_alg", "speaker"}, 3);
+            }
         }
         else
+#endif
         {
-            // For PCM format without mix: raw_strm -> speaker
-            ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "speaker"}, 2);
+            if (player->decoder)
+            {
+                // raw_strm -> decoder -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "speaker"}, 3);
+            }
+            else
+            {
+                // raw_strm -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "speaker"}, 2);
+            }
         }
     }
 
@@ -897,6 +995,9 @@ blue_audio_player_handle_t blue_audio_player_create(blue_audio_player_cfg_t *con
     player->state = BLUE_AUDIO_PLAYER_STATE_IDLE;
     player->decoder_type = config->decoder_type;
     player->speaker_type = config->speaker_type;
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    player->eq_en = config->eq_en;
+#endif
     player->event_handle = config->event_handle;
     player->args = config->args;
     player->play_threshold = config->play_threshold; // Set play threshold
@@ -1143,3 +1244,30 @@ bk_err_t blue_audio_player_set_volume(blue_audio_player_handle_t player, uint8_t
 
     return ret;
 }
+
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+bk_err_t blue_audio_player_get_eq_algorithm(blue_audio_player_handle_t player, audio_element_handle_t *eq_alg)
+{
+    BLUE_AUDIO_PLAYER_CHECK_NULL(player, return BK_FAIL);
+    BLUE_AUDIO_PLAYER_CHECK_NULL(eq_alg, return BK_FAIL);
+
+    if (player->eq_en)
+    {
+        if (player->eq_alg)
+        {
+            *eq_alg = player->eq_alg;
+            return BK_OK;
+        }
+        else
+        {
+            BK_LOGE(TAG, "%s, %d, EQ algorithm is NULL\n", __func__, __LINE__);
+            return BK_FAIL;
+        }
+    }
+    else
+    {
+        BK_LOGE(TAG, "%s, %d, EQ is not enabled\n", __func__, __LINE__);
+        return BK_FAIL;
+    }
+}
+#endif

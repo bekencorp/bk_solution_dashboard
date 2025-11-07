@@ -64,6 +64,10 @@
 #define A2DP_SBC_MAX_FRAME_NUMS             0xF*5*1
 #define A2DP_SBC_FRAME_HEADER_LEN           13
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+#define A2DP_SPEAKER_EQ_ENABLE 0
+#endif
+
 #if CONFIG_AAC_DECODER
 #define A2DP_ACC_SINGLE_CHANNEL_MAX_FRAM_SIZE   768   //1024(samples)/48k/s(sample rate)*288k/s (max bitrate)/8
 #define A2DP_AAC_MAX_FRAME_NUMS                 5     //21ms/frame*5
@@ -282,6 +286,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
         temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_SBC_MAX_FRAME_NUMS;
+#if A2DP_SPEAKER_EQ_ENABLE
+        temp_audio_player_cfg.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
+        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         audio_player_cfg = temp_audio_player_cfg;
     }
     else if (decoder_type == BLUE_AUDIO_DECODER_TYPE_AAC)
@@ -295,6 +304,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
         temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_AAC_MAX_FRAME_NUMS;
+#if A2DP_SPEAKER_EQ_ENABLE
+        temp_audio_player_cfg.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
+        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         audio_player_cfg = temp_audio_player_cfg;
 #endif
     }

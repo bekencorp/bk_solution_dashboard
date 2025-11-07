@@ -26,6 +26,9 @@ extern "C" {
 #include <components/bk_audio/audio_decoders/aac_decoder.h>
 #include <components/bk_audio/audio_pipeline/audio_types.h>
 #include <components/bk_audio/audio_algorithms/mix_algorithm.h>
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+#include "components/bk_audio/audio_algorithms/eq_algorithm.h"
+#endif
 
 /**
  * @brief Decoder type enum
@@ -107,6 +110,13 @@ typedef struct
     } speaker_cfg;
 
     mix_algorithm_cfg_t mix_alg_cfg;              /*!< Mix algorithm configuration */
+
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+    bool eq_en;                                          /*!< Enable EQ algorithm */
+    union {
+        eq_algorithm_cfg_t eq_alg_cfg;                  /*!< EQ algorithm configuration */
+    } eq_cfg;                                           /*!< EQ configuration union */
+#endif
 
     blue_audio_player_event_handle_cb event_handle; /*!< Event callback function */
     void *args;                                    /*!< User data for callback */
@@ -278,6 +288,13 @@ typedef struct
     .args = NULL,                                                       \
 }
 
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+/**
+ * @brief Default EQ algorithm configuration
+ */
+#define DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG() DEFAULT_EQ_ALGORITHM_CONFIG()
+#endif
+
 /**
  * @brief Create blue audio player with configuration
  *
@@ -375,6 +392,22 @@ bk_err_t blue_audio_player_get_free_frame_num(blue_audio_player_handle_t player)
  *    - Others: failed
  */
 bk_err_t blue_audio_player_set_volume(blue_audio_player_handle_t player, uint8_t volume);
+
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+/**
+ * @brief Get the EQ algorithm element handle
+ *
+ * This API gets the EQ algorithm handle from the player.
+ *
+ * @param[in] player   The blue audio player handle
+ * @param[out] eq_alg  The pointer to store the EQ algorithm handle
+ *
+ * @return
+ *    - BK_OK: success
+ *    - Others: failed
+ */
+bk_err_t blue_audio_player_get_eq_algorithm(blue_audio_player_handle_t player, audio_element_handle_t *eq_alg);
+#endif
 
 #ifdef __cplusplus
 }

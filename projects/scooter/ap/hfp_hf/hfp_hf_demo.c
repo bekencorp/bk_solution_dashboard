@@ -68,6 +68,12 @@
 #define HF_REMOTE_ROLLBACK_TEST       0
 #define HF_AT_TEST 0
 #define HF_AT_ENABLE_CMEE 1
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+#define HF_MIC_EQ_ENABLE 0
+#endif
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+#define HF_SPEAKER_EQ_ENABLE 0
+#endif
 
 enum
 {
@@ -342,6 +348,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
         temp_audio_player_cfg.raw_strm_cfg.out_block_num = 1;//A2DP_SBC_MAX_FRAME_NUMS;
         temp_audio_player_cfg.mix_en = false;
+#if HF_SPEAKER_EQ_ENABLE
+        temp_audio_player_cfg.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
+        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         audio_player_cfg = temp_audio_player_cfg;
     }
     else if(decoder_type == BLUE_AUDIO_DECODER_TYPE_PCM)
@@ -356,7 +367,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate = 8000;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size = 640;
         temp_audio_player_cfg.mix_en = false;
-
+#if HF_SPEAKER_EQ_ENABLE
+        temp_audio_player_cfg.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
+        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         audio_player_cfg = temp_audio_player_cfg;
     }
     else
@@ -374,6 +389,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     case BLUE_AUDIO_DECODER_TYPE_SBC:
     {
         blue_audio_recorder_cfg_t tmp_config = DEFAULT_BLUE_AUDIO_RECORDER_SBC_ONBOARD_MIC_CONFIG();
+#if HF_MIC_EQ_ENABLE
+        tmp_config.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG();
+        tmp_config.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         bar_config = tmp_config;
     }
     break;
@@ -381,6 +401,11 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     case BLUE_AUDIO_DECODER_TYPE_PCM:
     {
         blue_audio_recorder_cfg_t tmp_config = DEFAULT_BLUE_AUDIO_RECORDER_PCM_ONBOARD_MIC_CONFIG();
+#if HF_MIC_EQ_ENABLE
+        tmp_config.eq_en = true;
+        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG();
+        tmp_config.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
+#endif
         bar_config = tmp_config;
     }
     break;
@@ -1119,7 +1144,11 @@ int bt_audio_hf_demo_task_init(void)
                                  BEKEN_DEFAULT_WORKER_PRIORITY,
                                  "bt_audio_hf_demo",
                                  (beken_thread_function_t)bt_audio_hf_demo_main,
+#if (HF_MIC_EQ_ENABLE || HF_SPEAKER_EQ_ENABLE)
+                                 1024 * 6,
+#else
                                  4096,
+#endif
                                  (beken_thread_arg_t)0);
         if (ret != kNoErr)
         {

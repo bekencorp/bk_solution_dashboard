@@ -36,4 +36,11 @@ menu "Blue Audio Player Service"
 		bool "Enable Blue Audio Player Service to support mix algorithm"
 		default n
 
+    config BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
+		depends on BLUE_AUDIO_PLAYER_SERVICE && ADK_EQ_ALGORITHM
+		bool "Enable Blue Audio Player Service to support EQ algorithm"
+		default n
+		help
+			Enable EQ algorithm support in Blue Audio Player Service for audio equalization processing
+
 endmenu

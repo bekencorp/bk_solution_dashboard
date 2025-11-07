@@ -24,6 +24,9 @@ extern "C" {
 #if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_MSBC_ENCODER
 #include "components/bk_audio/audio_encoders/sbc_enc.h"
 #endif
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+#include "components/bk_audio/audio_algorithms/eq_algorithm.h"
+#endif
 /**
  * @brief Encoder type enum
  */
@@ -101,6 +104,13 @@ typedef struct
 #endif
         /* Reserved for I2S mic configuration */
     } mic_cfg;
+
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    bool eq_en;                                          /*!< Enable EQ algorithm */
+    union {
+        eq_algorithm_cfg_t eq_alg_cfg;                  /*!< EQ algorithm configuration */
+    } eq_cfg;                                           /*!< EQ configuration union */
+#endif
 
     blue_audio_recorder_event_handle_cb event_handle;    /*!< Event callback function */
     void *args;                                          /*!< User data for callback */
@@ -207,7 +217,7 @@ typedef struct
 /**
  * @brief Default PCM recorder configuration
  */
-#define DEFAULT_BLUE_AUDIO_RECORDER_PCM_ONBOARD_MIC_CONFIG() {           \
+#define DEFAULT_BLUE_AUDIO_RECORDER_PCM_ONBOARD_MIC_CONFIG() {          \
     .encoder_type = BLUE_AUDIO_RECORDER_ENCODER_TYPE_PCM,               \
     .mic_type = BLUE_AUDIO_RECORDER_MIC_TYPE_ONBOARD,                   \
     .raw_strm_cfg = {                                                   \
@@ -225,6 +235,14 @@ typedef struct
     .event_handle = NULL,                                               \
     .args = NULL,                                                       \
 }
+
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+/**
+ * @brief Default EQ algorithm configuration
+ */
+#define DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG() DEFAULT_EQ_ALGORITHM_CONFIG()
+#endif
+
 
 /**
  * @brief Create bluetooth audio recorder with configuration
@@ -294,6 +312,22 @@ bk_err_t blue_audio_recorder_stop(blue_audio_recorder_handle_t recorder);
  *    - Others: failed
  */
 bk_err_t blue_audio_recorder_read_frame_data(blue_audio_recorder_handle_t recorder, char *buffer, uint32_t len);
+
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+/**
+ * @brief Get the EQ algorithm element handle
+ *
+ * This API gets the EQ algorithm element handle from the recorder.
+ *
+ * @param[in] recorder    The bluetooth audio recorder handle
+ * @param[out] eq_alg The pointer to store the EQ algorithm handle
+ *
+ * @return
+ *    - BK_OK: success
+ *    - Others: failed
+ */
+bk_err_t blue_audio_recorder_get_eq_algorithm(blue_audio_recorder_handle_t recorder, audio_element_handle_t *eq_alg);
+#endif
 
 #ifdef __cplusplus
 }

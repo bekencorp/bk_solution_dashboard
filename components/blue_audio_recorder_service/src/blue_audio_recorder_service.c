@@ -29,6 +29,10 @@
 #include <components/bk_audio/audio_streams/onboard_mic_stream.h>
 #include <components/bk_audio/audio_streams/raw_stream.h>
 
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+#include <components/bk_audio/audio_algorithms/eq_algorithm.h>
+#endif
+
 #include "blue_audio_recorder_service.h"
 
 #define TAG "blue_audio_recorder"
@@ -59,6 +63,10 @@ struct blue_audio_recorder {
     audio_element_handle_t      mic_stream;         /*!< Microphone stream handle */
     audio_element_handle_t      encoder;            /*!< Encoder handle */
     audio_element_handle_t      raw_stream;         /*!< Raw stream handle */
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    bool                        eq_en;              /*!< EQ enable flag */
+    audio_element_handle_t      eq_alg;         /*!< EQ algorithm handle */
+#endif
 
     audio_event_iface_handle_t  event_iface;        /*!< Event interface handle */
 
@@ -149,6 +157,17 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_recorder_handle_t recorder
         }
     }
 
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    if (recorder->eq_en && recorder->eq_alg)
+    {
+        if (BK_OK != audio_pipeline_unregister(recorder->pipeline, recorder->eq_alg))
+        {
+            BK_LOGE(TAG, "%s, %d, Unregister EQ element failed", __func__, __LINE__);
+            return BK_FAIL;
+        }
+    }
+#endif
+
     if (recorder->encoder) {
         if (BK_OK != audio_pipeline_unregister(recorder->pipeline, recorder->encoder)) {
             BK_LOGE(TAG, "%s, %d, Unregister encoder failed", __func__, __LINE__);
@@ -195,6 +214,18 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_recorder_handle_t recorder
         }
         recorder->mic_stream = NULL;
     }
+
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    if (recorder->eq_en && recorder->eq_alg)
+    {
+        if (BK_OK != audio_element_deinit(recorder->eq_alg))
+        {
+            BK_LOGE(TAG, "%s, %d, EQ element deinit failed", __func__, __LINE__);
+            return BK_FAIL;
+        }
+        recorder->eq_alg = NULL;
+    }
+#endif
 
     if (recorder->encoder) {
         if (BK_OK != audio_element_deinit(recorder->encoder)) {
@@ -249,6 +280,19 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_recorder_handle_t recorder, 
     }
     BLUE_AUDIO_RECORDER_CHECK_NULL(recorder->mic_stream, goto fail);
 
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    // Create EQ element if enabled
+    if (config->eq_en)
+    {
+        recorder->eq_alg = eq_algorithm_init(&config->eq_cfg.eq_alg_cfg);
+        if (!recorder->eq_alg)
+        {
+            BK_LOGE(TAG, "%s, %d, EQ element init failed", __func__, __LINE__);
+            goto fail;
+        }
+    }
+#endif
+
     // Create encoder based on encoder type
     switch (config->encoder_type)
     {
@@ -292,6 +336,18 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_recorder_handle_t recorder, 
         }
     }
 
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    if (recorder->eq_en && recorder->eq_alg)
+    {
+        ret = audio_pipeline_register(recorder->pipeline, recorder->eq_alg, "eq_element");
+        if (ret != BK_OK)
+        {
+            BK_LOGE(TAG, "%s, %d, Register EQ element failed, ret: %d", __func__, __LINE__, ret);
+            goto fail;
+        }
+    }
+#endif
+
     if (recorder->encoder)
     {
         ret = audio_pipeline_register(recorder->pipeline, recorder->encoder, "encoder");
@@ -312,22 +368,54 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_recorder_handle_t recorder, 
         }
     }
 
-    if (recorder->encoder)
+    // Link pipeline elements based on configuration
+    // Data flow: mic_stream -> [eq_element] -> [encoder] -> raw_stream
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    if (recorder->eq_en && recorder->eq_alg)
     {
-        ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "encoder", "raw_stream"}, 3);
-        if (ret != BK_OK)
+        if (recorder->encoder)
         {
-            BK_LOGE(TAG, "%s, %d, Pipeline link failed with encoder, ret: %d", __func__, __LINE__, ret);
-            goto fail;
+            // mic_stream -> eq_element -> encoder -> raw_stream
+            ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "eq_element", "encoder", "raw_stream"}, 4);
+            if (ret != BK_OK)
+            {
+                BK_LOGE(TAG, "%s, %d, Pipeline link failed with EQ and encoder, ret: %d", __func__, __LINE__, ret);
+                goto fail;
+            }
+        }
+        else
+        {
+            // mic_stream -> eq_element -> raw_stream
+            ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "eq_element", "raw_stream"}, 3);
+            if (ret != BK_OK)
+            {
+                BK_LOGE(TAG, "%s, %d, Pipeline link failed with EQ only, ret: %d", __func__, __LINE__, ret);
+                goto fail;
+            }
         }
     }
     else
+#endif
     {
-        ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "raw_stream"}, 2);
-        if (ret != BK_OK)
+        if (recorder->encoder)
         {
-            BK_LOGE(TAG, "%s, %d, Pipeline link failed without encoder, ret: %d", __func__, __LINE__, ret);
-            goto fail;
+            // mic_stream -> encoder -> raw_stream
+            ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "encoder", "raw_stream"}, 3);
+            if (ret != BK_OK)
+            {
+                BK_LOGE(TAG, "%s, %d, Pipeline link failed with encoder, ret: %d", __func__, __LINE__, ret);
+                goto fail;
+            }
+        }
+        else
+        {
+            // mic_stream -> raw_stream
+            ret = audio_pipeline_link(recorder->pipeline, (const char *[]) {"mic_stream", "raw_stream"}, 2);
+            if (ret != BK_OK)
+            {
+                BK_LOGE(TAG, "%s, %d, Pipeline link failed without encoder, ret: %d", __func__, __LINE__, ret);
+                goto fail;
+            }
         }
     }
 
@@ -575,6 +663,9 @@ blue_audio_recorder_handle_t blue_audio_recorder_create(blue_audio_recorder_cfg_
     recorder->state = BLUE_AUDIO_RECORDER_STATE_IDLE;
     recorder->encoder_type = config->encoder_type;
     recorder->mic_type = config->mic_type;
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+    recorder->eq_en = config->eq_en;
+#endif
     recorder->event_handle = config->event_handle;
     recorder->args = config->args;
 
@@ -707,21 +798,24 @@ bk_err_t blue_audio_recorder_read_frame_data(blue_audio_recorder_handle_t record
     BLUE_AUDIO_RECORDER_CHECK_NULL(recorder, return BK_FAIL);
     BLUE_AUDIO_RECORDER_CHECK_NULL(buffer, return BK_FAIL);
 
-    if (len == 0) {
+    if (len == 0)
+    {
         BK_LOGE(TAG, "%s, %d, Invalid buffer length: %d", __func__, __LINE__, len);
         return BK_FAIL;
     }
 
     int read_len = 0;
     // Check recorder state
-    if (recorder->state != BLUE_AUDIO_RECORDER_STATE_RECORDING) {
+    if (recorder->state != BLUE_AUDIO_RECORDER_STATE_RECORDING)
+    {
         BK_LOGE(TAG, "%s, %d, Recorder is not recording, current state: %d", __func__, __LINE__, recorder->state);
         return BK_FAIL;
     }
 
     // Read data from raw stream
     read_len = raw_stream_read(recorder->raw_stream, buffer, len);
-    if (read_len < 0) {
+    if (read_len < 0)
+    {
         BK_LOGE(TAG, "%s, %d, Read data failed, read_len: %d", __func__, __LINE__, read_len);
         return read_len;
     }
@@ -729,3 +823,30 @@ bk_err_t blue_audio_recorder_read_frame_data(blue_audio_recorder_handle_t record
     BK_LOGV(TAG, "%s, %d, Read %d bytes successfully", __func__, __LINE__, read_len);
     return read_len;
 }
+
+#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+bk_err_t blue_audio_recorder_get_eq_algorithm(blue_audio_recorder_handle_t recorder, audio_element_handle_t *eq_alg)
+{
+    BLUE_AUDIO_RECORDER_CHECK_NULL(recorder, return BK_FAIL);
+    BLUE_AUDIO_RECORDER_CHECK_NULL(eq_alg, return BK_FAIL);
+
+    if (recorder->eq_en)
+    {
+        if (recorder->eq_alg)
+        {
+            *eq_alg = recorder->eq_alg;
+            return BK_OK;
+        }
+        else
+        {
+            BK_LOGE(TAG, "%s, %d, EQ algorithm is NULL", __func__, __LINE__);
+            return BK_FAIL;
+        }
+    }
+    else
+    {
+        BK_LOGE(TAG, "%s, %d, EQ is not enabled", __func__, __LINE__);
+        return BK_FAIL;
+    }
+}
+#endif

@@ -24,4 +24,11 @@ menu "Blue Audio Recorder Service"
         bool "Enable Blue Audio Recorder Service to support msbc encoder"
         default n
 
+    config BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
+        depends on BLUE_AUDIO_RECORDER_SERVICE && ADK_EQ_ALGORITHM
+        bool "Enable Blue Audio Recorder Service to support EQ algorithm"
+        default n
+        help
+            Enable EQ algorithm support in Blue Audio Recorder Service for audio equalization processing
+
 endmenu
