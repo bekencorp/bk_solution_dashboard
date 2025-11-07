@@ -123,6 +123,22 @@ void media_receive_softap_demo_init(void)
 #endif
 }
 
+#if CONFIG_P2P
+void media_receive_p2p_demo_init(void)
+{
+    LOGD("+++start p2p connect\n");
+    char *p2p_ssid = "dashboard_p2p";
+    BK_LOG_ON_ERR(bk_wifi_p2p_enable(p2p_ssid));
+    BK_LOG_ON_ERR(bk_wifi_p2p_find());
+
+#if CONFIG_MEDIA_DEMO_MODE_TCP
+    av_server_tcp_service_init(ROTATE_NONE);
+#else
+    av_server_udp_service_init(ROTATE_NONE);
+#endif
+}
+#endif
+
 void media_receive_demo_entry(beken_thread_arg_t param)
 {
     if ((uint32_t)param == BK_SOFT_AP)
@@ -133,6 +149,12 @@ void media_receive_demo_entry(beken_thread_arg_t param)
     {
         media_receive_sta_demo_init();
     }
+#if CONFIG_P2P
+    else if ((uint32_t)param == BK_P2P)
+    {
+        media_receive_p2p_demo_init();
+    }
+#endif
 
     media_demo_thread = NULL;
     rtos_delete_thread(NULL);
@@ -264,6 +286,24 @@ void cli_test_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **arg
             LOGD("already open wifi\n");
         }
     }
+#if CONFIG_P2P
+    else if (os_strcmp(argv[1], "p2p") == 0)
+    {
+        if (media_demo_thread == NULL)
+        {
+            ret = rtos_create_thread(&media_demo_thread,
+                                     BEKEN_APPLICATION_PRIORITY,
+                                     "media_p2p",
+                                     (beken_thread_function_t)media_receive_demo_entry,
+                                     1024 * 2,
+                                     (beken_thread_arg_t)BK_P2P);
+        }
+        else
+        {
+            LOGD("already open wifi\n");
+        }
+    }
+#endif
     else if (os_strcmp(argv[1], "uvc") == 0)
     {
         if (argc < 3)
