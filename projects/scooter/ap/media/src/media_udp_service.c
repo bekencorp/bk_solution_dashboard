@@ -15,7 +15,6 @@
 #include "media_devices.h"
 #include "media_transmission.h"
 #include "media_data_process.h"
-//#include "media_app.h"
 #include "wifi_transfer.h"
 
 #include "media_cmd.h"

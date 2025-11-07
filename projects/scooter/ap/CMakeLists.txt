@@ -129,7 +129,7 @@ if (1)
         media/src/media_msg.c
         media/src/media_cmd.c
     )
-endif()#CONFIG_MEDIA_APP
+endif()
 
 endif()#CONFIG_MEDIA_RECEIVE_DEMO
 
