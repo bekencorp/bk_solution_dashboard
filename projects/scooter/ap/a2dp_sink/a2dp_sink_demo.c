@@ -608,11 +608,11 @@ static void bt_audio_sink_demo_main(void *arg)
                             uint8_t detect_frame_num = 0;
                             uint32_t i = 0;
 
-                            LOGW("%s frame num not match, payload_header 0x%x, payload_len: %d, frame_num:%d %d %d\n", __func__, payload_header, msg.len - 1, frame_num, frame_length, org_frame_len);
+                            LOGD("%s frame num not match, payload_header 0x%x, payload_len: %d, frame_num:%d %d %d\n", __func__, payload_header, msg.len - 1, frame_num, frame_length, org_frame_len);
 
                             for (uint32_t i = 0; i < msg.len - 1;)
                             {
-                                int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb, 2);
+                                int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb, msg.len - 1);
                                 if(tmp_frame_len > 0)
                                 {
                                     if (blue_audio_player_get_free_frame_num(gl_audio_player_handle))
