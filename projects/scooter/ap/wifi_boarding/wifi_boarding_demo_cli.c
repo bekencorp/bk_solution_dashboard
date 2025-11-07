@@ -37,7 +37,13 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
     if (os_strcmp(argv[1], "init") == 0)
     {
-        wifi_boarding_demo_main(NULL);
+        cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
+
+        dm_gatt_main(&param);
+        dm_gatts_main(&param);
+        wifi_boarding_demo_service_main();
+
+        //wifi_boarding_demo_main(NULL);
     }
     else
     {
@@ -119,12 +125,12 @@ static void cmd_wboarding_ota_demo(char *pcWriteBuffer, int xWriteBufferLen, int
     for(int i = 0; i < length; i++)
     {
         CLI_LOGI("0x%x ",in_data[i]);
-        if(i % 8 == 7) 
+        if(i % 8 == 7)
         {
             CLI_LOGI(" \r\n");
         }
     }
- 
+
     if((opcode == 20)||(opcode == 21)||(opcode == 22))
     {
         bk_boarding_operation_handle(opcode, length, in_data);
