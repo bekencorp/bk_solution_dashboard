@@ -287,6 +287,9 @@ static void av_server_image_server_thread(beken_thread_arg_t data)
 						{
 							LOGE("turn off jpeg_decode_manager failed\n");
 						}
+
+						lvgl_app_resume_display();
+
 						ret = video_data_process_close();
 
 						if (ret != BK_OK)
