@@ -8,9 +8,9 @@
 #include <components/netif.h>
 #include "cli.h"
 
-#include "media_udp_service.h"
-#include "media_comm.h"
-#include "media_sdp.h"
+#include "media_devices.h"
+#include "network_type.h"
+#include "network_transfer.h"
 #include "media_msg.h"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -71,8 +71,7 @@ static void media_message_handle(void)
                 {
                     LOGD("MEDIA_EVT_UDP_SERVICE_START\n");
                     media_info->service = MEDIA_SERVICE_LAN_UDP;
-
-                    media_sdp_start("media-udp", AV_SERVER_CMD_PORT, AV_SERVER_UDP_IMG_PORT, AV_SERVER_UDP_AUD_PORT);
+                    ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
                 }
                 break;
 
@@ -80,37 +79,66 @@ static void media_message_handle(void)
                 {
                     LOGD("MEDIA_EVT_TCP_SERVICE_START\n");
                     media_info->service = MEDIA_SERVICE_LAN_TCP;
-                    media_sdp_start("media-tcp", AV_SERVER_CMD_PORT, AV_SERVER_TCP_IMG_PORT, AV_SERVER_TCP_AUD_PORT);
+
+                    ret = av_server_devices_init();
+
+                    if (ret != BK_OK)
+                    {
+                        LOGE("av_server_devices_init failed\n");
+                        break;
+                    }
+
+                    ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
                 }
                 break;
 
                 case MEDIA_EVT_REMOTE_DEVICE_CONNECTED:
                 {
                     LOGD("MEDIA_EVT_REMOTE_DEVICE_CONNECTED\n");
+                    #if 0
+                    ret = video_data_process_open(480, 272, IMAGE_MJPEG);
+
+                    if (ret != BK_OK)
+                    {
+                        LOGE("turn on camera failed\n");
+                        break;
+                    }
+                    #endif
+
+                    ret = av_server_jpeg_decode_manager_turn_on();
+                    if (ret != BK_OK)
+                    {
+                        LOGE("turn on jpeg_decode_manager failed\n");
+                        break;
+                    }
+    
+                    lvgl_app_suspend_display();
 
                     if (media_info->service == MEDIA_SERVICE_LAN_UDP)
                     {
-                        media_udp_update_remote_address((in_addr_t)msg.param);
-                        media_sdp_reload(60000);
+                        ntwk_sdp_reload(60000);
                     }
                     else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
                     {
-                        media_sdp_reload(60000);
+                        ntwk_sdp_reload(60000);
                     }
+
                 }
                 break;
 
                 case MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED:
                 {
                     LOGD("MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED\n");
+
                     if (media_info->service == MEDIA_SERVICE_LAN_UDP)
                     {
-                        media_sdp_start("media-udp", AV_SERVER_CMD_PORT, AV_SERVER_UDP_IMG_PORT, AV_SERVER_UDP_AUD_PORT);
+                        ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
                     }
                     else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
                     {
-                        media_sdp_start("media-tcp", AV_SERVER_CMD_PORT, AV_SERVER_TCP_IMG_PORT, AV_SERVER_TCP_AUD_PORT);
+                        ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
                     }
+
                 }
                 break;
 
@@ -118,14 +146,32 @@ static void media_message_handle(void)
                 {
                     LOGD("MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED\n");
 
+                    ret = av_server_jpeg_decode_manager_turn_off();
+					if (ret != BK_OK)
+					{
+						LOGE("turn off jpeg_decode_manager failed\n");
+					}
+
+					lvgl_app_resume_display();
+
+					#if 0
+					ret = video_data_process_close();
+
+					if (ret != BK_OK)
+					{
+						LOGE("turn off camera failed\n");
+					}
+                    #endif
+
                     if (media_info->service == MEDIA_SERVICE_LAN_UDP)
                     {
-                        media_sdp_start("media-udp", AV_SERVER_CMD_PORT, AV_SERVER_UDP_IMG_PORT, AV_SERVER_UDP_AUD_PORT);
+                        ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
                     }
                     else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
                     {
-                        media_sdp_start("media-tcp", AV_SERVER_CMD_PORT, AV_SERVER_TCP_IMG_PORT, AV_SERVER_TCP_AUD_PORT);
+                        ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
                     }
+
                 }
                 break;
 
@@ -140,9 +186,7 @@ static void media_message_handle(void)
     }
 
 exit:
-
-    media_sdp_stop();
-
+    ntwk_sdp_stop();
     /* delate msg queue */
     ret = rtos_deinit_queue(&media_info->queue);
 

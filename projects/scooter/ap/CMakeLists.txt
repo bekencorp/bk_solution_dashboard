@@ -115,19 +115,11 @@ if (1)
     )
 if (1)
     list(APPEND srcs
-        media/src/media_comm.c
-        media/src/media_sdp.c
-        media/src/media_transmission.c
-        media/src/media_udp_service.c
-        media/src/media_tcp_service.c
         media/src/media_devices.c
-        media/src/media_data_process.c
         media/src/media_data_process_que.c
-        media/src/trans_list.c
-        media/src/wifi_co_list.c
         media/src/test_jpeg.c
         media/src/media_msg.c
-        media/src/media_cmd.c
+        media/src/media_network_transfer.c
     )
 endif()
 
@@ -182,7 +174,7 @@ endif()
 armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
-    PRIV_REQUIRES bk_init media_service multimedia bk_cli audio_play audio_record lwip_intf_v2_1 ota wifi_transfer bk_display lvgl bk_mp3_play bk_camera bk_video_pipeline bk_vfs blue_audio_player_service blue_audio_recorder_service sbc_encoder bk_common bk_wifi bk_https easy_flash bk_video_player bluetooth_secondary_controller bk_network_provisioning json key
+    PRIV_REQUIRES bk_init media_service multimedia bk_cli audio_play audio_record lwip_intf_v2_1 ota bk_network_transfer bk_display lvgl bk_mp3_play bk_camera bk_video_pipeline bk_vfs blue_audio_player_service blue_audio_recorder_service sbc_encoder bk_common bk_wifi bk_https easy_flash bk_video_player bluetooth_secondary_controller bk_network_provisioning json key
 )
 
 get_filename_component(config_component_name ${CMAKE_CURRENT_LIST_DIR} NAME)

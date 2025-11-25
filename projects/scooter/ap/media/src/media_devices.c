@@ -5,11 +5,12 @@
 #include <getopt.h>
 
 #include <driver/lcd.h>
-#include "media_transmission.h"
+
 #include "media_devices.h"
 #include "frame_buffer_que.h"
 
-#include "wifi_transfer.h"
+#include "media_network_transfer.h"
+#include "network_transfer.h"
 
 #include "lvgl.h"
 #include "lv_vendor.h"
@@ -20,7 +21,7 @@
 #include "gpio_driver.h"
 
 #include "frame_buffer.h"
-#include "media_data_process.h"
+
 #include "jpeg_decode_manager.h"
 
 #define TAG "db-device"
@@ -42,8 +43,6 @@ typedef struct
 
 typedef struct
 {
-    media_transfer_cb_t *camera_transfer_cb;
-    const media_transfer_cb_t *audio_transfer_cb;
     jpeg_decode_manager_t *manager;
     jpeg_decode_manager_config_t config;
     bk_display_ctlr_handle_t lcd_display_handle;
@@ -65,32 +64,6 @@ void set_lcd_use_module(lcd_source_module_t module)
     {
         db_device_info->lcd_use_module = module;
     }
-}
-
-int av_server_devices_set_camera_transfer_callback(void *cb)
-{
-    if (db_device_info == NULL)
-    {
-        LOGE("db_device_info null");
-        return  BK_FAIL;
-    }
-
-    db_device_info->camera_transfer_cb = (media_transfer_cb_t *)cb;
-
-    return BK_OK;
-}
-
-int av_server_devices_set_audio_transfer_callback(const void *cb)
-{
-    if (db_device_info == NULL)
-    {
-        LOGE("db_device_info null");
-        return  BK_FAIL;
-    }
-
-    db_device_info->audio_transfer_cb = (const media_transfer_cb_t *)cb;
-
-    return BK_OK;
 }
 
 static avdk_err_t display_frame_free_cb(void *frame)
@@ -241,32 +214,9 @@ int av_server_display_turn_off(void)
 
 int av_server_udp_voice_send_callback(unsigned char *data, unsigned int len)
 {
-    if (db_device_info == NULL)
-    {
-        LOGE("%s, db_device_info NULL\n", __func__);
-        return BK_FAIL;
-    }
+    LOGD("%s, data: %p, len: %u\n", __func__, data, len);
 
-    if (db_device_info->audio_transfer_cb == NULL)
-    {
-        LOGE("%s, audio_transfer_cb NULL\n", __func__);
-        return BK_FAIL;
-    }
-
-    if (len > db_device_info->audio_transfer_cb->get_tx_size())
-    {
-        LOGE("%s, buffer over flow %d %d\n", __func__, len, db_device_info->audio_transfer_cb->get_tx_size());
-        return BK_FAIL;
-    }
-
-    uint8_t *buffer = db_device_info->audio_transfer_cb->get_tx_buf();
-
-    if (db_device_info->audio_transfer_cb->prepare)
-    {
-        db_device_info->audio_transfer_cb->prepare(data, len);
-    }
-
-    return db_device_info->audio_transfer_cb->send(buffer, len);
+    return ntwk_trans_audio_send(data, len, AUDIO_ENC_TYPE_G711A);
 }
 
 static void av_server_audio_connect_state_cb_handle(uint8_t state)
@@ -470,20 +420,26 @@ static void av_server_debug_timer_handle(void *arg)
     get_last_debug_info(&debug_info);
     uint32_t wifi_transfer_frame_count = (debug_info.wifi_transfer_frame_count - db_device_info->debug_info.last_wifi_transfer_frame_count) / 2;
     uint32_t wifi_transfer_frame_size = (debug_info.wifi_transfer_frame_size - db_device_info->debug_info.last_wifi_transfer_frame_size) / 2;
-    uint32_t wifi_transfer_rate = (debug_info.wifi_transfer_rate - db_device_info->debug_info.last_wifi_transfer_rate) / 2;
+    //uint32_t wifi_transfer_rate = (debug_info.wifi_transfer_rate - db_device_info->debug_info.last_wifi_transfer_rate) / 2;
 
     db_device_info->debug_info.last_decode_frame_count = db_device_info->debug_info.decode_frame_count;
     db_device_info->debug_info.last_wifi_transfer_frame_count = debug_info.wifi_transfer_frame_count;
     db_device_info->debug_info.last_wifi_transfer_frame_size = debug_info.wifi_transfer_frame_size;
-    db_device_info->debug_info.last_wifi_transfer_rate = debug_info.wifi_transfer_rate;
+    //db_device_info->debug_info.last_wifi_transfer_rate = debug_info.wifi_transfer_rate;
+    #if 0
     LOGD("%s dec:%d[%d], wifi:%d[%d, %dKB %d]\n", __func__,
             decode_frame_count, db_device_info->debug_info.decode_frame_count,
             wifi_transfer_frame_count, wifi_transfer_frame_size, wifi_transfer_frame_size / 1024, wifi_transfer_rate);
+    #endif
+    LOGD("%s dec:%d[%d], wifi:%d[%d, %dKB]\n", __func__,
+                decode_frame_count, db_device_info->debug_info.decode_frame_count,
+                wifi_transfer_frame_count, wifi_transfer_frame_size, wifi_transfer_frame_size / 1024);
 }
 
 int av_server_devices_init(void)
 {
-    LOGD("ML: %s %d\n", __func__,__LINE__);
+    LOGI("%s start\r\n", __func__);
+
     if (db_device_info == NULL)
     {
         db_device_info = os_malloc(sizeof(db_device_info_t));
@@ -502,6 +458,9 @@ int av_server_devices_init(void)
 
     rtos_init_timer(&db_device_info->debug_timer, 2000, av_server_debug_timer_handle, db_device_info);
     rtos_start_timer(&db_device_info->debug_timer);
+
+    LOGI("%s end\r\n", __func__);
+
     return BK_OK;
 }
 

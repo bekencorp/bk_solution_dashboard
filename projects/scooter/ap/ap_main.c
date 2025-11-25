@@ -7,7 +7,6 @@
 #include "cli.h"
 #include "media_service.h"
 #include "media_devices.h"
-#include "media_data_process.h"
 #include "bt_manager.h"
 #include "gatt/dm_gatt.h"
 #include "gatt/dm_gatts.h"
@@ -30,7 +29,8 @@
 #include "media_manager.h"
 
 #include "media_msg.h"
-#include "media_cmd.h"
+#include "media_network_transfer.h"
+
 
 #if CONFIG_BK3515_OTA
     #include "download.h"
@@ -38,11 +38,6 @@
 
 #if CONFIG_BUTTON
     #include "key_app_service.h"
-#endif
-
-#if CONFIG_MEDIA_RECEIVE_DEMO
-    #include "media_tcp_service.h"
-    #include "media_udp_service.h"
 #endif
 
 #if CONFIG_BLUETOOTH_MULTI_CONTROLLER
@@ -105,11 +100,10 @@ void media_receive_sta_demo_init(void)
     bk_wifi_sta_start();
     LOGD("---connect ssid:%s, key:%s\n", wifi_ssid, wifi_key);
 
-    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
-    av_server_tcp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("tcp_service", NULL);
 #else
-    av_server_udp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("udp_service", NULL);
 #endif
 }
 
@@ -130,11 +124,10 @@ void media_receive_softap_demo_init(void)
     bk_wifi_ap_start();
     LOGD("---connected\n");
 
-    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
-    av_server_tcp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("tcp_service", NULL);
 #else
-    av_server_udp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("udp_service", NULL);
 #endif
 }
 
@@ -145,11 +138,10 @@ void media_receive_p2p_demo_init(void)
     BK_LOG_ON_ERR(bk_wifi_p2p_enable(p2p_ssid));
     BK_LOG_ON_ERR(bk_wifi_p2p_find());
 
-    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
-    av_server_tcp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("tcp_service", NULL);
 #else
-    av_server_udp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("udp_service", NULL);
 #endif
 }
 #endif
@@ -433,11 +425,11 @@ void cli_test_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **arg
     {
         if (os_strcmp(argv[2], "open") == 0)
         {
-            ret = video_data_process_open(480, 272, IMAGE_MJPEG);
+            //ret = video_data_process_open(480, 272, IMAGE_MJPEG);
         }
         else if (os_strcmp(argv[2], "close") == 0)
         {
-            ret = video_data_process_close();
+            //ret = video_data_process_close();
         }
         else
         {

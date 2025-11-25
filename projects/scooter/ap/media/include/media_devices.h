@@ -67,9 +67,6 @@ typedef enum
 void av_server_devices_deinit(void);
 int av_server_devices_init(void);
 
-int av_server_devices_set_camera_transfer_callback(void *cb);
-int av_server_devices_set_audio_transfer_callback(const void *cb);
-
 int av_server_audio_turn_on(audio_parameters_t *parameters);
 int av_server_audio_turn_off(void);
 int av_server_audio_acoustics(uint32_t index, uint32_t param);

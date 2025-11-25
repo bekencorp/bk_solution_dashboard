@@ -27,11 +27,9 @@
 #include "cli.h"
 #include "cJSON.h"
 #include <components/media_types.h>
-#include "media_cmd.h"
-#if CONFIG_MEDIA_RECEIVE_DEMO
-#include "media_tcp_service.h"
-#include "media_udp_service.h"
-#endif
+#include "media_msg.h"
+#include "media_network_transfer.h"
+
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -521,11 +519,10 @@ int cli_network_provisioning_init(void)
     //bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
     //bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
 #if CONFIG_MEDIA_RECEIVE_DEMO
-    av_server_cmd_server_init();
 #if CONFIG_MEDIA_DEMO_MODE_TCP
-    av_server_tcp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("tcp_service", NULL);
 #else
-    av_server_udp_service_init(ROTATE_NONE);
+    media_bk_network_transfer_init("udp_service", NULL);
 #endif
 #endif
     return cli_register_commands(s_network_provisioning_commands, NP_CMD_COUNT);
