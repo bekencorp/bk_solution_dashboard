@@ -128,6 +128,7 @@ static blue_audio_player_handle_t gl_audio_player_handle = NULL;
 
 static beken_semaphore_t s_audio_player_en_sema = NULL;
 static beken_semaphore_t s_a2dp_connect_sema = NULL;
+static uint8_t s_a2dp_spk_user_vote = 1;
 
 static uint8_t s_a2dp_vol = DEFAULT_A2DP_VOLUME;//0~0x7f
 static uint16_t s_tg_current_registered_noti;
@@ -229,16 +230,14 @@ static void bt_audio_sink_task_exit(void)
     }
 }
 
-static void bt_audio_sink_task_user_vote_spk_task(uint8_t enable)
+static int32_t bt_audio_sink_task_user_vote_spk_task(uint8_t enable)
 {
-    bt_audio_sink_demo_msg_t demo_msg;
+    bt_audio_sink_demo_msg_t demo_msg = {0};
     int rc = -1;
-
-    os_memset(&demo_msg, 0x0, sizeof(bt_audio_sink_demo_msg_t));
 
     if (bt_audio_sink_demo_msg_que == NULL)
     {
-        return;
+        return -1;
     }
 
     demo_msg.type = BT_AUDIO_USER_START_MSG;
@@ -250,7 +249,10 @@ static void bt_audio_sink_task_user_vote_spk_task(uint8_t enable)
     if (kNoErr != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
+        return -1;
     }
+
+    return 0;
 }
 
 static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uint16_t frame_length, uint8_t open_vote)
@@ -585,7 +587,10 @@ static void bt_audio_sink_demo_main(void *arg)
                     }
                 }
                 /* set sync semaphore */
-                rtos_set_semaphore(&s_audio_player_en_sema);
+                if(s_audio_player_en_sema)
+                {
+                    rtos_set_semaphore(&s_audio_player_en_sema);
+                }
             }
             break;
 
@@ -1977,11 +1982,24 @@ int32_t wait_a2dp_speaker_task_end(void)
 
 void bk_bt_app_a2dp_audio_spk_enable(uint8_t enable)
 {
-    bt_audio_sink_task_user_vote_spk_task(enable);
-    if(s_audio_player_en_sema)
+    int32_t ret = 0;
+
+    LOGI("%s %d\n", __func__, enable);
+
+    s_a2dp_spk_user_vote = enable;
+
+    ret = bt_audio_sink_task_user_vote_spk_task(enable);
+
+    if(!ret && s_audio_player_en_sema)
     {
         rtos_get_semaphore(&s_audio_player_en_sema, BEKEN_WAIT_FOREVER);
     }
+    else if(ret)
+    {
+        LOGE("%s send user vote err\n", __func__);
+    }
+
+    LOGI("%s end\n", __func__);
 }
 
 void a2dp_sink_demo_set_mix(uint8_t enable)
@@ -2075,4 +2093,9 @@ end:;
     LOGW("%s end\n", __func__);
 
     return ret;
+}
+
+void bk_bt_app_avrcp_stop_reconnect(void)
+{
+    bk_bt_a2dp_stop_connect();
 }

@@ -17,7 +17,56 @@
 #include "bluetooth_storage.h"
 #include "dm_gap_utils.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
+#include "components/bluetooth/bk_dm_bluetooth.h"
 
+
+enum
+{
+    GATT_CTX_TYPE_GAP_EVT_REP,
+    GATT_CTX_TYPE_REMOVE_BOND,
+    GATT_CTX_TYPE_SECURITY_RSP,
+
+    GATT_CTX_TYPE_EXIT_TASK
+};
+
+typedef struct
+{
+    uint8_t cb_type;  //main type see GATT_CTX_TYPE_GAP_EVT_REP
+    uint32_t sub_evt; //sub event type
+
+    union
+    {
+        struct
+        {
+
+        } gap_evt_rep;
+
+        struct
+        {
+            uint8_t all;
+            uint8_t nominal_addr[6];
+            uint8_t identity_addr[6];
+        } remove_bond;
+
+        struct
+        {
+            uint8_t accept;
+            uint8_t nominal_addr[6];
+        } security_rsp;
+    };
+} dm_gatt_ctx_msg_t;
+
+typedef union
+{
+    struct
+    {
+        uint32_t connected_count;
+        dm_gatt_app_env_t *tmp_env;
+    } get_current_conn_id;
+
+} nest_ret_t;
+
+#define STOP_ADV_SCAN_BEFORE_CLEAN_BOND 0 // no need stop adv scan because host will do it
 typedef int32_t (* dm_ble_gap_app_cb)(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_param_t *param);
 
 uint8_t g_dm_gap_use_rpa = 0;
@@ -38,6 +87,9 @@ static beken_semaphore_t s_ble_er_ir_sema = NULL;
 static uint8_t s_dm_adv_enable = 0;
 static uint8_t s_dm_scan_enable = 0;
 static uint8_t s_auto_accept_pair_req = 1;
+
+static beken_thread_t s_ctx_thread_handle = NULL;
+static beken_queue_t s_ctx_msg_queue = NULL;
 
 #if 1
     static uint8_t s_dm_gatt_iocap = BK_IO_CAP_NONE;
@@ -73,6 +125,27 @@ static bk_ble_bond_dev_t *dm_ble_find_bond_info_by_nominal_addr(uint8_t *addr, b
     for (int i = 0; i < sizeof(s_dm_gatt_bond_dev_list) / sizeof(s_dm_gatt_bond_dev_list[0]); ++i)
     {
         if (!os_memcmp(s_dm_gatt_bond_dev_list[i].bd_addr, addr, sizeof(addr))
+                //&& s_dm_gatt_bond_dev_list[i].key.pid_key.addr_type == addr_type  //todo: addr_type not used now.
+           )
+        {
+            return &s_dm_gatt_bond_dev_list[i];
+        }
+    }
+
+    return NULL;
+}
+
+static bk_ble_bond_dev_t *dm_ble_find_bond_info_by_identity_addr(uint8_t *addr, bk_ble_addr_type_t addr_type)
+{
+    if (!dm_gap_is_addr_valid(addr))
+    {
+        return NULL;
+    }
+
+    for (int i = 0; i < sizeof(s_dm_gatt_bond_dev_list) / sizeof(s_dm_gatt_bond_dev_list[0]); ++i)
+    {
+        if ((s_dm_gatt_bond_dev_list[i].bond_key.key_mask & BK_LE_KEY_PID) &&
+                !os_memcmp(s_dm_gatt_bond_dev_list[i].bond_key.pid_key.static_addr, addr, sizeof(addr))
                 //&& s_dm_gatt_bond_dev_list[i].key.pid_key.addr_type == addr_type  //todo: addr_type not used now.
            )
         {
@@ -159,6 +232,28 @@ static bk_ble_bond_dev_t *dm_ble_alloc_bond_info_by_nominal_addr(uint8_t *addr)
     return NULL;
 }
 
+static bk_ble_bond_dev_t *dm_ble_alloc_bond_info_by_identity_addr(uint8_t *addr)
+{
+    bk_ble_bond_dev_t *tmp = NULL;
+
+    tmp = dm_ble_find_bond_info_by_identity_addr(addr, 0);
+
+    if (tmp)
+    {
+        return tmp;
+    }
+
+    for (int i = 0; i < sizeof(s_dm_gatt_bond_dev_list) / sizeof(s_dm_gatt_bond_dev_list[0]); ++i)
+    {
+        if (!dm_gap_is_addr_valid(s_dm_gatt_bond_dev_list[i].bond_key.pid_key.static_addr))
+        {
+            return &s_dm_gatt_bond_dev_list[i];
+        }
+    }
+
+    return NULL;
+}
+
 static void dm_ble_gap_private_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_param_t *param)
 {
     int32_t ret;
@@ -178,6 +273,57 @@ static void dm_ble_gap_private_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_par
 #endif
         }
     }
+}
+
+static int32_t dm_gatt_ctx_remove_bond(uint8_t *addr)
+{
+    dm_gatt_ctx_msg_t msg = { 0 };
+    bk_err_t ret = 0;
+
+    if (!s_ctx_msg_queue)
+    {
+        gatt_loge("msg queue not ready");
+        return BK_FAIL;
+    }
+
+    msg.cb_type = GATT_CTX_TYPE_REMOVE_BOND;
+    os_memcpy(msg.remove_bond.nominal_addr, addr, sizeof(msg.remove_bond.nominal_addr));
+
+    ret = rtos_push_to_queue( &s_ctx_msg_queue, &msg, BEKEN_NO_WAIT );
+
+    if (ret)
+    {
+        gatt_loge("send queue failed");
+    }
+
+end:;
+    return ret;
+}
+
+static int32_t dm_gatt_ctx_accept_sec_req(uint8_t accept, uint8_t *addr)
+{
+    dm_gatt_ctx_msg_t msg = { 0 };
+    bk_err_t ret = 0;
+
+    if (!s_ctx_msg_queue)
+    {
+        gatt_loge("msg queue not ready");
+        return BK_FAIL;
+    }
+
+    msg.cb_type = GATT_CTX_TYPE_SECURITY_RSP;
+    msg.security_rsp.accept = accept;
+    os_memcpy(msg.security_rsp.nominal_addr, addr, sizeof(msg.security_rsp.nominal_addr));
+
+    ret = rtos_push_to_queue( &s_ctx_msg_queue, &msg, BEKEN_NO_WAIT );
+
+    if (ret)
+    {
+        gatt_loge("send queue failed");
+    }
+
+end:;
+    return ret;
 }
 
 static int32_t dm_ble_gap_common_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_param_t *param)
@@ -255,21 +401,23 @@ static int32_t dm_ble_gap_common_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_p
                 break;
             }
 
-            if (bk_ble_gap_bond_dev_list_operation(BK_GAP_BOND_DEV_LIST_OPERATION_REMOVE, tmp_dev))
-            {
-                gatt_loge("remove bond dev list op err");
-            }
+            // if (bk_ble_gap_bond_dev_list_operation(BK_GAP_BOND_DEV_LIST_OPERATION_REMOVE, tmp_dev))
+            // {
+            //     gatt_loge("remove bond dev list op err");
+            // }
 
-            if (dm_ble_del_bond_info_by_nominal_addr(evt->remote_bda))
-            {
-                gatt_loge("addr %02x:%02x:%02x:%02x:%02x:%02x bond info del err",
-                          evt->remote_bda[5],
-                          evt->remote_bda[4],
-                          evt->remote_bda[3],
-                          evt->remote_bda[2],
-                          evt->remote_bda[1],
-                          evt->remote_bda[0]);
-            }
+            // if (dm_ble_del_bond_info_by_nominal_addr(evt->remote_bda))
+            // {
+            //     gatt_loge("addr %02x:%02x:%02x:%02x:%02x:%02x bond info del err",
+            //               evt->remote_bda[5],
+            //               evt->remote_bda[4],
+            //               evt->remote_bda[3],
+            //               evt->remote_bda[2],
+            //               evt->remote_bda[1],
+            //               evt->remote_bda[0]);
+            // }
+
+            dm_gatt_ctx_remove_bond(evt->remote_bda);
 
 #if BLE_USE_STORAGE
             bluetooth_storage_save_ble_key_info(s_dm_gatt_bond_dev_list, sizeof(s_dm_gatt_bond_dev_list) / sizeof(s_dm_gatt_bond_dev_list[0]));
@@ -442,12 +590,54 @@ static int32_t dm_ble_gap_common_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_p
                   pm->bond_dev.bd_addr[0],
                   pm->bond_dev.addr_type);
 
-        dm_bond_dev_p = dm_ble_alloc_bond_info_by_nominal_addr(pm->bond_dev.bd_addr);
+        if (pm->bond_dev.bond_key.key_mask & BK_LE_KEY_PID)
+        {
+            gatt_logi("peer identity addr %02x:%02x:%02x:%02x:%02x:%02x %d",
+                      pm->bond_dev.bond_key.pid_key.static_addr[5],
+                      pm->bond_dev.bond_key.pid_key.static_addr[4],
+                      pm->bond_dev.bond_key.pid_key.static_addr[3],
+                      pm->bond_dev.bond_key.pid_key.static_addr[2],
+                      pm->bond_dev.bond_key.pid_key.static_addr[1],
+                      pm->bond_dev.bond_key.pid_key.static_addr[0],
+                      pm->bond_dev.bond_key.pid_key.addr_type);
+
+            dm_bond_dev_p = dm_ble_alloc_bond_info_by_identity_addr(pm->bond_dev.bond_key.pid_key.static_addr);
+
+            if (dm_bond_dev_p)
+            {
+                gatt_logi("peer identity addr found in %d", dm_bond_dev_p - s_dm_gatt_bond_dev_list);
+            }
+        }
+
+        if (!dm_bond_dev_p || !(pm->bond_dev.bond_key.key_mask & BK_LE_KEY_PID))
+        {
+            dm_bond_dev_p = dm_ble_alloc_bond_info_by_nominal_addr(pm->bond_dev.bd_addr);
+        }
 
         if (!dm_bond_dev_p)
         {
-            gatt_loge("app env buff full !!!");
-            break;
+            dm_bond_dev_p = s_dm_gatt_bond_dev_list;
+
+            gatt_loge("app env buff full, del first index nominal %02x:%02x:%02x:%02x:%02x:%02x, id %02x:%02x:%02x:%02x:%02x:%02x %d !!!",
+                      dm_bond_dev_p->bd_addr[5],
+                      dm_bond_dev_p->bd_addr[4],
+                      dm_bond_dev_p->bd_addr[3],
+                      dm_bond_dev_p->bd_addr[2],
+                      dm_bond_dev_p->bd_addr[1],
+                      dm_bond_dev_p->bd_addr[0],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[5],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[4],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[3],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[2],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[1],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[0],
+                      dm_bond_dev_p->bond_key.pid_key.addr_type
+                     );
+
+            //todo: del bond in host/resolve list
+            // dm_gatt_ctx_remove_bond(dm_bond_dev_p->bd_addr);
+            // break;
+            os_memset(dm_bond_dev_p, 0, sizeof(*dm_bond_dev_p));
         }
 
         if (pm->bond_dev.bond_key.key_mask & BK_LE_KEY_PENC)
@@ -700,7 +890,38 @@ static int32_t dm_ble_gap_common_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_p
                   param->ble_security.ble_req.bd_addr[0],
                   param->ble_security.ble_req.addr_type, s_auto_accept_pair_req ? "auto accpet" : "auto reject");
 
-        bk_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, s_auto_accept_pair_req);
+        if (!s_auto_accept_pair_req)
+        {
+            bk_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, s_auto_accept_pair_req);
+            break;
+        }
+
+        dm_bond_dev_p = dm_ble_alloc_bond_info_by_nominal_addr(param->ble_security.ble_req.bd_addr);
+
+        if (!dm_bond_dev_p)
+        {
+            dm_bond_dev_p = s_dm_gatt_bond_dev_list;
+
+            gatt_loge("app env buff full, del first index nominal %02x:%02x:%02x:%02x:%02x:%02x, id %02x:%02x:%02x:%02x:%02x:%02x %d !!!",
+                      dm_bond_dev_p->bd_addr[5],
+                      dm_bond_dev_p->bd_addr[4],
+                      dm_bond_dev_p->bd_addr[3],
+                      dm_bond_dev_p->bd_addr[2],
+                      dm_bond_dev_p->bd_addr[1],
+                      dm_bond_dev_p->bd_addr[0],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[5],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[4],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[3],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[2],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[1],
+                      dm_bond_dev_p->bond_key.pid_key.static_addr[0],
+                      dm_bond_dev_p->bond_key.pid_key.addr_type
+                     );
+
+            dm_gatt_ctx_remove_bond(dm_bond_dev_p->bd_addr);
+        }
+
+        dm_gatt_ctx_accept_sec_req(1, param->ble_security.ble_req.bd_addr);
     }
     break;
 
@@ -1337,6 +1558,8 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
         }
     }
 
+#if STOP_ADV_SCAN_BEFORE_CLEAN_BOND
+
     for (uint32 i = 0; i < 2; ++i)
     {
         uint8_t ext_adv_inst[] = {i + 0};
@@ -1373,7 +1596,7 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
         gatt_loge("wait set scan disable err %d", ret);
         return -1;
     }
-
+#endif
     ret = bk_ble_gap_bond_dev_list_operation(BK_GAP_BOND_DEV_LIST_OPERATION_REMOVE, tmp_dev);
 
     if (ret)
@@ -1471,6 +1694,40 @@ uint32_t dm_ble_gap_get_bonded_count(void)
     return dm_ble_get_bonded_count();
 }
 
+static int32_t nest_func_disconnect_all1(dm_gatt_app_env_t *env, void *arg)
+{
+    int32_t ret = 0;
+
+    if (env && env->status == GAP_CONNECT_STATUS_CONNECTED)
+    {
+        bk_bd_addr_t peer_addr;
+        os_memcpy(peer_addr, env->addr, sizeof(peer_addr));
+
+        gatt_logi("disconnect because remove pair %02x:%02x:%02x:%02x:%02x:%02x", env->addr[5], env->addr[4], env->addr[3], env->addr[2], env->addr[1], env->addr[0]);
+        ret = bk_ble_gap_disconnect(peer_addr);
+
+        if (ret)
+        {
+            gatt_loge("disconnect fail %d %02x:%02x:%02x:%02x:%02x:%02x", ret, env->addr[5], env->addr[4], env->addr[3], env->addr[2], env->addr[1], env->addr[0]);
+            return -1;
+        }
+        else
+        {
+            env->status = GAP_CONNECT_STATUS_DISCONNECTING;
+
+            ret = rtos_get_semaphore(&s_ble_connect_sem, SYNC_CMD_TIMEOUT_MS);
+
+            if (ret != kNoErr)
+            {
+                gatt_loge("wait disconnect err %d", ret);
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int32_t dm_ble_gap_clean_bond(void)
 {
     int32_t ret = 0;
@@ -1504,7 +1761,7 @@ int32_t dm_ble_gap_clean_bond(void)
             return -1;
         }
     }
-
+#if STOP_ADV_SCAN_BEFORE_CLEAN_BOND
     for (uint32 i = 0; i < 2; ++i)
     {
         uint8_t ext_adv_inst[] = {i + 0};
@@ -1541,7 +1798,7 @@ int32_t dm_ble_gap_clean_bond(void)
         gatt_loge("wait set scan disable err %d", ret);
         return -1;
     }
-
+#endif
     ret = bk_ble_gap_bond_dev_list_operation(BK_GAP_BOND_DEV_LIST_OPERATION_CLEAN, NULL);
 
     if (ret)
@@ -1558,39 +1815,7 @@ int32_t dm_ble_gap_clean_bond(void)
         return -1;
     }
 
-    int32_t nest_func_disconnect_all(dm_gatt_app_env_t *env, void *arg)
-    {
-        if (env && env->status == GAP_CONNECT_STATUS_CONNECTED)
-        {
-            bk_bd_addr_t peer_addr;
-            os_memcpy(peer_addr, env->addr, sizeof(peer_addr));
-
-            gatt_logi("disconnect because remove pair %02x:%02x:%02x:%02x:%02x:%02x", env->addr[5], env->addr[4], env->addr[3], env->addr[2], env->addr[1], env->addr[0]);
-            ret = bk_ble_gap_disconnect(peer_addr);
-
-            if (ret)
-            {
-                gatt_loge("disconnect fail %d %02x:%02x:%02x:%02x:%02x:%02x", ret, env->addr[5], env->addr[4], env->addr[3], env->addr[2], env->addr[1], env->addr[0]);
-                return -1;
-            }
-            else
-            {
-                env->status = GAP_CONNECT_STATUS_DISCONNECTING;
-
-                ret = rtos_get_semaphore(&s_ble_connect_sem, SYNC_CMD_TIMEOUT_MS);
-
-                if (ret != kNoErr)
-                {
-                    gatt_loge("wait disconnect err %d", ret);
-                    return -1;
-                }
-            }
-        }
-
-        return 0;
-    }
-
-    dm_ble_app_env_foreach(nest_func_disconnect_all, NULL);
+    dm_ble_app_env_foreach(nest_func_disconnect_all1, NULL);
 
     if (s_ble_connect_sem)
     {
@@ -1752,31 +1977,35 @@ void dm_ble_gap_get_identity_addr(uint8_t *addr)
 }
 #endif
 
-int16_t dm_ble_gap_get_current_conn_id(void)
+static int32_t nest_func_get_connected_all1(dm_gatt_app_env_t *env, void *arg)
 {
-    uint32_t connected_count = 0;
-    dm_gatt_app_env_t *tmp_env = NULL;
+    nest_ret_t *tmp_env = (typeof(tmp_env))arg;
 
-    int32_t nest_func_get_connected_all(dm_gatt_app_env_t *env, void *arg)
+    if (env && env->status == GAP_CONNECT_STATUS_CONNECTED)
     {
-        if (env && env->status == GAP_CONNECT_STATUS_CONNECTED)
+        if(tmp_env)
         {
-            connected_count++;
-            tmp_env = env;
+            tmp_env->get_current_conn_id.connected_count++;
+            tmp_env->get_current_conn_id.tmp_env = env;
         }
-
-        return 0;
     }
 
-    dm_ble_app_env_foreach(nest_func_get_connected_all, NULL);
+    return 0;
+}
 
-    if (connected_count == 1)
+int16_t dm_ble_gap_get_current_conn_id(void)
+{
+    nest_ret_t nest_ret = {0};
+
+    dm_ble_app_env_foreach(nest_func_get_connected_all1, &nest_ret);
+
+    if (nest_ret.get_current_conn_id.connected_count == 1)
     {
-        return tmp_env->conn_id;
+        return nest_ret.get_current_conn_id.tmp_env->conn_id;
     }
     else
     {
-        gatt_loge("connected count %d, ret invalid", connected_count);
+        gatt_loge("connected count %d, ret invalid", nest_ret.get_current_conn_id.connected_count);
         return -1;
     }
 }
@@ -1979,6 +2208,177 @@ end:;
     }
 
     return err;
+}
+
+static void dm_gatt_ctx_task(void *arg)
+{
+    gatt_logi("start");
+
+    while (1)
+    {
+        bk_err_t err = 0;
+        dm_gatt_ctx_msg_t msg = {0};
+
+        err = rtos_pop_from_queue(&s_ctx_msg_queue, &msg, BEKEN_WAIT_FOREVER);
+
+        if (!err)
+        {
+            gatt_logi("type %d", msg.cb_type);
+
+            switch (msg.cb_type)
+            {
+            case GATT_CTX_TYPE_GAP_EVT_REP:
+            {
+
+            }
+            break;
+
+            case GATT_CTX_TYPE_REMOVE_BOND:
+            {
+                dm_ble_gap_remove_bond(msg.remove_bond.nominal_addr);
+            }
+            break;
+
+            case GATT_CTX_TYPE_SECURITY_RSP:
+            {
+                gatt_logi("GATT_CTX_TYPE_SECURITY_RSP %02x:%02x:%02x:%02x:%02x:%02x accept %d",
+                          msg.security_rsp.nominal_addr[5],
+                          msg.security_rsp.nominal_addr[4],
+                          msg.security_rsp.nominal_addr[3],
+                          msg.security_rsp.nominal_addr[2],
+                          msg.security_rsp.nominal_addr[1],
+                          msg.security_rsp.nominal_addr[0],
+                          msg.security_rsp.accept);
+
+                bk_ble_gap_security_rsp(msg.security_rsp.nominal_addr, msg.security_rsp.accept);
+            }
+            break;
+
+            case GATT_CTX_TYPE_EXIT_TASK:
+            {
+                while (1)
+                {
+                    int32_t ret = 0;
+
+                    ret = rtos_pop_from_queue( &s_ctx_msg_queue, &msg, 0 );
+
+                    if ( !ret )
+                    {
+                        gatt_logw("deinit queue cb_type %d", msg.cb_type);
+
+                        switch (msg.cb_type)
+                        {
+                        case GATT_CTX_TYPE_GAP_EVT_REP:
+                        {
+
+                        }
+                        break;
+
+                        default:
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                goto end;
+            }
+            break;
+
+            default:
+                break;
+            }
+        }
+    }
+
+end:;
+    gatt_logw("exit !!!");
+    rtos_delete_thread(NULL);
+}
+
+static int32_t dm_gatt_ctx_task_init(void)
+{
+    int32_t ret = BK_OK;
+
+    if ( s_ctx_msg_queue || s_ctx_thread_handle )
+    {
+        gatt_loge( "already init !!!" );
+        ret = -1;
+        goto end;
+    }
+
+    ret = rtos_init_queue( &s_ctx_msg_queue,
+                           "s_ctx_msg_queue",
+                           sizeof(dm_gatt_ctx_msg_t),
+                           60 );
+
+    if ( ret )
+    {
+        gatt_loge( "create msg queue err" );
+        goto end;
+    }
+
+    gatt_logi("create dm_gatt_ctx_task");
+
+    ret = rtos_create_thread(&s_ctx_thread_handle,
+                             BEKEN_DEFAULT_WORKER_PRIORITY,
+                             "dm_gatt_ctx_task",
+                             (beken_thread_function_t)dm_gatt_ctx_task,
+                             1024 * 2,
+                             (beken_thread_arg_t)NULL);
+
+    if ( ret )
+    {
+        gatt_loge( "create task fail" );
+        goto end;
+    }
+
+end:;
+
+    if ( ret )
+    {
+        rtos_deinit_queue( &s_ctx_msg_queue );
+        s_ctx_msg_queue = NULL;
+    }
+
+    return ret;
+}
+
+static int32_t dm_gatt_ctx_task_deinit(void)
+{
+    int32_t ret = BK_OK;
+    dm_gatt_ctx_msg_t msg = { 0 };
+
+    if ( !s_ctx_msg_queue || !s_ctx_thread_handle )
+    {
+        gatt_loge( "init param invalid !!! %p %p", s_ctx_msg_queue, s_ctx_thread_handle );
+        ret = -1;
+        goto end;
+    }
+
+    msg.cb_type = GATT_CTX_TYPE_EXIT_TASK;
+
+    ret = rtos_push_to_queue(&s_ctx_msg_queue, &msg, BEKEN_WAIT_FOREVER);
+
+    if ( ret )
+    {
+        gatt_loge( "send queue failed" );
+        goto end;
+    }
+
+    gatt_logw( "start wait s_ctx_thread_handle %d end", s_ctx_thread_handle);
+    rtos_thread_join( &s_ctx_thread_handle );
+    gatt_logw( "s_ctx_thread_handle end" );
+    s_ctx_thread_handle = NULL;
+
+    rtos_deinit_queue( &s_ctx_msg_queue );
+    s_ctx_msg_queue = NULL;
+
+end:;
+    return ret;
 }
 
 int dm_gatt_main(cli_gatt_param_t *param)
@@ -2242,6 +2642,8 @@ int dm_gatt_main(cli_gatt_param_t *param)
     //set mtu
     bk_ble_gatt_set_local_mtu(517);
 
+    dm_gatt_ctx_task_init();
+
     if (s_ble_er_ir_sema)
     {
         ret = rtos_deinit_semaphore(&s_ble_er_ir_sema);
@@ -2298,6 +2700,8 @@ int dm_gatt_deinit(void)
         rtos_deinit_semaphore(&s_ble_er_ir_sema);
         s_ble_er_ir_sema = NULL;
     }
+
+    dm_gatt_ctx_task_deinit();
 
     bk_ble_gap_register_callback(NULL);
 

@@ -13,6 +13,20 @@ enum
     GAP_CONNECT_STATUS_DISCONNECTING,
 };
 
+enum
+{
+    GATTC_MTU_REQ_STATUS_IDLE,
+    GATTC_MTU_REQ_STATUS_ING,
+    GATTC_MTU_REQ_STATUS_COMPLETED,
+};
+
+enum
+{
+    GATTC_DISCOVER_STATUS_IDLE,
+    GATTC_DISCOVER_STATUS_ING,
+    GATTC_DISCOVER_STATUS_COMPLETED,
+};
+
 typedef struct
 {
     bk_bd_addr_t addr;
@@ -46,6 +60,8 @@ typedef struct
 
     //for client
     uint8_t job_status; //see GATTC_STATUS_IDLE
+    uint8_t mtu_req_status; // see GATTC_MTU_REQ_STATUS_IDLE
+    uint8_t discover_status; // see GATTC_DISCOVER_STATUS_IDLE
     uint16_t client_mtu;
     uint8_t noti_indica_switch;
     uint8_t noti_indicate_recv_count;
@@ -62,6 +78,7 @@ typedef struct
 
     uint16_t peer_gap_service_start_handle;
     uint16_t peer_gap_service_end_handle;
+    //beken_timer_t mtu_req_timer; // for some phone mtu req no rsp
 } dm_gatt_demo_app_env_t;
 
 int32_t dm_ble_app_env_init(void);

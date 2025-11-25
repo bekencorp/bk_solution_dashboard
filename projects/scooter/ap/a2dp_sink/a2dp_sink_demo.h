@@ -31,7 +31,7 @@ void bk_bt_app_a2dp_audio_spk_enable(uint8_t enable);
 void bk_bt_a2dp_sink_demo_debug_info(void);
 int32_t bk_bt_a2dp_sink_demo_try_connect(void);
 int32_t bk_bt_a2dp_sink_demo_try_disconnect_current(void);
-
+void bk_bt_app_avrcp_stop_reconnect(void);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

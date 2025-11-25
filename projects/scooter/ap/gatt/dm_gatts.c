@@ -396,6 +396,20 @@ static int32_t dm_ble_gap_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_param_t 
 }
 
 #if GATTS_TEST_ATTR_ENABLE
+
+static uint32_t get_send_len(void)
+{
+    uint32_t send_len = 0;
+    os_memcpy(&send_len, s_char2_buff, sizeof(send_len));
+
+    if(1)//send_len > 2048 || !send_len)
+    {
+        send_len = sizeof(s_char_buff);
+    }
+
+    return send_len;
+}
+
 static int32_t nest_func_send_indicate(dm_gatt_app_env_t *env, void *arg)
 {
     uint8_t *tmp_buff = (typeof(tmp_buff))arg;
@@ -406,7 +420,7 @@ static int32_t nest_func_send_indicate(dm_gatt_app_env_t *env, void *arg)
 
         if (tmp->notify_status)
         {
-            if (bk_ble_gatts_send_indicate(0, env->conn_id, s_char_attr_handle, sizeof(s_char_buff), tmp_buff, tmp->notify_status == 2 ? 1 : 0))
+            if (bk_ble_gatts_send_indicate(0, env->conn_id, s_char_attr_handle, get_send_len(), tmp_buff, tmp->notify_status == 2 ? 1 : 0))
             {
                 gatt_loge("notify err");
             }
@@ -436,11 +450,11 @@ static int32_t nest_func_check_timer_ref_count(dm_gatt_app_env_t *env, void *arg
 static void ble_char_timer_callback(void *param)
 {
     static uint8_t value = 1;
-
+    uint32_t send_len = get_send_len();
     uint8_t *tmp_buff = NULL;
     uint32_t type = (typeof(type))param;
 
-    tmp_buff = os_malloc(sizeof(s_char_buff));
+    tmp_buff = os_malloc(send_len);
 
     if (!tmp_buff)
     {
@@ -448,7 +462,7 @@ static void ble_char_timer_callback(void *param)
         return;
     }
 
-    os_memset(tmp_buff, 0, sizeof(s_char_buff));
+    os_memset(tmp_buff, 0, send_len);
     tmp_buff[0] = value++;
 
     //nest func only for gcc
@@ -848,7 +862,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
 
         memset(&rsp, 0, sizeof(rsp));
 
-        gatt_logi("BK_GATTS_WRITE_EVT %d %d %d %d %d %d 0x%02X%02X need rsp %d %02X:%02X:%02X:%02X:%02X:%02X",
+        gatt_logd("BK_GATTS_WRITE_EVT %d %d %d %d %d %d 0x%02X%02X need rsp %d %02X:%02X:%02X:%02X:%02X:%02X",
                   param->conn_id, param->trans_id, param->handle,
                   param->offset, param->is_prep, param->len,
                   param->value[0], param->value[1],
@@ -1071,7 +1085,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -1199,7 +1213,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
                 }
             }
 
-            dm_ble_del_app_env_by_addr(param->remote_bda);
+            //dm_ble_del_app_env_by_addr(param->remote_bda);
         }
 
 #if GATTS_TEST_ATTR_ENABLE
@@ -1250,6 +1264,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
         if (!common_env_tmp)
         {
             gatt_loge("not found conn_id %d !!!!", param->conn_id);
+            break;
         }
         else
         {
@@ -1264,6 +1279,9 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
                 app_env_tmp->server_mtu = param->mtu;
             }
         }
+
+        extern int32_t dm_gattc_notify_mtu_status_from_gatts(dm_gatt_app_env_t *env);
+        dm_gattc_notify_mtu_status_from_gatts(common_env_tmp);
     }
     break;
 
@@ -1497,7 +1515,7 @@ int32_t dm_gatts_send_notify(uint16_t gatt_conn_id, uint16_t attr_handle, uint8_
 
     if (!common_env_tmp || !common_env_tmp->data)
     {
-        gatt_loge("conn_id %d not found %d %p", gatt_conn_id, common_env_tmp->data);
+        gatt_loge("conn_id %d not found %d %p", gatt_conn_id, common_env_tmp);
         ret = -1;
         goto end;
     }

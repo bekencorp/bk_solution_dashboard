@@ -22,6 +22,7 @@ int32_t hfp_demo_chld_cmd(uint8_t op);
 int32_t hfp_demo_btrh_cmd(uint8_t op);
 uint8_t hfp_hf_check_is_iphone(void);
 
+void bk_bt_app_hfp_audio_spk_enable(uint8_t enable);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

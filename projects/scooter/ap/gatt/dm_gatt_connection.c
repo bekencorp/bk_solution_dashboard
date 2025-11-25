@@ -216,7 +216,7 @@ dm_gatt_app_env_t *dm_ble_alloc_profile_data_by_addr(uint32_t profile_id, uint8_
         {
             gatt_loge("profile id %d exist %d !!!", profile_id, i);
 
-            while (1);
+            BK_ASSERT_EX(0, "%s profile id %d exist %d !!!\n", __func__, profile_id, i);
 
             if (output_param)
             {

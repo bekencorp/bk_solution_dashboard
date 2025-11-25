@@ -235,12 +235,12 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
         app_env_tmp = (typeof(app_env_tmp))common_env_tmp->data;
-
+        app_env_tmp->discover_status = GATTC_DISCOVER_STATUS_COMPLETED;
         gatt_logi("job_status %d", app_env_tmp->job_status);
 #if AUTO_GATTC_TEST
 
@@ -301,7 +301,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
             if (!common_env_tmp || !common_env_tmp->data)
             {
-                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
                 break;
             }
 
@@ -361,7 +361,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
             if (!common_env_tmp || !common_env_tmp->data)
             {
-                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
                 break;
             }
 
@@ -437,7 +437,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
             if (!common_env_tmp || !common_env_tmp->data)
             {
-                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+                gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
                 break;
             }
 
@@ -466,7 +466,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -522,7 +522,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -588,7 +588,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -621,7 +621,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -660,7 +660,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -690,7 +690,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -742,7 +742,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -793,7 +793,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -852,7 +852,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
             break;
         }
 
@@ -894,7 +894,8 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         if (!common_env_tmp || !common_env_tmp->data)
         {
-            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp->data);
+            gatt_loge("conn_id %d not found %d %p", param->conn_id, common_env_tmp);
+            break;
         }
         else
         {
@@ -916,11 +917,21 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
             }
         }
 
+        app_env_tmp->mtu_req_status = GATTC_MTU_REQ_STATUS_COMPLETED;
+
 #if AUTO_DISCOVER
 
-        if (0 != bk_ble_gattc_discover(s_gattc_if, param->conn_id, auth_req))
+        if (app_env_tmp->discover_status != GATTC_DISCOVER_STATUS_IDLE)
+        {
+            gatt_logw("already discover %d", app_env_tmp->discover_status);
+        }
+        else if (0 != bk_ble_gattc_discover(s_gattc_if, param->conn_id, auth_req))
         {
             gatt_loge("bk_ble_gattc_discover err");
+        }
+        else
+        {
+            app_env_tmp->discover_status = GATTC_DISCOVER_STATUS_ING;
         }
 
 #endif
@@ -977,25 +988,75 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
 
         gatt_logi("local is master %d", common_env_tmp->local_is_master);
 
-        if (common_env_tmp->local_is_master)
-        {
+        app_env_tmp = (typeof(app_env_tmp))common_env_tmp->data;
+
 #if AUTO_MTU_REQ
 
+        if (
+            app_env_tmp->mtu_req_status == GATTC_MTU_REQ_STATUS_IDLE
+            //&& common_env_tmp->local_is_master
+        )
+        {
             // only do mtu req when local is master
             if (0 != bk_ble_gattc_send_mtu_req(s_gattc_if, common_env_tmp->conn_id))
             {
                 gatt_loge("bk_ble_gattc_send_mtu_req err");
             }
+            else
+            {
+                app_env_tmp->mtu_req_status == GATTC_MTU_REQ_STATUS_ING;
+#if 0
+
+                //for some phone mtu req not rsp
+
+                if (rtos_is_timer_init(&app_env_tmp->mtu_req_timer))
+                {
+                    if (rtos_is_timer_running(&app_env_tmp->mtu_req_timer))
+                    {
+                        rtos_stop_timer(&app_env_tmp->mtu_req_timer);
+                    }
+
+                    rtos_deinit_timer(&app_env_tmp->mtu_req_timer);
+                }
+
+                if (!rtos_is_timer_init(&app_env_tmp->mtu_req_timer))
+                {
+                    ret = rtos_init_timer(&app_env_tmp->mtu_req_timer, 200, (timer_2handler_t)mtu_check_timer_hdl, common_env_tmp);
+
+                    if (ret)
+                    {
+                        gatt_loge("init mtu timer err %d", ret);
+                    }
+                    else
+                    {
+                        ret = rtos_start_timer(&app_env_tmp->mtu_req_timer);
+
+                        if (ret)
+                        {
+                            gatt_loge("start mtu timer err", ret);
+                        }
+                    }
+                }
 
 #endif
+            }
         }
         else
+#endif
         {
 #if AUTO_DISCOVER
 
-            if (0 != bk_ble_gattc_discover(s_gattc_if, param->conn_id, auth_req))
+            if (app_env_tmp->discover_status != GATTC_DISCOVER_STATUS_IDLE)
+            {
+                gatt_logw("already discover %d", app_env_tmp->discover_status);
+            }
+            else if (0 != bk_ble_gattc_discover(s_gattc_if, param->conn_id, auth_req))
             {
                 gatt_loge("bk_ble_gattc_discover err");
+            }
+            else
+            {
+                app_env_tmp->discover_status = GATTC_DISCOVER_STATUS_ING;
             }
 
 #endif
@@ -1038,7 +1099,7 @@ static int32_t bk_gattc_cb (bk_gattc_cb_event_t event, bk_gatt_if_t gattc_if, bk
             app_env_tmp->read_buff = NULL;
         }
 
-        dm_ble_del_app_env_by_addr(param->remote_bda);
+        //dm_ble_del_app_env_by_addr(param->remote_bda);
 
         if (s_ble_connect_sem)
         {
@@ -1593,6 +1654,56 @@ int dm_gattc_add_gattc_callback(void *param)
 
     gatt_loge("full !!!");
     return -1;
+}
+
+int32_t dm_gattc_notify_mtu_status_from_gatts(dm_gatt_app_env_t *env)
+{
+#if AUTO_DISCOVER
+    dm_gattc_app_env_t *app_env_tmp = NULL;
+    dm_gatt_app_env_t *common_env_tmp = (typeof(common_env_tmp))env;
+
+    gatt_logi("");
+
+    if (!common_env_tmp)
+    {
+        gatt_loge("common_env_tmp NULL !!!");
+        return -1;
+    }
+
+    if (common_env_tmp->status != GAP_CONNECT_STATUS_CONNECTED)
+    {
+        gatt_loge("connect status not match %d !!!", common_env_tmp->status);
+        return -1;
+    }
+
+    app_env_tmp = (typeof(app_env_tmp))common_env_tmp->data;
+
+    if (!app_env_tmp)
+    {
+        gatt_loge("app_env_tmp NULL !!!");
+        return -1;
+    }
+
+    gatt_logi("discover_status %d", app_env_tmp->discover_status);
+
+    if (app_env_tmp->discover_status == GATTC_DISCOVER_STATUS_IDLE)
+    {
+        gatt_logi("trig discover because gatts mtu completed");
+
+        if (0 != bk_ble_gattc_discover(s_gattc_if, common_env_tmp->conn_id, BK_GATT_AUTH_REQ_NONE))
+        {
+            gatt_loge("bk_ble_gattc_discover err");
+        }
+        else
+        {
+            app_env_tmp->discover_status = GATTC_DISCOVER_STATUS_ING;
+        }
+    }
+
+    return 0;
+#else
+    return 0;
+#endif
 }
 
 int dm_gattc_main(cli_gatt_param_t *param)

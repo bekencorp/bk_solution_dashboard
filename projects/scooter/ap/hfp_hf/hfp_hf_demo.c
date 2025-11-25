@@ -81,8 +81,8 @@ enum
     BT_AUDIO_VOICE_START_MSG,
     BT_AUDIO_VOICE_STOP_MSG,
     BT_AUDIO_VOICE_IND_MSG,
-    BT_AUDIO_VOICE_TASK_EXIT_MSG,
     BT_AUDIO_VOICE_USER_START_MSG,
+    BT_AUDIO_VOICE_TASK_EXIT_MSG,
 };
 
 enum
@@ -142,6 +142,7 @@ static beken_queue_t bt_audio_hf_demo_msg_que = NULL;
 static beken_thread_t bt_audio_hf_demo_thread_handle = NULL;
 static beken_semaphore_t s_audio_player_en_sema = NULL;
 static beken_semaphore_t s_connect_sema = NULL;
+static uint8_t s_hf_spk_user_vote = 1;
 
 static uint8_t hf_mic_sco_data [ 1024 ] = {0};
 static uint16_t hf_mic_data_count = 0;
@@ -278,6 +279,31 @@ static void bt_audio_hf_sco_disconnected(void)
     {
         LOGI("%s, send queue failed\r\n", __func__);
     }
+}
+
+static int32_t bt_audio_hf_user_vote_spk_task(uint8_t enable)
+{
+    bt_audio_hf_demo_msg_t demo_msg = {0};
+    int rc = -1;
+
+    if (bt_audio_hf_demo_msg_que == NULL)
+    {
+        return -1;
+    }
+
+    demo_msg.type = BT_AUDIO_VOICE_USER_START_MSG;
+    demo_msg.len = 0;
+    demo_msg.data = (typeof(demo_msg.data))(uint32_t)enable;
+
+    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
+
+    if (kNoErr != rc)
+    {
+        LOGE("%s, send queue failed\r\n", __func__);
+        return -1;
+    }
+
+    return 0;
 }
 
 static void bt_audio_task_exit(void)
@@ -895,8 +921,9 @@ uint8_t hfp_hf_check_is_iphone(void)
 
 static void bt_audio_hf_demo_main(void *arg)
 {
-    uint32_t spk_task_start_vote = (1 << BT_AUDIO_SPK_TASK_START_VOTE_USER);
     uint8_t recon_addr[6] = {0};
+    uint32_t spk_task_start_vote = (s_hf_spk_user_vote << BT_AUDIO_SPK_TASK_START_VOTE_USER);
+    LOGI("%s spk_task_start_vote 0x%x\n", __func__, spk_task_start_vote);
 
     if ((bluetooth_storage_get_newest_linkkey_info(recon_addr, NULL)) < 0)
     {
@@ -962,13 +989,16 @@ static void bt_audio_hf_demo_main(void *arg)
                     hf_auido_start = 1;
 
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-                    if (BK_OK != bt_audio_player_open(decoder_type, decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC ? 58 : 0,
-                            spk_task_start_vote))
+                    if (BK_OK != bt_audio_player_open(decoder_type, decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC ? 58 : 0, spk_task_start_vote))
                     {
                         LOGE("%s bt_audio_player_open failed\n", __func__);
                     }
+                    else
+                    {
+                        mic_task_init();
+                    }
 #endif
-                    mic_task_init();
+
                     LOGI("hfp audio init ok\r\n");
                 }
                 break;
@@ -988,6 +1018,10 @@ static void bt_audio_hf_demo_main(void *arg)
                             LOGE("%s bt_audio_player_open failed\n", __func__);
                             BK_ASSERT(0);
                         }
+                        else
+                        {
+                            mic_task_init();
+                        }
                     }
                     else
                     {
@@ -1002,7 +1036,10 @@ static void bt_audio_hf_demo_main(void *arg)
                     }
 #endif
                     /* set sync semaphore */
-                    rtos_set_semaphore(&s_audio_player_en_sema);
+					if(s_audio_player_en_sema)
+					{
+	                    rtos_set_semaphore(&s_audio_player_en_sema);
+					}
                 }
                 break;
 
@@ -1213,6 +1250,26 @@ static int bt_audio_hf_demo_task_deinit(void)
     return 0;
 }
 
+static void bk_bt_hfp_connect(uint8_t *remote_addr)
+{
+#define s_auto_active_connnect 1
+
+    LOGI("%s %02x:%02x:%02x:%02x:%02x:%02x %s\n", __func__,
+                    remote_addr[5],
+                    remote_addr[4],
+                    remote_addr[3],
+                    remote_addr[2],
+                    remote_addr[1],
+                    remote_addr[0],
+                    s_auto_active_connnect ? "auto active connect": "ignore"
+                    );
+
+    if(s_auto_active_connnect)
+    {
+        bk_bt_hf_client_connect(remote_addr);
+    }
+}
+
 static void bk_bt_hfp_disconnect(uint8_t *remote_addr)
 {
     LOGI("%s %02x:%02x:%02x:%02x:%02x:%02x\n", __func__,
@@ -1264,6 +1321,7 @@ int hfp_hf_demo_init(uint8_t msbc_supported)
     btm_callback_s btm_cb =
     {
         .start_disconnect_cb = bk_bt_hfp_disconnect,
+        .start_connect_cb = bk_bt_hfp_connect,
     };
 
     s_bt_manager_index = bt_manager_register_callback(&btm_cb);
@@ -1460,4 +1518,40 @@ int32_t wait_hfp_speaker_mic_task_end(void)
     }
 
     return 0;
+}
+
+void bk_bt_app_hfp_audio_spk_enable(uint8_t enable)
+{
+    int32_t ret = 0;
+
+    LOGI("%s %d\n", __func__, enable);
+    s_hf_spk_user_vote = enable;
+
+    if (!s_audio_player_en_sema)
+    {
+        if (rtos_init_semaphore(&s_audio_player_en_sema, 1))
+        {
+            LOGE("%s init spk sema fail\n", __func__);
+            return;
+        }
+    }
+
+    ret = bt_audio_hf_user_vote_spk_task(enable);
+
+    if(!ret && s_audio_player_en_sema)
+    {
+        rtos_get_semaphore(&s_audio_player_en_sema, BEKEN_WAIT_FOREVER);
+    }
+    else if(ret)
+    {
+        LOGE("%s send user vote err\n", __func__);
+    }
+
+    if(s_audio_player_en_sema)
+    {
+        rtos_deinit_semaphore(&s_audio_player_en_sema);
+        s_audio_player_en_sema = NULL;
+    }
+
+    LOGI("%s end\n", __func__);
 }

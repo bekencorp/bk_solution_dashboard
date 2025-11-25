@@ -25,7 +25,7 @@ enum
 #define gatt_loge(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_ERROR)   BK_LOGE("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
 #define gatt_logw(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_WARNING) BK_LOGW("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
 #define gatt_logi(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_INFO)    BK_LOGI("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
-#define gatt_logd(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_DEBUG)   BK_LOGI("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
+#define gatt_logd(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_DEBUG)   BK_LOGD("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
 #define gatt_logv(format, ...) do{if(GATT_DEBUG_LEVEL >= GATT_DEBUG_LEVEL_VERBOSE) BK_LOGI("app_gatt", "%s:" format "\n", __func__, ##__VA_ARGS__);} while(0)
 
 
