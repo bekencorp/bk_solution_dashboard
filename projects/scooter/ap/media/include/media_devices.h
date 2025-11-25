@@ -85,5 +85,11 @@ bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 
+#if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+void lvgl_app_enter_navigation(void);
+void lvgl_app_exit_navigation(void);
+void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len);
+#endif
+
 void set_lcd_use_module(lcd_source_module_t module);
 #endif

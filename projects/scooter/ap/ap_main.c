@@ -7,6 +7,7 @@
 #include "cli.h"
 #include "media_service.h"
 #include "media_devices.h"
+
 #include "bt_manager.h"
 #include "gatt/dm_gatt.h"
 #include "gatt/dm_gatts.h"

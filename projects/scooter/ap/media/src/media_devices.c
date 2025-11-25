@@ -66,11 +66,13 @@ void set_lcd_use_module(lcd_source_module_t module)
     }
 }
 
+#if (!CONFIG_BT_NAVIGATION)
 static avdk_err_t display_frame_free_cb(void *frame)
 {
     frame_buffer_display_free((frame_buffer_t *)frame);
     return AVDK_ERR_OK;
 }
+#endif
 
 static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, frame_buffer_t *out_frame)
 {
@@ -83,12 +85,16 @@ static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, 
         // 例如：显示图像、保存图像等
         if (db_device_info->lcd_use_module == LCD_SOURCE_MODULE_DECODER)
         {
+        #if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+            lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size);
+        #else
             ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
             if (ret != BK_OK)
             {
                 LOGE("bk_display_flush failed\n");
                 frame_buffer_display_free(out_frame);
             }
+        #endif
         }
         else
         {

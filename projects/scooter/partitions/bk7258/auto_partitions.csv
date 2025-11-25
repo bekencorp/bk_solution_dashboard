@@ -5,8 +5,8 @@
 #Name,Offset,Size,Type,Read,Write
 primary_bootloader,,68k,code,TRUE,FALSE
 primary_cp_app,,1632k,code,TRUE,FALSE
-primary_ap_app,,2516k,code,TRUE,FALSE
-ota,,1980K,data,TRUE,TRUE
+primary_ap_app,,5236k,code,TRUE,FALSE
+ota,,620K,data,TRUE,TRUE
 usr_config,,340K,data,TRUE,TRUE
 easyflash,0x7fa000,8K,data,TRUE,TRUE
 easyflash_ap,0x7fc000,8K,data,TRUE,TRUE

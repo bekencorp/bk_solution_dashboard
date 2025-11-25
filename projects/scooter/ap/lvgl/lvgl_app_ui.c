@@ -11,8 +11,8 @@
 #include "lcd_panel_devices.h"
 #include "driver/gpio.h"
 #include "gpio_driver.h"
-#include "setup_scr_screen.h"
 #include "driver/flash_partition.h"
+#include "beken_ui.h"
 #if CONFIG_AVI_PLAYER
 #include "avi_player.h"
 #include "bk_posix.h"
@@ -41,7 +41,13 @@ static lv_image_dsc_t avi_img_dsc =
 #define LCD_LDO_IO GPIO_39
 
 bk_display_rgb_ctlr_config_t rgb_config = {
+#if (CONFIG_LCD_PANEL_USE_480X272)
     .lcd_device = &lcd_device_st7282,
+#elif (CONFIG_LCD_PANEL_USE_800X480)
+    .lcd_device = &lcd_device_h050iwv,
+#else
+    .lcd_device = &lcd_device_hx8282,
+#endif
     .clk_pin = -1,
     .cs_pin = -1,
     .sda_pin = -1,
@@ -145,10 +151,12 @@ static void lv_timer_cb(lv_timer_t *timer)
         lv_img_set_src(avi_img, &avi_img_dsc);
     } else {
         lv_timer_del(avi_timer);
+        avi_timer = NULL;
         lv_obj_del(avi_img);
+        avi_img = NULL;
         bk_avi_player_close();
         bk_avi_player_vfs_deinit();
-        lv_setup_ui();
+        beken_ui_init();
     }
 }
 #endif
@@ -160,6 +168,7 @@ void lvgl_app_init(void)
     lv_vnd_config.width = rgb_config.lcd_device->width;
     lv_vnd_config.height = rgb_config.lcd_device->height;
     lv_vnd_config.render_mode = RENDER_DIRECT_MODE;
+
     lv_vnd_config.rotation = ROTATE_NONE;
     for (int i = 0; i < CONFIG_LVGL_FRAME_BUFFER_NUM; i++) {
         lv_vnd_config.frame_buffer[i] = frame_buffer_display_malloc(lv_vnd_config.width * lv_vnd_config.height * sizeof(bk_color_t));
@@ -188,7 +197,13 @@ void lvgl_app_init(void)
         goto avi_player_fail;
     }
 
-    avi_player_config.file_path = PATH_SD_FILE("animation.avi");
+#if (CONFIG_LCD_PANEL_USE_480X272)
+    avi_player_config.file_path = PATH_SD_FILE("animation_480_272.avi");
+#elif (CONFIG_LCD_PANEL_USE_800X480)    
+    avi_player_config.file_path = PATH_SD_FILE("animation_800_480.avi");
+#else
+    avi_player_config.file_path = PATH_SD_FILE("animation_1024_600.avi");
+#endif
     avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_RGB565;
     avi_player_config.segment_flag = false;
     avi_player_config.rgb565_byte_swap_flag = false;
@@ -225,11 +240,11 @@ void lvgl_app_init(void)
 
 avi_player_fail:
     lv_vendor_disp_lock();
-    lv_setup_ui();
+    beken_ui_init();
     lv_vendor_disp_unlock();
-#else
+#else // CONFIG_AVI_PLAYER
     lv_vendor_disp_lock();
-    lv_setup_ui();
+    beken_ui_init();
     lv_vendor_disp_unlock();
 #endif
 
@@ -260,11 +275,83 @@ bk_err_t lvgl_app_deinit(void)
 bk_err_t lvgl_app_suspend_display(void)
 {
     lv_vendor_stop();
+
     return BK_OK;
 }
 
 bk_err_t lvgl_app_resume_display(void)
 {
     lv_vendor_start();
+
     return BK_OK;
 }
+
+#if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+static bool navigation_is_opened = false;
+static bool navigation_map_is_first_frame = true;
+
+static lv_image_dsc_t navigation_map_265x195 = {
+    .header.cf = LV_COLOR_FORMAT_RGB565,
+    .header.magic = LV_IMAGE_HEADER_MAGIC,
+    .header.w = 265,
+    .header.h = 195,
+    .data_size = 265 * 195 * 2,
+    .data = NULL,
+    .reserved = NULL,
+};
+
+void lvgl_app_enter_navigation(void)
+{
+    if (navigation_is_opened) {
+        os_printf("%s %d navigation is already entered\r\n", __func__, __LINE__);
+        return;
+    }
+
+    lv_vendor_disp_lock();
+    init_page_page_2(&bk_lv_tool_ui);
+    lv_vendor_disp_unlock();
+
+    navigation_is_opened = true;
+}
+
+void lvgl_app_exit_navigation(void)
+{
+    if (!navigation_is_opened) {
+        os_printf("%s %d navigation is already exited\r\n", __func__, __LINE__);
+        return;
+    }
+
+    lv_vendor_disp_lock();
+    lv_screen_load(bk_lv_tool_ui.page_1);
+    destroy_page_page_2(&bk_lv_tool_ui);
+    lv_vendor_disp_unlock();
+
+    navigation_map_is_first_frame = true;
+    navigation_is_opened = false;
+}
+
+void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len)
+{
+    if (data == NULL || data_len == 0) {
+        os_printf("%s %d data is NULL or data_len is 0\r\n", __func__, __LINE__);
+        return;
+    }
+
+    if (navigation_map_265x195.data_size != data_len) {
+        os_printf("%s %d data_len is not equal to navigation_map_265x195.data_size\r\n", __func__, __LINE__);
+        return;
+    }
+
+    lv_vendor_disp_lock();
+    navigation_map_265x195.data = data;
+
+    if (navigation_map_is_first_frame) {
+        navigation_map_is_first_frame = false;
+        lv_image_set_src(bk_lv_tool_ui.page_2_image_8, &navigation_map_265x195);
+        lv_screen_load(bk_lv_tool_ui.page_2);
+    } else {
+        lv_obj_invalidate(bk_lv_tool_ui.page_2_image_8);
+    }
+    lv_vendor_disp_unlock();
+}
+#endif

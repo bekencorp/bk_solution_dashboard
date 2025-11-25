@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <components/media_types.h>
 #include <components/bk_jpeg_decode/bk_jpeg_decode_sw.h>
+#include <components/bk_jpeg_decode/bk_jpeg_decode_hw.h>
+#include <components/bk_jpeg_decode/bk_jpeg_decode_types_hw.h>
 #include <os/os.h>
 
 // Ensure BK_ERR_INVAL is properly defined
@@ -84,6 +86,9 @@ typedef struct jpeg_decode_manager_t {
     /* Decoder instances */
     bk_jpeg_decode_sw_handle_t sw_decoder;  /*!< decoder */
     bk_jpeg_decode_sw_config_t sw_config;   /*!< decoder configuration */
+
+    bk_jpeg_decode_hw_handle_t hw_decoder;  /*!< decoder hw */
+    bk_jpeg_decode_hw_opt_config_t hw_config;  /*!< decoder hw configuration */
 
     /* Configuration information */
     jpeg_decode_manager_config_t config;  /*!< Manager configuration */

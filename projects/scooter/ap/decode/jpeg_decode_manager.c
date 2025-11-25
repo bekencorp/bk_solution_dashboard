@@ -11,10 +11,17 @@
 #include <os/os.h>
 #include <common/bk_err.h>
 #include "media_data_process_que.h"
+#include <components/bk_jpeg_decode/bk_jpeg_decode_types.h>
 
 // Ensure BK_ERR_INVAL is properly defined
 #ifndef BK_ERR_INVAL
 #define BK_ERR_INVAL -1
+#endif
+
+#ifdef CONFIG_USE_HW_DECODER
+#define USE_HW_DECODER    CONFIG_USE_HW_DECODER
+#else
+#define USE_HW_DECODER    0
 #endif
 
 /**
@@ -22,6 +29,7 @@
  * Used to access the decode manager in callback functions
  */
 jpeg_decode_manager_t *g_jpeg_decode_manager = NULL;
+static frame_buffer_t *frame = NULL;
 
 #define TAG "jpeg_decode_manager"
 
@@ -39,8 +47,17 @@ static bk_err_t in_complete(frame_buffer_t *in_frame)
 
 static frame_buffer_t *out_malloc(uint32_t size)
 {
-    frame_buffer_t *frame = NULL;
-    frame = frame_buffer_display_malloc(size);
+#if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+    if (frame == NULL) {
+#endif
+        frame = frame_buffer_display_malloc(size);
+        if (frame == NULL) {
+            LOGE("Failed to allocate output frame\n");
+            return NULL;
+        }
+#if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+    }
+#endif
     LOGV("%s %d %p\n", __func__, __LINE__, frame);
     return frame;
 }
@@ -104,12 +121,42 @@ static void jpeg_decode_thread(void *arg)
             media_frame_queue_free(msg.frame);
             continue;
         }
+        #if USE_HW_DECODER == 0
         // Decode frame
         ret = bk_jpeg_decode_sw_decode_async(manager->sw_decoder, msg.frame);
         if (ret != BK_OK) {
             LOGE("Failed to decode frame: %d\n", ret);
+            out_complete(PIXEL_FMT_YUYV, ret, msg.frame);
             continue;
         }
+        #else
+        frame_buffer_t *out_frame = NULL;
+        uint32_t size = 0;
+        bk_jpeg_decode_img_info_t img_info = {0};
+        img_info.frame = msg.frame;
+        ret = bk_jpeg_decode_hw_get_img_info(manager->hw_decoder, &img_info);
+        if (ret != BK_OK) {
+            LOGE("Failed to get image info: %d\n", ret);
+            media_frame_queue_free(msg.frame);
+            continue;
+        }
+
+        size = img_info.width * img_info.height * 2;
+        out_frame = out_malloc(size);
+        if (out_frame == NULL) {
+            LOGE("Failed to allocate output frame: %d\n", ret);
+            media_frame_queue_free(msg.frame);
+            continue;
+        }
+        // Decode frame
+        ret = bk_jpeg_decode_hw_decode(manager->hw_decoder, msg.frame, out_frame);
+        if (ret != BK_OK) {
+            LOGE("Failed to decode frame: %d\n", ret);
+            media_frame_queue_free(msg.frame);
+            media_frame_queue_free(out_frame);
+            continue;
+        }
+        #endif
     }
 
     LOGD("JPEG decode thread exited\n");
@@ -148,6 +195,7 @@ jpeg_decode_manager_t *jpeg_decode_manager_create(jpeg_decode_manager_config_t *
     // Set global manager pointer
     g_jpeg_decode_manager = manager;
 
+    #if USE_HW_DECODER == 0
     // Initialize CP1 decoder configuration
     manager->sw_config.core_id = JPEG_DECODE_CORE_ID_1 | JPEG_DECODE_CORE_ID_2;
     manager->sw_config.out_format = config->out_format;
@@ -163,16 +211,41 @@ jpeg_decode_manager_t *jpeg_decode_manager_create(jpeg_decode_manager_config_t *
         goto error;
     }
 
-    ret = rtos_init_semaphore(&manager->decode_semaphore, 1);
-    if (ret != BK_OK) {
-        LOGE("Failed to init semaphore: %d\n", ret);
-        goto error;
-    }
-
     // Open CP1 decoder
     ret = bk_jpeg_decode_sw_open(manager->sw_decoder);
     if (ret != BK_OK) {
         LOGE("Failed to open CP1 decoder: %d\n", ret);
+        goto error;
+    }
+    #else
+    // Initialize HW decoder configuration
+    manager->hw_config.decode_cbs.out_complete = out_complete;
+    manager->hw_config.decode_cbs.out_malloc = out_malloc;
+    manager->hw_config.decode_cbs.in_complete = in_complete;
+    manager->hw_config.lines_per_block = 8;
+    manager->hw_config.copy_method = 0;
+    manager->hw_config.is_pingpong = 1;
+    manager->hw_config.image_max_width = 1024;
+    manager->hw_config.sram_buffer = NULL;
+
+    // Create HW decoder instance
+    ret = bk_hardware_jpeg_decode_opt_new(&manager->hw_decoder, &manager->hw_config);
+    if (ret != BK_OK) {
+        LOGE("Failed to create HW decoder: %d\n", ret);
+        goto error;
+    }
+
+    // Open HW decoder
+    ret = bk_jpeg_decode_hw_open(manager->hw_decoder);
+    if (ret != BK_OK) {
+        LOGE("Failed to open HW decoder: %d\n", ret);
+        goto error;
+    }
+    #endif
+
+    ret = rtos_init_semaphore(&manager->decode_semaphore, 1);
+    if (ret != BK_OK) {
+        LOGE("Failed to init semaphore: %d\n", ret);
         goto error;
     }
 
@@ -194,10 +267,20 @@ jpeg_decode_manager_t *jpeg_decode_manager_create(jpeg_decode_manager_config_t *
 error:
     // Clean up allocated resources
     if (manager) {
+        if (manager->decode_semaphore) {
+            rtos_deinit_semaphore(&manager->decode_semaphore);
+        }
+        #if USE_HW_DECODER == 0
         if (manager->sw_decoder) {
             bk_jpeg_decode_sw_close(manager->sw_decoder);
             bk_jpeg_decode_sw_delete(manager->sw_decoder);
         }
+        #else
+        if (manager->hw_decoder) {
+            bk_jpeg_decode_hw_close(manager->hw_decoder);
+            bk_jpeg_decode_hw_delete(manager->hw_decoder);
+        }
+        #endif
         os_free(manager);
     }
 
@@ -240,6 +323,7 @@ bk_err_t jpeg_decode_manager_destroy(jpeg_decode_manager_t *manager)
     // Wait for thread to exit
     rtos_get_semaphore(&manager->decode_semaphore, BEKEN_WAIT_FOREVER);
 
+    #if USE_HW_DECODER == 0
     // Close and delete CP1 decoder
     ret = bk_jpeg_decode_sw_close(manager->sw_decoder);
     if (ret != BK_OK) {
@@ -250,6 +334,17 @@ bk_err_t jpeg_decode_manager_destroy(jpeg_decode_manager_t *manager)
     if (ret != BK_OK) {
         LOGE("%s %d Failed to delete decoder: %d\n", __func__, __LINE__, ret);
     }
+    #else
+    ret = bk_jpeg_decode_hw_close(manager->hw_decoder);
+    if (ret != BK_OK) {
+        LOGE("%s %d Failed to close decoder: %d\n", __func__, __LINE__, ret);
+    }
+
+    ret = bk_jpeg_decode_hw_delete(manager->hw_decoder);
+    if (ret != BK_OK) {
+        LOGE("%s %d Failed to delete decoder: %d\n", __func__, __LINE__, ret);
+    }
+    #endif
 
     // Delete semaphore
     ret = rtos_deinit_semaphore(&manager->decode_semaphore);
@@ -286,11 +381,33 @@ bk_err_t jpeg_decode_manager_submit_frame(jpeg_decode_manager_t *manager, frame_
     msg.frame = frame;
 
     // Decode frame
+    #if USE_HW_DECODER == 0
     ret = bk_jpeg_decode_sw_decode_async(manager->sw_decoder, frame);
     if (ret != BK_OK) {
         LOGE("Failed to decode frame: %d\n", ret);
     }
+    #else
+    frame_buffer_t *out_frame = NULL;
+    uint32_t size = 0;
+    bk_jpeg_decode_img_info_t img_info = {0};
+    img_info.frame = frame;
+    ret = bk_jpeg_decode_hw_get_img_info(manager->hw_decoder, &img_info);
+    if (ret != BK_OK) {
+        LOGE("Failed to get image info: %d\n", ret);
+        return ret;
+    }
+    size = img_info.width * img_info.height * 2;
+    out_frame = out_malloc(size);
+    if (out_frame == NULL) {
+        LOGE("Failed to allocate output frame: %d\n", ret);
+        return ret;
+    }
+    ret = bk_jpeg_decode_hw_decode(manager->hw_decoder, frame, out_frame);
+    if (ret != BK_OK) {
+        LOGE("Failed to decode frame: %d\n", ret);
+    }
+    #endif
 
     LOGD("Frame submitted to decode queue, sequence: %d\n", frame->sequence);
-    return BK_OK;
+    return ret;
 }

@@ -54,4 +54,25 @@ menu "scooter Example Configuration"
     config BK3515_OTA
         bool "Enable bk3515 ota, Send data via uart"
         default n
+
+    choice LCD_PANEL_TYPE
+        depends on LCD
+        prompt "Selete LCD Panel Type"
+        default LCD_PANEL_USE_480X272
+
+        config LCD_PANEL_USE_480X272
+            bool "LCD Panel Use 480x272"
+        config LCD_PANEL_USE_800X480
+            bool "LCD Panel Use 800x480"
+        config LCD_PANEL_USE_1024X600
+            bool "LCD Panel Use 1024x600"
+    endchoice
+
+    config USE_HW_DECODER
+        bool "Enabel image transmission using jpeg hw decoding"
+        default n
+
+    config BT_NAVIGATION
+        bool "Enable BT navigation"
+        default n
 endmenu

@@ -27,9 +27,17 @@
 #include "cli.h"
 #include "cJSON.h"
 #include <components/media_types.h>
+
+#include "components/bluetooth/bk_dm_bluetooth_types.h"
+#include "components/bluetooth/bk_dm_gap_ble.h"
+#include "components/bluetooth/bk_dm_gatt_common.h"
+#include "dm_gatt.h"
+
 #include "media_msg.h"
 #include "media_network_transfer.h"
 
+#include "media_devices.h"
+#include "media_navigation_transfer.h"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -46,8 +54,77 @@ typedef enum
     BOARDING_OP_GET_SCAN_RESULTS = 32,
     BOARDING_OP_CONFIG_WIFI_STA = 33,
     BOARDING_OP_CONFIG_WIFI_P2P = 34,
+    BOARDING_OP_TRANSFER_FILE_CONTROL = 50,
+    BOARDING_OP_TRANSFER_FILE_DATA = 51,
+    BOARDING_OP_NAVIGATION_CONTROL = 52,
     BOARDING_OP_MAX
 } boarding_opcode_t;
+
+#define EVT_STATUS_OK               (0)
+#define EVT_STATUS_ERROR            (1)
+
+/* Navigation transfer protocol definitions for BLE-based navigation */
+typedef enum
+{
+    FILE_TRANSFER_PROTOCOL_VERSION_1 = 1,
+} file_transfer_protocol_version_t;
+
+#define FILE_TRANSFER_PROTOCOL_VERSION_MIN      FILE_TRANSFER_PROTOCOL_VERSION_1
+#define FILE_TRANSFER_PROTOCOL_VERSION_MAX      FILE_TRANSFER_PROTOCOL_VERSION_1
+
+typedef enum
+{
+    FILE_OPERATION_DISPLAY = 0,
+    FILE_OPERATION_SAVE = 1,
+} file_operation_t;
+
+typedef enum
+{
+    FILE_TYPE_JPEG = 0,
+    FILE_TYPE_PNG = 1,
+} file_type_t;
+
+typedef enum
+{
+    FILE_CONTROL_START = 0,
+    FILE_CONTROL_STOP = 1,
+    FILE_CONTROL_COMPLETE = 2,
+} file_control_cmd_t;
+
+typedef struct
+{
+    uint8_t version;
+    uint8_t controller;
+} __attribute__((packed)) file_transfer_control_t;
+
+typedef struct
+{
+    uint8_t version;
+    uint8_t controller;
+    uint32_t all_data_length;
+    uint16_t crc;
+    uint16_t packet_all_count;
+    uint8_t file_operation;
+    uint8_t file_type;
+    char file_name[64];
+} __attribute__((packed)) file_transfer_control_v1_t;
+
+typedef struct
+{
+    uint16_t packet_num;
+    uint8_t data[];
+} __attribute__((packed)) file_transfer_data_t;
+
+typedef enum
+{
+    NAVIGATION_CONTROL_START = 0,
+    NAVIGATION_CONTROL_STOP = 1,
+} navigation_control_cmd_t;
+
+typedef struct
+{
+    uint8_t controller;
+} __attribute__((packed)) navigation_control_t;
 
 static uint8_t *demo_np_get_supported_mode(uint8_t os_code, uint8_t *len)
 {
@@ -294,6 +371,234 @@ exit:
     return BK_OK;
 }
 
+static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
+{
+    bk_err_t ret = BK_OK;
+
+    /* The BLE provisioning queue frees data_ptr after this function returns */
+    if ((data_ptr == NULL) || (length < sizeof(file_transfer_control_t)))
+    {
+        LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
+        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+        return;
+    }
+
+    file_transfer_control_t *ctrl = (file_transfer_control_t *)data_ptr;
+
+    LOGD("%s %d version=%u controller=%u\n", __func__, __LINE__, ctrl->version, ctrl->controller);
+
+    if ((ctrl->version < FILE_TRANSFER_PROTOCOL_VERSION_MIN) || (ctrl->version > FILE_TRANSFER_PROTOCOL_VERSION_MAX))
+    {
+        LOGE("%s %d unsupported version %u (valid %u-%u)\n", __func__, __LINE__,
+             ctrl->version, FILE_TRANSFER_PROTOCOL_VERSION_MIN, FILE_TRANSFER_PROTOCOL_VERSION_MAX);
+        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+        return;
+    }
+
+    switch (ctrl->version)
+    {
+        case FILE_TRANSFER_PROTOCOL_VERSION_1:
+        {
+            switch (ctrl->controller)
+            {
+                case FILE_CONTROL_STOP:
+                {
+                    LOGI("%s %d stop received, cancelling transfer\n", __func__, __LINE__);
+                    ret = media_navigation_transfer_cancel();
+                    if (ret != BK_OK)
+                    {
+                        LOGE("%s %d cancel failed (%d)\n", __func__, __LINE__, ret);
+                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        return;
+                    }
+                    break;
+                }
+
+                case FILE_CONTROL_COMPLETE:
+                {
+                    LOGI("%s %d complete received\n", __func__, __LINE__);
+                    if (media_navigation_transfer_is_active())
+                    {
+                        LOGW("%s %d transfer still active after COMPLETE\n", __func__, __LINE__);
+                    }
+                    break;
+                }
+
+                case FILE_CONTROL_START:
+                {
+                    size_t base_len = offsetof(file_transfer_control_v1_t, file_name);
+
+                    if (length < base_len)
+                    {
+                        LOGE("%s %d start payload too short (%u)\n", __func__, __LINE__, length);
+                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        return;
+                    }
+
+                    file_transfer_control_v1_t *v1_ctrl = (file_transfer_control_v1_t *)data_ptr;
+                    size_t available_name_len = length - base_len;
+                    if (available_name_len > sizeof(v1_ctrl->file_name))
+                    {
+                        available_name_len = sizeof(v1_ctrl->file_name);
+                    }
+
+                    LOGD("%s %d start len=%u crc=0x%04X packets=%u operation=%u type=%u\n", __func__, __LINE__,
+                         v1_ctrl->all_data_length, v1_ctrl->crc, v1_ctrl->packet_all_count,
+                         v1_ctrl->file_operation, v1_ctrl->file_type);
+
+                    media_navigation_transfer_cfg_t cfg = {
+                        .version = v1_ctrl->version,
+                        .total_length = v1_ctrl->all_data_length,
+                        .packet_count = v1_ctrl->packet_all_count,
+                        .expected_crc = v1_ctrl->crc,
+                        .file_operation = v1_ctrl->file_operation,
+                        .file_type = v1_ctrl->file_type,
+                        .file_name = (available_name_len > 0) ? v1_ctrl->file_name : NULL,
+                        .file_name_length = (uint32_t)available_name_len,
+                    };
+
+                    ret = media_navigation_transfer_begin(&cfg);
+                    if (ret != BK_OK)
+                    {
+                        LOGE("%s %d begin failed (%d)\n", __func__, __LINE__, ret);
+                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        return;
+                    }
+                    break;
+                }
+
+                default:
+                    LOGE("%s %d unknown controller %u\n", __func__, __LINE__, ctrl->controller);
+                    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                    return;
+            }
+            break;
+        }
+
+        default:
+            LOGE("%s %d handler missing for version %u\n", __func__, __LINE__, ctrl->version);
+            bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+            return;
+    }
+
+    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_OK);
+}
+
+static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
+{
+    bk_err_t ret = BK_OK;
+
+    /* The BLE provisioning queue frees data_ptr after this function returns */
+    if ((data_ptr == NULL) || (length < sizeof(uint16_t)))
+    {
+        LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
+        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
+        return;
+    }
+
+    file_transfer_data_t *transfer = (file_transfer_data_t *)data_ptr;
+    const uint16_t header_size = (uint16_t)sizeof(((file_transfer_data_t *)0)->packet_num);
+
+    uint16_t data_length = (length > header_size) ? (length - header_size) : 0;
+
+    ret = media_navigation_transfer_push(transfer->packet_num, transfer->data, data_length);
+    if (ret != BK_OK)
+    {
+        LOGE("%s %d push failed (%d)\n", __func__, __LINE__, ret);
+        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
+        return;
+    }
+
+    if (!media_navigation_transfer_is_active())
+    {
+        LOGI("%s %d transfer complete\n", __func__, __LINE__);
+    }
+
+    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);
+}
+
+static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
+{
+    bk_err_t ret = BK_OK;
+
+    /* The BLE provisioning queue frees data_ptr after this function returns */
+    if ((data_ptr == NULL) || (length < sizeof(navigation_control_t)))
+    {
+        LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
+        bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+        return;
+    }
+
+    navigation_control_t *nav_ctrl = (navigation_control_t *)data_ptr;
+
+    LOGI("%s %d controller=%u\n", __func__, __LINE__, nav_ctrl->controller);
+
+    switch (nav_ctrl->controller)
+    {
+        case NAVIGATION_CONTROL_START:
+        {
+            ret = av_server_jpeg_decode_manager_turn_on();
+            if (ret != BK_OK)
+            {
+                LOGE("%s %d turn_on failed (%d)\n", __func__, __LINE__, ret);
+                bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                return;
+            }
+
+            #if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+                lvgl_app_enter_navigation();
+            #else
+                ret = lvgl_app_suspend_display();
+                if (ret != BK_OK)
+                {
+                    LOGE("%s %d suspend display failed (%d)\n", __func__, __LINE__, ret);
+                    av_server_jpeg_decode_manager_turn_off();
+                    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                    return;
+                }
+            #endif
+            break;
+        }
+
+        case NAVIGATION_CONTROL_STOP:
+        {
+            ret = av_server_jpeg_decode_manager_turn_off();
+            if (ret != BK_OK)
+            {
+                LOGE("%s %d turn_off failed (%d)\n", __func__, __LINE__, ret);
+                bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                return;
+            }
+
+            #if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+                lvgl_app_exit_navigation();
+            #else
+                ret = lvgl_app_resume_display();
+                if (ret != BK_OK)
+                {
+                    LOGE("%s %d resume display failed (%d)\n", __func__, __LINE__, ret);
+                    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                    return;
+                }
+            #endif
+
+            ret = media_navigation_transfer_cancel();
+            if (ret != BK_OK)
+            {
+                LOGW("%s %d cancel returned %d\n", __func__, __LINE__, ret);
+            }
+            break;
+        }
+
+        default:
+            LOGE("%s %d unknown controller %u\n", __func__, __LINE__, nav_ctrl->controller);
+            bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+            return;
+    }
+
+    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_OK);
+}
+
 void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
 {
     switch (msg->event)
@@ -377,6 +682,24 @@ void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
             static const uint8_t success_status = 0;
             bk_ble_provisioning_event_notify_with_data(BOARDING_OP_CONFIG_WIFI_P2P, BK_OK,
                                                        (char *)&success_status, sizeof(success_status));
+        }
+        break;
+
+        case BOARDING_OP_TRANSFER_FILE_CONTROL:
+        {
+            handle_transfer_file_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+        }
+        break;
+
+        case BOARDING_OP_TRANSFER_FILE_DATA:
+        {
+            handle_transfer_file_data_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+        }
+        break;
+
+        case BOARDING_OP_NAVIGATION_CONTROL:
+        {
+            handle_navigation_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
         }
         break;
 
