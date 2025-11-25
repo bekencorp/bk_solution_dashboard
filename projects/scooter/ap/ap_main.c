@@ -472,6 +472,7 @@ int cli_test_cmd_init(void)
 
 #endif
 
+#if CONFIG_BLUETOOTH_MULTI_CONTROLLER
 static int32_t app_bsc_init(void)
 {
     bsc_config_t bsc_config =
@@ -497,6 +498,7 @@ static int32_t app_bsc_init(void)
 
     return bk_cpn_bsc_init(&bsc_config);
 }
+#endif
 
 static void ap_bt_app_init(void)
 {
