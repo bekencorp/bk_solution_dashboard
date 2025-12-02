@@ -484,7 +484,7 @@ void init_page_page_2(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_text_opa(bk_ui->page_2_label_3, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(bk_ui->page_2_label_3, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->page_2_label_3, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_timer_create(lv_page2_speed_timer_cb, 150, NULL);
+    speed_timer = lv_timer_create(lv_page2_speed_timer_cb, 150, NULL);
 
     bk_ui->page_2_label_4 = lv_label_create(bk_ui->page_2_obj_3);
     lv_label_set_text(bk_ui->page_2_label_4, "km/h");
