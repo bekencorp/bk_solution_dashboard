@@ -39,12 +39,13 @@
 #include "media_devices.h"
 #include "media_navigation_transfer.h"
 
+#define TAG "np_demo"
+
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
-
-#define TAG "np_demo"
+#define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
 typedef enum
 {
@@ -385,7 +386,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
 
     file_transfer_control_t *ctrl = (file_transfer_control_t *)data_ptr;
 
-    LOGD("%s %d version=%u controller=%u\n", __func__, __LINE__, ctrl->version, ctrl->controller);
+    LOGV("%s %d version=%u controller=%u\n", __func__, __LINE__, ctrl->version, ctrl->controller);
 
     if ((ctrl->version < FILE_TRANSFER_PROTOCOL_VERSION_MIN) || (ctrl->version > FILE_TRANSFER_PROTOCOL_VERSION_MAX))
     {
@@ -442,7 +443,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
                         available_name_len = sizeof(v1_ctrl->file_name);
                     }
 
-                    LOGD("%s %d start len=%u crc=0x%04X packets=%u operation=%u type=%u\n", __func__, __LINE__,
+                    LOGV("%s %d start len=%u crc=0x%04X packets=%u operation=%u type=%u\n", __func__, __LINE__,
                          v1_ctrl->all_data_length, v1_ctrl->crc, v1_ctrl->packet_all_count,
                          v1_ctrl->file_operation, v1_ctrl->file_type);
 
@@ -511,7 +512,7 @@ static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
 
     if (!media_navigation_transfer_is_active())
     {
-        LOGI("%s %d transfer complete\n", __func__, __LINE__);
+        LOGV("%s %d transfer complete\n", __func__, __LINE__);
     }
 
     bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);

@@ -31,6 +31,8 @@
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
+#define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+#define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
 #define FILE_TYPE_JPEG_VALUE    (0)
 #define FILE_TYPE_PNG_VALUE     (1)
@@ -164,7 +166,7 @@ bk_err_t media_navigation_transfer_begin(const media_navigation_transfer_cfg_t *
         os_memcpy(s_nav_ctx.file_name, cfg->file_name, copy_len);
     }
 
-    LOGI("begin: version=%u, len=%u, packets=%u, crc=0x%04X\n", s_nav_ctx.version,
+    LOGV("begin: version=%u, len=%u, packets=%u, crc=0x%04X\n", s_nav_ctx.version,
          (unsigned int)s_nav_ctx.total_length, s_nav_ctx.expected_packets, s_nav_ctx.expected_crc);
 
     return BK_OK;
@@ -254,7 +256,7 @@ bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data
             return ret;
         }
 
-        LOGI("push: transfer complete, frame length=%u, seq=%u\n", (unsigned int)s_nav_ctx.frame->length,
+        LOGV("push: transfer complete, frame length=%u, seq=%u\n", (unsigned int)s_nav_ctx.frame->length,
              (unsigned int)(s_frame_sequence - 1));
 
         s_nav_ctx.frame = NULL;
