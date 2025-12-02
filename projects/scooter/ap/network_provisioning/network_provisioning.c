@@ -38,6 +38,7 @@
 
 #include "media_devices.h"
 #include "media_navigation_transfer.h"
+#include "network_provisioning.h"
 
 #define TAG "np_demo"
 
@@ -47,85 +48,17 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
-typedef enum
+static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
+
+static void set_navigation_type(navigation_type_t type)
 {
-    BOARDING_OP_UNKNOWN = 0,
-    BOARDING_OP_SYNC_PHONE_OS = 30,
-    BOARDING_OP_CONFIG_WIFI_AP = 31,
-    BOARDING_OP_GET_SCAN_RESULTS = 32,
-    BOARDING_OP_CONFIG_WIFI_STA = 33,
-    BOARDING_OP_CONFIG_WIFI_P2P = 34,
-    BOARDING_OP_TRANSFER_FILE_CONTROL = 50,
-    BOARDING_OP_TRANSFER_FILE_DATA = 51,
-    BOARDING_OP_NAVIGATION_CONTROL = 52,
-    BOARDING_OP_MAX
-} boarding_opcode_t;
+    navigation_type = type;
+}
 
-#define EVT_STATUS_OK               (0)
-#define EVT_STATUS_ERROR            (1)
-
-/* Navigation transfer protocol definitions for BLE-based navigation */
-typedef enum
+navigation_type_t get_navigation_type(void)
 {
-    FILE_TRANSFER_PROTOCOL_VERSION_1 = 1,
-} file_transfer_protocol_version_t;
-
-#define FILE_TRANSFER_PROTOCOL_VERSION_MIN      FILE_TRANSFER_PROTOCOL_VERSION_1
-#define FILE_TRANSFER_PROTOCOL_VERSION_MAX      FILE_TRANSFER_PROTOCOL_VERSION_1
-
-typedef enum
-{
-    FILE_OPERATION_DISPLAY = 0,
-    FILE_OPERATION_SAVE = 1,
-} file_operation_t;
-
-typedef enum
-{
-    FILE_TYPE_JPEG = 0,
-    FILE_TYPE_PNG = 1,
-} file_type_t;
-
-typedef enum
-{
-    FILE_CONTROL_START = 0,
-    FILE_CONTROL_STOP = 1,
-    FILE_CONTROL_COMPLETE = 2,
-} file_control_cmd_t;
-
-typedef struct
-{
-    uint8_t version;
-    uint8_t controller;
-} __attribute__((packed)) file_transfer_control_t;
-
-typedef struct
-{
-    uint8_t version;
-    uint8_t controller;
-    uint32_t all_data_length;
-    uint16_t crc;
-    uint16_t packet_all_count;
-    uint8_t file_operation;
-    uint8_t file_type;
-    char file_name[64];
-} __attribute__((packed)) file_transfer_control_v1_t;
-
-typedef struct
-{
-    uint16_t packet_num;
-    uint8_t data[];
-} __attribute__((packed)) file_transfer_data_t;
-
-typedef enum
-{
-    NAVIGATION_CONTROL_START = 0,
-    NAVIGATION_CONTROL_STOP = 1,
-} navigation_control_cmd_t;
-
-typedef struct
-{
-    uint8_t controller;
-} __attribute__((packed)) navigation_control_t;
+    return navigation_type;
+}
 
 static uint8_t *demo_np_get_supported_mode(uint8_t os_code, uint8_t *len)
 {
@@ -532,7 +465,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
 
     navigation_control_t *nav_ctrl = (navigation_control_t *)data_ptr;
 
-    LOGI("%s %d controller=%u\n", __func__, __LINE__, nav_ctrl->controller);
+    LOGD("%s %d controller=%u\n", __func__, __LINE__, nav_ctrl->controller);
 
     switch (nav_ctrl->controller)
     {
@@ -546,9 +479,12 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
-            #if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+            if (get_navigation_type() == NAVIGATION_TYPE_BT)
+            {
                 lvgl_app_enter_navigation();
-            #else
+            }
+            else
+            {
                 ret = lvgl_app_suspend_display();
                 if (ret != BK_OK)
                 {
@@ -557,7 +493,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                     bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
-            #endif
+            }
             break;
         }
 
@@ -571,9 +507,12 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
-            #if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
+            if (get_navigation_type() == NAVIGATION_TYPE_BT)
+            {
                 lvgl_app_exit_navigation();
-            #else
+            }
+            else
+            {
                 ret = lvgl_app_resume_display();
                 if (ret != BK_OK)
                 {
@@ -581,7 +520,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                     bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
-            #endif
+            }
 
             ret = media_navigation_transfer_cancel();
             if (ret != BK_OK)
@@ -598,6 +537,27 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
     }
 
     bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_OK);
+}
+
+static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t length)
+{
+    bk_err_t ret = BK_OK;
+
+    /* The BLE provisioning queue frees data_ptr after this function returns */
+    if ((data_ptr == NULL) || (length < sizeof(navigation_type_control_t)))
+    {
+        LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
+        bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_ERROR);
+        return;
+    }
+
+    navigation_type_control_t *nav_type_ctrl = (navigation_type_control_t *)data_ptr;
+
+    LOGI("%s %d type=%u\n", __func__, __LINE__, nav_type_ctrl->type);
+
+    set_navigation_type(nav_type_ctrl->type);
+
+    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_OK);
 }
 
 void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
@@ -701,6 +661,12 @@ void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
         case BOARDING_OP_NAVIGATION_CONTROL:
         {
             handle_navigation_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+        }
+        break;
+
+        case BOARDING_OP_NAVIGATION_TYPE_CONTROL:
+        {
+            handle_navigation_type_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
         }
         break;
 

@@ -67,12 +67,4 @@ menu "scooter Example Configuration"
         config LCD_PANEL_USE_1024X600
             bool "LCD Panel Use 1024x600"
     endchoice
-
-    config USE_HW_DECODER
-        bool "Enabel image transmission using jpeg hw decoding"
-        default n
-
-    config BT_NAVIGATION
-        bool "Enable BT navigation"
-        default n
 endmenu

@@ -286,7 +286,6 @@ bk_err_t lvgl_app_resume_display(void)
     return BK_OK;
 }
 
-#if (CONFIG_LCD_PANEL_USE_480X272 && CONFIG_BT_NAVIGATION)
 static bool navigation_is_opened = false;
 static bool navigation_map_is_first_frame = true;
 
@@ -354,4 +353,3 @@ void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len)
     }
     lv_vendor_disp_unlock();
 }
-#endif

@@ -169,6 +169,7 @@ endif()
 if (1)
     list(APPEND incs
         media/include
+        network_provisioning
     )
 if (1)
     list(APPEND srcs

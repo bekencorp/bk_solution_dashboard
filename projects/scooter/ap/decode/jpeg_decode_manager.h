@@ -79,6 +79,11 @@ typedef struct {
     bk_jpeg_decode_byte_order_t byte_order;        /*!< Byte order */
 } jpeg_decode_manager_config_t;
 
+typedef enum {
+    DECODER_TYPE_SW = 0,
+    DECODER_TYPE_HW = 1,
+} decoder_type_t;
+
 /**
  * @brief JPEG decode manager structure
  */
@@ -99,6 +104,8 @@ typedef struct jpeg_decode_manager_t {
     uint8_t thread_status;
 
     uint8_t is_suspended;
+    uint8_t is_init_decoder;
+    uint8_t decoder_type; /* 0: software, 1: hardware */
 } jpeg_decode_manager_t;
 
 /**
