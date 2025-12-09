@@ -67,4 +67,8 @@ menu "scooter Example Configuration"
         config LCD_PANEL_USE_1024X600
             bool "LCD Panel Use 1024x600"
     endchoice
+
+    config AVI_PLAYER_WITHOUT_LVGL
+        bool "Enable AVI Player without LVGL"
+        default n
 endmenu

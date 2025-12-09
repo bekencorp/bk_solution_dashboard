@@ -18,12 +18,29 @@
 #include "bk_posix.h"
 #endif
 
+#define TAG "lvgl_app"
+
+#define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
+#define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
+#define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
+#define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+#define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
+
 extern lv_vnd_config_t vendor_config;
 
 #if CONFIG_AVI_PLAYER
+static bk_avi_player_t *handle = NULL;
+
+#if CONFIG_AVI_PLAYER_WITHOUT_LVGL
+static beken_thread_t g_avi_player_thread = NULL;
+static beken_semaphore_t g_avi_player_sem = NULL;
+static frame_buffer_t *lcd_frame_buffer = NULL;
+static bool g_avi_player_is_running = false;
+static bk_display_ctlr_handle_t lcd_display_handle = NULL;
+
+#else // CONFIG_AVI_PLAYER_WITHOUT_LVGL
 static lv_obj_t *avi_img = NULL;
 static lv_timer_t *avi_timer = NULL;
-static bk_avi_player_t *handle = NULL;
 
 static lv_image_dsc_t avi_img_dsc =
 {
@@ -35,7 +52,8 @@ static lv_image_dsc_t avi_img_dsc =
     .data_size = 0,
     .data = NULL,
 };
-#endif
+#endif // CONFIG_AVI_PLAYER_WITHOUT_LVGL
+#endif // CONFIG_AVI_PLAYER
 
 #define LCD_BL_IO GPIO_37
 #define LCD_LDO_IO GPIO_39
@@ -110,11 +128,11 @@ static bk_err_t bk_avi_player_vfs_init(void)
         ret = _fs_mount();
         if (BK_OK != ret)
         {
-            BK_LOGD(NULL, "[%s][%d] mount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
+            LOGE("[%s][%d] mount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
             break;
         }
 
-        BK_LOGD(NULL, "[%s][%d] mount success\r\n", __FUNCTION__, __LINE__);
+        LOGI("[%s][%d] mount success\r\n", __FUNCTION__, __LINE__);
     } while(0);
 
     return ret;
@@ -126,16 +144,171 @@ static bk_err_t bk_avi_player_vfs_deinit(void)
 
     ret = umount(VFS_SD_0_PATITION_0);
     if (BK_OK != ret) {
-        BK_LOGD(NULL, "[%s][%d] unmount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
+        LOGE("[%s][%d] unmount fail:%d\r\n", __FUNCTION__, __LINE__, ret);
         return ret;
     }
 
-    BK_LOGD(NULL, "[%s][%d] unmount success\r\n", __FUNCTION__, __LINE__);
+    LOGI("[%s][%d] unmount success\r\n", __FUNCTION__, __LINE__);
 
     return ret;
 }
 
 #if CONFIG_AVI_PLAYER
+#if CONFIG_AVI_PLAYER_WITHOUT_LVGL
+static avdk_err_t display_frame_free_cb(void *frame)
+{
+    if (g_avi_player_is_running == false) {
+        bk_avi_player_close();
+        bk_avi_player_vfs_deinit();
+        rtos_deinit_semaphore(&g_avi_player_sem);
+        g_avi_player_sem = NULL;
+        os_free(lcd_frame_buffer);
+        lcd_frame_buffer = NULL;
+    }
+
+    return AVDK_ERR_OK;
+}
+
+static void avi_player_thread(beken_thread_arg_t data)
+{
+    bk_err_t ret;
+    uint32_t delay_time = 0;
+    uint32_t start_time, end_time;
+
+    g_avi_player_is_running = true;
+    rtos_set_semaphore(&g_avi_player_sem);
+
+    handle->pos = 0;
+    delay_time = 1000 / (uint32_t)handle->avi->fps;
+
+    lcd_backlight_open(LCD_BL_IO);
+
+    while (g_avi_player_is_running)
+    {
+        if (handle->pos == handle->video_num) {
+            lv_vendor_disp_lock();
+            lv_screen_load(bk_lv_tool_ui.page_1);
+            lv_vendor_disp_unlock();
+            g_avi_player_is_running = false;
+
+            break;
+        }
+
+        start_time = rtos_get_time();
+        ret = bk_avi_player_video_parse();
+        if (ret != BK_OK) {
+            LOGE("%s %d bk_avi_player_video_parse failed\r\n", __func__, __LINE__);
+            handle->pos++;
+            continue;
+        }
+        handle->pos++;
+
+        lcd_frame_buffer->frame = handle->framebuffer;
+        bk_display_flush(lcd_display_handle, lcd_frame_buffer, display_frame_free_cb);
+
+        end_time = rtos_get_time();
+        LOGV("bk_avi_player_video_parse time: %d ms\n", end_time - start_time);
+
+        if (end_time - start_time > delay_time) {
+            LOGW("bk_avi_player_video_parse time is too long, just delay 2ms, time: %d ms\n",  end_time - start_time);
+            rtos_delay_milliseconds(2);
+        } else {
+            rtos_delay_milliseconds(delay_time - (end_time - start_time));
+        }
+    }
+
+    g_avi_player_thread = NULL;
+    rtos_delete_thread(NULL);
+}
+
+bk_err_t bk_avi_player_start(char *file_path)
+{
+    bk_err_t ret = BK_OK;
+    bk_avi_player_config_t avi_player_config = {0};
+
+    if (g_avi_player_is_running) {
+        LOGE("%s %d avi_player is already running\r\n", __func__, __LINE__);
+        return BK_OK;
+    }
+
+    ret = bk_avi_player_vfs_init();
+    if (ret != BK_OK) {
+        LOGE("%s %d bk_avi_player_vfs_init failed\r\n", __func__, __LINE__);
+        return ret;
+    }
+
+    avi_player_config.file_path = file_path;
+    avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_YUYV;
+    avi_player_config.segment_flag = false;
+    avi_player_config.rgb565_byte_swap_flag = false;
+    ret = bk_avi_player_open(&avi_player_config);
+    if (ret != BK_OK) {
+        LOGE("%s %d bk_avi_player_open failed\r\n", __func__, __LINE__);
+        goto avi_player_start_fail;
+    }
+
+    handle = bk_avi_player_get_handle();
+    if (handle == NULL) {
+        LOGE("%s %d bk_avi_player_get_handle failed\r\n", __func__, __LINE__);
+        bk_avi_player_vfs_deinit();
+        return BK_FAIL;
+    }
+
+    ret = rtos_init_semaphore_ex(&g_avi_player_sem, 1, 0);
+    if (ret != BK_OK) {
+        LOGE("%s g_avi_player_sem init failed\n", __func__);
+        bk_avi_player_close();
+        goto avi_player_start_fail;
+    }
+
+    lcd_frame_buffer = os_malloc(sizeof(frame_buffer_t));
+    if (lcd_frame_buffer == NULL) {
+        LOGE("%s %d lcd_frame_buffer malloc failed\r\n", __func__, __LINE__);
+        bk_avi_player_close();
+        goto avi_player_start_fail;
+    }
+    lcd_frame_buffer->size = handle->frame_size;
+    lcd_frame_buffer->width = handle->avi->width;
+    lcd_frame_buffer->height = handle->avi->height;
+    lcd_frame_buffer->fmt = PIXEL_FMT_YUYV;
+
+    ret = rtos_create_thread(&g_avi_player_thread,
+                            BEKEN_DEFAULT_WORKER_PRIORITY - 1,
+                            "avi_player_thread",
+                            (beken_thread_function_t)avi_player_thread,
+                            1024 * 4,
+                            NULL);
+    if (ret != BK_OK) {
+        LOGE("%s %d rtos_create_thread failed\r\n", __func__, __LINE__);
+        bk_avi_player_close();
+        goto avi_player_start_fail;
+    }
+
+    rtos_get_semaphore(&g_avi_player_sem, BEKEN_NEVER_TIMEOUT);
+
+    LOGI("%s complete\n", __func__);
+
+    return ret;
+
+avi_player_start_fail:
+
+    if (lcd_frame_buffer) {
+        os_free(lcd_frame_buffer);
+        lcd_frame_buffer = NULL;
+    }
+
+    if (g_avi_player_sem) {
+        rtos_deinit_semaphore(&g_avi_player_sem);
+        g_avi_player_sem = NULL;
+    }
+
+    bk_avi_player_close();
+
+    bk_avi_player_vfs_deinit();
+
+    return ret;
+}
+#else
 static void lv_timer_cb(lv_timer_t *timer)
 {
     bk_err_t ret = BK_OK;
@@ -144,7 +317,7 @@ static void lv_timer_cb(lv_timer_t *timer)
     if (handle->pos < handle->video_num) {
         ret = bk_avi_player_video_parse();
         if (ret != BK_OK) {
-            os_printf("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
+            LOGE("%s %d bk_avi_player_video_parse failed\r\n", __func__, __LINE__);
             return;
         }
 
@@ -160,9 +333,11 @@ static void lv_timer_cb(lv_timer_t *timer)
     }
 }
 #endif
+#endif
 
 void lvgl_app_init(void)
 {
+    bk_err_t ret = BK_OK;
     lv_vnd_config_t lv_vnd_config = {0};
 
     lv_vnd_config.width = rgb_config.lcd_device->width;
@@ -173,7 +348,7 @@ void lvgl_app_init(void)
     for (int i = 0; i < CONFIG_LVGL_FRAME_BUFFER_NUM; i++) {
         lv_vnd_config.frame_buffer[i] = frame_buffer_display_malloc(lv_vnd_config.width * lv_vnd_config.height * sizeof(bk_color_t));
         if (lv_vnd_config.frame_buffer[i] == NULL) {
-            os_printf("lv_frame_buffer[%d] malloc failed\r\n", i);
+            LOGE("lv_frame_buffer[%d] malloc failed\r\n", i);
             return;
         }
     }
@@ -188,12 +363,37 @@ void lvgl_app_init(void)
     bk_display_open(lv_vnd_config.handle);
 
 #if CONFIG_AVI_PLAYER
+#if CONFIG_AVI_PLAYER_WITHOUT_LVGL
+    lcd_display_handle = lv_vnd_config.handle;
+
+    lv_vendor_disp_lock();
+    init_page_page_1(&bk_lv_tool_ui);
+    lv_vendor_disp_unlock();
+
+#if (CONFIG_LCD_PANEL_USE_480X272)
+    ret = bk_avi_player_start(PATH_SD_FILE("animation_480_272.avi"));
+#elif (CONFIG_LCD_PANEL_USE_800X480)
+    ret = bk_avi_player_start(PATH_SD_FILE("animation_800_480.avi"));
+#else
+    ret = bk_avi_player_start(PATH_SD_FILE("animation_1024_600.avi"));
+#endif
+    if (ret != BK_OK) {
+        LOGE("%s %d bk_avi_player_start failed\r\n", __func__, __LINE__);
+        lv_vendor_disp_lock();
+        lv_screen_load(bk_lv_tool_ui.page_1);
+        lv_vendor_disp_unlock();
+
+        lcd_backlight_open(LCD_BL_IO);
+    }
+
+    lv_vendor_start();
+    return;
+#else
     bk_avi_player_config_t avi_player_config = {0};
-    bk_err_t ret;
 
     ret = bk_avi_player_vfs_init();
     if (ret != BK_OK) {
-        os_printf("%s %d bk_avi_player_vfs_init failed\r\n", __func__, __LINE__);
+        LOGE("%s %d bk_avi_player_vfs_init failed\r\n", __func__, __LINE__);
         goto avi_player_fail;
     }
 
@@ -209,7 +409,7 @@ void lvgl_app_init(void)
     avi_player_config.rgb565_byte_swap_flag = false;
     ret = bk_avi_player_open(&avi_player_config);
     if (ret != BK_OK) {
-        os_printf("%s %d bk_avi_player_open failed\r\n", __func__, __LINE__);
+        LOGE("%s %d bk_avi_player_open failed\r\n", __func__, __LINE__);
         goto avi_player_fail;
     }
 
@@ -222,7 +422,7 @@ void lvgl_app_init(void)
 
     ret = bk_avi_player_video_parse();
     if (ret != BK_OK) {
-        os_printf("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
+        LOGE("%s %d bk_avi_video_prase_to_rgb565 failed\r\n", __func__, __LINE__);
         goto avi_player_fail;
     }
 
@@ -236,12 +436,14 @@ void lvgl_app_init(void)
 
     lcd_backlight_open(LCD_BL_IO);
     lv_vendor_start();
+
     return;
 
 avi_player_fail:
     lv_vendor_disp_lock();
     beken_ui_init();
     lv_vendor_disp_unlock();
+#endif // CONFIG_AVI_PLAYER_WITHOUT_LVGL
 #else // CONFIG_AVI_PLAYER
     lv_vendor_disp_lock();
     beken_ui_init();
@@ -286,6 +488,7 @@ bk_err_t lvgl_app_resume_display(void)
     return BK_OK;
 }
 
+#if CONFIG_LCD_PANEL_USE_480X272
 static bool navigation_is_opened = false;
 static bool navigation_map_is_first_frame = true;
 
@@ -302,7 +505,7 @@ static lv_image_dsc_t navigation_map_265x195 = {
 void lvgl_app_enter_navigation(void)
 {
     if (navigation_is_opened) {
-        os_printf("%s %d navigation is already entered\r\n", __func__, __LINE__);
+        LOGE("%s %d navigation is already entered\r\n", __func__, __LINE__);
         return;
     }
 
@@ -316,7 +519,7 @@ void lvgl_app_enter_navigation(void)
 void lvgl_app_exit_navigation(void)
 {
     if (!navigation_is_opened) {
-        os_printf("%s %d navigation is already exited\r\n", __func__, __LINE__);
+        LOGE("%s %d navigation is already exited\r\n", __func__, __LINE__);
         return;
     }
 
@@ -332,12 +535,12 @@ void lvgl_app_exit_navigation(void)
 void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len)
 {
     if (data == NULL || data_len == 0) {
-        os_printf("%s %d data is NULL or data_len is 0\r\n", __func__, __LINE__);
+        LOGE("%s %d data is NULL or data_len is 0\r\n", __func__, __LINE__);
         return;
     }
 
     if (navigation_map_265x195.data_size != data_len) {
-        os_printf("%s %d data_len is not equal to navigation_map_265x195.data_size\r\n", __func__, __LINE__);
+        LOGE("%s %d data_len is not equal to navigation_map_265x195.data_size\r\n", __func__, __LINE__);
         return;
     }
 
@@ -353,3 +556,4 @@ void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len)
     }
     lv_vendor_disp_unlock();
 }
+#endif

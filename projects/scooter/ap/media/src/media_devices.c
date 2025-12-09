@@ -87,7 +87,9 @@ static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, 
         {
             if (get_navigation_type() == NAVIGATION_TYPE_BT)
             {
-                lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size);
+                #if CONFIG_LCD_PANEL_USE_480X272
+                    lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size);
+                #endif
             }
             else
             {

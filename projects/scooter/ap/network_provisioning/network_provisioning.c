@@ -481,7 +481,9 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
 
             if (get_navigation_type() == NAVIGATION_TYPE_BT)
             {
-                lvgl_app_enter_navigation();
+                #if CONFIG_LCD_PANEL_USE_480X272
+                    lvgl_app_enter_navigation();
+                #endif
             }
             else
             {
@@ -509,7 +511,9 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
 
             if (get_navigation_type() == NAVIGATION_TYPE_BT)
             {
-                lvgl_app_exit_navigation();
+                #if CONFIG_LCD_PANEL_USE_480X272
+                    lvgl_app_exit_navigation();
+                #endif
             }
             else
             {
