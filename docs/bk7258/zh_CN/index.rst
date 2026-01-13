@@ -117,4 +117,6 @@ Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/armino
 
     示例工程 <projects/index>
 
+    H/W 参考手册 <hw-reference/index>
+
 * :ref:`genindex`

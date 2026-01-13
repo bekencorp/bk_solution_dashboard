@@ -120,4 +120,6 @@ For Communication Processor (CP) configuration and usage, please refer to `Armin
 
     Example Projects <projects/index>
 
+    H/W Reference Manual <hw-reference/index>
+
 * :ref:`genindex`
