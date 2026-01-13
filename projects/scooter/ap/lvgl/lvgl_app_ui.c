@@ -11,6 +11,7 @@
 #include "lcd_panel_devices.h"
 #include "driver/gpio.h"
 #include "gpio_driver.h"
+#include "driver/dma2d.h"
 #include "driver/flash_partition.h"
 #include "beken_ui.h"
 #if CONFIG_AVI_PLAYER
@@ -489,18 +490,123 @@ bk_err_t lvgl_app_resume_display(void)
 }
 
 #if CONFIG_LCD_PANEL_USE_480X272
+#define NAVIGATION_MAP_WIDTH         265
+#define NAVIGATION_MAP_HEIGHT        195
+#elif CONFIG_LCD_PANEL_USE_800X480
+#define NAVIGATION_MAP_WIDTH         480
+#define NAVIGATION_MAP_HEIGHT        320
+#endif
+
 static bool navigation_is_opened = false;
 static bool navigation_map_is_first_frame = true;
+static beken_semaphore_t navigation_map_dma2d_sem = NULL;
+static uint8_t *navigation_map_data_rgb565 = NULL;
 
-static lv_image_dsc_t navigation_map_265x195 = {
+static lv_image_dsc_t navigation_map = {
     .header.cf = LV_COLOR_FORMAT_RGB565,
     .header.magic = LV_IMAGE_HEADER_MAGIC,
-    .header.w = 265,
-    .header.h = 195,
-    .data_size = 265 * 195 * 2,
+    .header.w = NAVIGATION_MAP_WIDTH,
+    .header.h = NAVIGATION_MAP_HEIGHT,
+    .data_size = NAVIGATION_MAP_WIDTH * NAVIGATION_MAP_HEIGHT * sizeof(bk_color_t),
     .data = NULL,
     .reserved = NULL,
 };
+
+static void navigation_map_dma2d_config_error(void *arg)
+{
+    LOGD("%s \n", __func__);
+}
+
+static void navigation_map_dma2d_transfer_error(void *arg)
+{
+    LOGE("%s \n", __func__);
+}
+
+static void navigation_map_dma2d_transfer_complete(void *arg)
+{
+    rtos_set_semaphore(&navigation_map_dma2d_sem);
+}
+
+bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void)
+{
+    bk_err_t ret;
+
+    ret = rtos_init_semaphore_ex(&navigation_map_dma2d_sem, 1, 0);
+    if (BK_OK != ret) {
+        LOGE("%s %d navigation_map_dma2d_sem init failed\n", __func__, __LINE__);
+        return ret;
+    }
+
+    bk_dma2d_driver_init();
+    bk_dma2d_register_int_callback_isr(DMA2D_CFG_ERROR_ISR, navigation_map_dma2d_config_error, NULL);
+    bk_dma2d_register_int_callback_isr(DMA2D_TRANS_ERROR_ISR, navigation_map_dma2d_transfer_error, NULL);
+    bk_dma2d_register_int_callback_isr(DMA2D_TRANS_COMPLETE_ISR, navigation_map_dma2d_transfer_complete, NULL);
+    bk_dma2d_int_enable(DMA2D_CFG_ERROR | DMA2D_TRANS_ERROR | DMA2D_TRANS_COMPLETE, 1);
+
+    navigation_map_data_rgb565 = psram_malloc(NAVIGATION_MAP_WIDTH * NAVIGATION_MAP_HEIGHT * sizeof(bk_color_t));
+    if (navigation_map_data_rgb565 == NULL) {
+        LOGE("%s %d navigation_map_data_rgb565 malloc failed\r\n", __func__, __LINE__);
+        return BK_FAIL;
+    }
+
+    return ret;
+}
+
+bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void)
+{
+    bk_err_t ret;
+
+    bk_dma2d_stop_transfer();
+    bk_dma2d_int_enable(DMA2D_CFG_ERROR | DMA2D_TRANS_ERROR | DMA2D_TRANS_COMPLETE, 0);
+    bk_dma2d_driver_deinit();
+    ret = rtos_deinit_semaphore(&navigation_map_dma2d_sem);
+    if (BK_OK != ret) {
+        LOGE("%s %d navigation_map_dma2d_sem deinit failed\n", __func__, __LINE__);
+    }
+
+    if (navigation_map_data_rgb565) {
+        psram_free(navigation_map_data_rgb565);
+        navigation_map_data_rgb565 = NULL;
+    }
+
+    return ret;
+}
+
+static void navigation_map_dma2d_yuyv2rgb565(void *src, const void *dst, uint16_t width, uint16_t height, bool byte_swap)
+{
+    dma2d_memcpy_pfc_t dma2d_memcpy_pfc = {0};
+
+    dma2d_memcpy_pfc.input_addr = (char *)src;
+    dma2d_memcpy_pfc.output_addr = (char *)dst;
+    dma2d_memcpy_pfc.mode = DMA2D_M2M_PFC;
+    dma2d_memcpy_pfc.input_color_mode = DMA2D_INPUT_YUYV;
+    dma2d_memcpy_pfc.output_color_mode = DMA2D_OUTPUT_RGB565;
+    dma2d_memcpy_pfc.src_pixel_byte = TWO_BYTES;
+    dma2d_memcpy_pfc.dst_pixel_byte = TWO_BYTES;
+    dma2d_memcpy_pfc.dma2d_width = width;
+    dma2d_memcpy_pfc.dma2d_height = height;
+    dma2d_memcpy_pfc.src_frame_width = width;
+    dma2d_memcpy_pfc.src_frame_height = height;
+    dma2d_memcpy_pfc.dst_frame_width = width;
+    dma2d_memcpy_pfc.dst_frame_height = height;
+    dma2d_memcpy_pfc.src_frame_xpos = 0;
+    dma2d_memcpy_pfc.src_frame_ypos = 0;
+    dma2d_memcpy_pfc.dst_frame_xpos = 0;
+    dma2d_memcpy_pfc.dst_frame_ypos = 0;
+    dma2d_memcpy_pfc.input_red_blue_swap = 0;
+    dma2d_memcpy_pfc.output_red_blue_swap = 0;
+
+    if (byte_swap) {
+        dma2d_memcpy_pfc.out_byte_by_byte_reverse = 1;
+    } else {
+        dma2d_memcpy_pfc.out_byte_by_byte_reverse = 0;
+    }
+
+    bk_dma2d_memcpy_or_pixel_convert(&dma2d_memcpy_pfc);
+    bk_dma2d_start_transfer();
+
+    rtos_get_semaphore(&navigation_map_dma2d_sem, BEKEN_NEVER_TIMEOUT);
+}
 
 void lvgl_app_enter_navigation(void)
 {
@@ -532,28 +638,42 @@ void lvgl_app_exit_navigation(void)
     navigation_is_opened = false;
 }
 
-void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len)
+void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
 {
     if (data == NULL || data_len == 0) {
         LOGE("%s %d data is NULL or data_len is 0\r\n", __func__, __LINE__);
         return;
     }
 
-    if (navigation_map_265x195.data_size != data_len) {
-        LOGE("%s %d data_len is not equal to navigation_map_265x195.data_size\r\n", __func__, __LINE__);
+    if (navigation_map.data_size != data_len) {
+        LOGE("%s %d data_len is not equal to navigation_map.data_size\r\n", __func__, __LINE__);
         return;
     }
 
+    if (data_is_rgb565 == false) {
+        navigation_map_dma2d_yuyv2rgb565(data, navigation_map_data_rgb565, NAVIGATION_MAP_WIDTH, NAVIGATION_MAP_HEIGHT, false);
+        navigation_map.data = navigation_map_data_rgb565;
+    } else {
+        navigation_map.data = data;
+    }
+
     lv_vendor_disp_lock();
-    navigation_map_265x195.data = data;
 
     if (navigation_map_is_first_frame) {
         navigation_map_is_first_frame = false;
-        lv_image_set_src(bk_lv_tool_ui.page_2_image_8, &navigation_map_265x195);
-        lv_screen_load(bk_lv_tool_ui.page_2);
+        #if CONFIG_LCD_PANEL_USE_480X272
+            lv_image_set_src(bk_lv_tool_ui.page_2_image_8, &navigation_map);
+            lv_screen_load(bk_lv_tool_ui.page_2);
+        #elif CONFIG_LCD_PANEL_USE_800X480
+            lv_image_set_src(bk_lv_tool_ui.page_2_image_10, &navigation_map);
+            lv_screen_load(bk_lv_tool_ui.page_2);
+        #endif
     } else {
-        lv_obj_invalidate(bk_lv_tool_ui.page_2_image_8);
+        #if CONFIG_LCD_PANEL_USE_480X272
+            lv_obj_invalidate(bk_lv_tool_ui.page_2_image_8);
+        #elif CONFIG_LCD_PANEL_USE_800X480
+            lv_obj_invalidate(bk_lv_tool_ui.page_2_image_10);
+        #endif
     }
     lv_vendor_disp_unlock();
 }
-#endif

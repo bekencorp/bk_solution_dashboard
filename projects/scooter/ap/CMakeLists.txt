@@ -95,74 +95,31 @@ if (CONFIG_LCD_PANEL_USE_480X272)
             lvgl/lv_ui_480x272
         )
 
-    list(APPEND srcs
-            lvgl/lv_ui_480x272/basic_callback.c
-            lvgl/lv_ui_480x272/beken_ui.c
-            lvgl/lv_ui_480x272/page_1_init.c
-            lvgl/lv_ui_480x272/page_2_init.c
-
-            lvgl/lv_ui_480x272/images/battery_bak_28x20_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/battery_bak_38x23_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/battery_ind_28x21_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/battery_ind_34x22_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/beken_logo_blue_76x42_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/bluetooth_23x23_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/bluetooth_28x28_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/kmbg_113x110_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/light_11_29x22_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/light_11_34x26_RGB565A8_NONE.c
-
-            lvgl/lv_ui_480x272/images/light_green_30x30_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/light_green_45x45_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/light_grey_30x30_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/light_grey_46x46_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/moto_ARGB8888.c
-            lvgl/lv_ui_480x272/images/wifi_1_23x23_RGB565A8_NONE.c
-            lvgl/lv_ui_480x272/images/wifi_1_26x26_RGB565A8_NONE.c
+    file(GLOB_RECURSE beken_generated_source
+            lvgl/lv_ui_480x272/*.c
         )
+    list(APPEND srcs ${beken_generated_source})
+
 elseif(CONFIG_LCD_PANEL_USE_800X480)
     list(APPEND incs
             lvgl/lv_ui_800x480
         )
 
-    list(APPEND srcs
-            lvgl/lv_ui_800x480/basic_callback.c
-            lvgl/lv_ui_800x480/beken_ui.c
-            lvgl/lv_ui_800x480/page_1_init.c
-
-            lvgl/lv_ui_800x480/images/battery_bak_57x35_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/battery_ind_47x35_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/beken_logo_blue_118x65_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/bluetooth_40x42_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/kmbg_207x212_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/light_11_52x37_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/light_11_70x56_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/light_green_70x74_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/light_grey_70x74_RGB565A8_NONE.c
-            lvgl/lv_ui_800x480/images/moto1_800x480_ARGB8888.c
-            lvgl/lv_ui_800x480/images/wifi_1_40x42_RGB565A8_NONE.c
+    file(GLOB_RECURSE beken_generated_source
+            lvgl/lv_ui_800x480/*.c
         )
+    list(APPEND srcs ${beken_generated_source})
+
 else()
     list(APPEND incs
             lvgl/lv_ui_1024x600
         )
 
-    list(APPEND srcs
-            lvgl/lv_ui_1024x600/basic_callback.c
-            lvgl/lv_ui_1024x600/beken_ui.c
-            lvgl/lv_ui_1024x600/page_1_init.c
-
-            lvgl/lv_ui_1024x600/images/battery_bak_81x51_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/battery_ind_73x49_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/beken_logo_blue_162x93_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/bluetooth_49x51_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/kmbg_241x243_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/light_11_85x58_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/light_green_96x99_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/light_grey_98x101_RGB565A8_NONE.c
-            lvgl/lv_ui_1024x600/images/moto_ARGB8888.c
-            lvgl/lv_ui_1024x600/images/wifi_1_49x51_RGB565A8_NONE.c
+    file(GLOB_RECURSE beken_generated_source
+            lvgl/lv_ui_1024x600/*.c
         )
+    list(APPEND srcs ${beken_generated_source})
+
 endif()
 endif()
 

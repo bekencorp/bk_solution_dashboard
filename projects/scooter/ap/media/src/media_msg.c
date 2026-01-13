@@ -12,6 +12,7 @@
 #include "network_type.h"
 #include "network_transfer.h"
 #include "media_msg.h"
+#include "jpeg_decode_manager.h"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -111,8 +112,12 @@ static void media_message_handle(void)
                         LOGE("turn on jpeg_decode_manager failed\n");
                         break;
                     }
-    
-                    lvgl_app_suspend_display();
+
+                    #if CONFIG_LCD_PANEL_USE_800X480
+                        lvgl_app_enter_navigation();
+                    #else
+                        lvgl_app_suspend_display();
+                    #endif
 
                     if (media_info->service == MEDIA_SERVICE_LAN_UDP)
                     {
@@ -152,7 +157,11 @@ static void media_message_handle(void)
 						LOGE("turn off jpeg_decode_manager failed\n");
 					}
 
-					lvgl_app_resume_display();
+                    #if CONFIG_LCD_PANEL_USE_800X480
+                        lvgl_app_exit_navigation();
+                    #else
+                        lvgl_app_resume_display();
+                    #endif
 
 					#if 0
 					ret = video_data_process_close();

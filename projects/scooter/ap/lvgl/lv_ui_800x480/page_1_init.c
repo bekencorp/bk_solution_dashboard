@@ -171,9 +171,9 @@ void init_page_page_1(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_image_recolor(bk_ui->image_4, lv_color_hex(0x00ff00), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_image_recolor_opa(bk_ui->image_4, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    static bool screen_digital_clock_1_timer_enabled = false;
     bk_ui->dclock_1 = lv_label_create(bk_ui->page_1);
-    lv_label_set_text(bk_ui->dclock_1, "11:25 AM");
+    lv_label_set_text(bk_ui->dclock_1, "");
+	lv_digital_clock_register(bk_ui->dclock_1, 1, 1, 11, 25, 50);
     lv_obj_set_x(bk_ui->dclock_1, 28);
     lv_obj_set_y(bk_ui->dclock_1, 21);
     lv_obj_set_width(bk_ui->dclock_1, 143);
@@ -197,10 +197,6 @@ void init_page_page_1(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_shadow_offset_x(bk_ui->dclock_1, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_offset_y(bk_ui->dclock_1, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_spread(bk_ui->dclock_1, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    if (!screen_digital_clock_1_timer_enabled) {
-        lv_timer_create(lv_digital_clock_timer_cb, 1000, bk_ui->dclock_1);
-        screen_digital_clock_1_timer_enabled = true;
-    }
 
     bk_ui->image_5 = lv_image_create(bk_ui->page_1);
     lv_image_set_src(bk_ui->image_5, &battery_bak_57x35_RGB565A8_NONE);

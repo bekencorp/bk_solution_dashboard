@@ -61,9 +61,33 @@ typedef struct
     lv_span_t *spangroup_2_span_0;
     lv_span_t *spangroup_2_span_1;
     lv_obj_t *label_8;
+
+    lv_obj_t *page_2;
+    lv_obj_t *page_2_obj_1;
+    lv_obj_t *page_2_label_1;
+    lv_obj_t *page_2_label_4;
+    lv_obj_t *page_2_label_5;
+    lv_obj_t *page_2_image_1;
+    lv_obj_t *page_2_image_2;
+    lv_obj_t *page_2_dclock_1;
+    lv_obj_t *page_2_image_3;
+    lv_obj_t *page_2_obj_3;
+    lv_obj_t *page_2_image_4;
+    lv_obj_t *page_2_image_5;
+    lv_obj_t *page_2_image_6;
+    lv_obj_t *page_2_image_7;
+    lv_obj_t *page_2_image_9;
+    lv_obj_t *page_2_obj_4;
+    lv_obj_t *page_2_label_6;
+    lv_obj_t *page_2_label_7;
+    lv_obj_t *page_2_label_8;
+    lv_obj_t *page_2_image_10;
 } bk_lv_ui_t;
 
 void init_page_page_1(bk_lv_ui_t *bk_ui);
+void init_page_page_2(bk_lv_ui_t *bk_ui);
+
+void destroy_page_page_2(bk_lv_ui_t *bk_ui);
 
 /* declare image */
 LV_IMAGE_DECLARE(light_green_70x74_RGB565A8_NONE);
@@ -77,9 +101,22 @@ LV_IMAGE_DECLARE(kmbg_207x212_RGB565A8_NONE);
 LV_IMAGE_DECLARE(battery_ind_47x35_RGB565A8_NONE);
 LV_IMAGE_DECLARE(moto1_800x480_ARGB8888);
 
+LV_IMAGE_DECLARE(battery_bak_63x41_RGB565A8_NONE);
+LV_IMAGE_DECLARE(battery_ind_57x50_RGB565A8_NONE);
+LV_IMAGE_DECLARE(beken_logo_blue_81x47_RGB565A8_NONE);
+LV_IMAGE_DECLARE(bluetooth_38x41_RGB565A8_NONE);
+LV_IMAGE_DECLARE(light_11_47x38_RGB565A8_NONE);
+LV_IMAGE_DECLARE(light_green_46x48_RGB565A8_NONE);
+LV_IMAGE_DECLARE(light_grey_46x48_RGB565A8_NONE);
+LV_IMAGE_DECLARE(wifi_1_38x41_RGB565A8_NONE);
+
 /* declare animimg sources */
 
 /* declare fonts */
+LV_FONT_DECLARE(lv_font_montserrat_regular_36);
+LV_FONT_DECLARE(lv_font_montserrat_regular_28);
+LV_FONT_DECLARE(lv_font_montserrat_regular_20);
+LV_FONT_DECLARE(lv_font_montserrat_regular_22);
 
 /**
  * @brief Initialize the Beken UI system
@@ -103,12 +140,13 @@ int beken_get_screen_height(void);
 
 extern bk_lv_ui_t bk_lv_tool_ui;
 
+void lv_digital_clock_timer(lv_timer_t *timer);
+void lv_digital_clock_register(lv_obj_t *label, int show_second, int use_ampm, int hour, int minute, int second);
+void lv_digital_clock_unregister(lv_obj_t *label);
+void lv_digital_clock_register(lv_obj_t *label, int show_second, int use_ampm, int hour, int minute, int second);
+void lv_digital_clock_unregister(lv_obj_t *label);
 void lv_mileage_timer_cb(lv_timer_t *timer);
-
-void lv_digital_clock_timer_cb(lv_timer_t *timer);
-
 void lv_speed_timer_cb(lv_timer_t *timer);
-
 void lv_turn_signal_timer_cb(lv_timer_t *timer);
 
 #ifdef __cplusplus

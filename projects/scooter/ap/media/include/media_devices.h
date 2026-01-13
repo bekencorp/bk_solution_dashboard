@@ -79,15 +79,19 @@ int av_server_jpeg_decode_manager_turn_on(void);
 int av_server_jpeg_decode_manager_turn_off(void);
 int av_server_jpeg_decode_manager_suspend(void);
 int av_server_jpeg_decode_manager_resume(void);
+int av_server_jpeg_decode_manager_get_decoder_type(void);
 
 void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 
+bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void);
+bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void);
+
 void lvgl_app_enter_navigation(void);
 void lvgl_app_exit_navigation(void);
-void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len);
+void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_rgb565);
 
 void set_lcd_use_module(lcd_source_module_t module);
 #endif

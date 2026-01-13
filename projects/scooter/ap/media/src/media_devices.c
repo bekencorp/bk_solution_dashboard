@@ -55,6 +55,7 @@ typedef struct
 
 static const lcd_device_t *lcd_device =  &lcd_device_st7282;
 db_device_info_t *db_device_info = NULL;
+static frame_buffer_t *last_navigation_frame = NULL;
 
 // static aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
 // static aud_intf_work_mode_t aud_work_mode = AUD_INTF_WORK_MODE_NULL;
@@ -85,20 +86,42 @@ static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, 
         // 例如：显示图像、保存图像等
         if (db_device_info->lcd_use_module == LCD_SOURCE_MODULE_DECODER)
         {
+            if (last_navigation_frame) {
+                frame_buffer_display_free(last_navigation_frame);
+                last_navigation_frame = NULL;
+            }
+
             if (get_navigation_type() == NAVIGATION_TYPE_BT)
             {
                 #if CONFIG_LCD_PANEL_USE_480X272
-                    lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size);
+                    last_navigation_frame = out_frame;
+                    lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, true);
+                #else
+                    ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
+                    if (ret != BK_OK)
+                    {
+                        LOGE("bk_display_flush failed\n");
+                        frame_buffer_display_free(out_frame);
+                    }
                 #endif
             }
             else
             {
-                ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
-                if (ret != BK_OK)
-                {
-                    LOGE("bk_display_flush failed\n");
-                    frame_buffer_display_free(out_frame);
-                }
+                #if CONFIG_LCD_PANEL_USE_800X480
+                    last_navigation_frame = out_frame;
+                    if (db_device_info->manager->decoder_type == DECODER_TYPE_SW) {
+                        lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, true);
+                    } else {
+                        lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, false);
+                    }
+                #else
+                    ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
+                    if (ret != BK_OK)
+                    {
+                        LOGE("bk_display_flush failed\n");
+                        frame_buffer_display_free(out_frame);
+                    }
+                #endif
             }
         }
         else
@@ -150,6 +173,12 @@ int av_server_jpeg_decode_manager_turn_on(void)
             LOGE("Failed to create JPEG decode manager\n");
             return ret;
         }
+
+        ret = navigation_map_dma2d_yuyv2rgb565_init();
+        if (ret != BK_OK) {
+            LOGE("Failed to initialize navigation map DMA2D YUYV to RGB565\n");
+            return ret;
+        }
     }
     else
     {
@@ -169,7 +198,24 @@ int av_server_jpeg_decode_manager_turn_off(void)
         db_device_info->manager = NULL;
     }
 
+    ret = navigation_map_dma2d_yuyv2rgb565_deinit();
+    if (ret != BK_OK) {
+        LOGE("Failed to deinitialize navigation map DMA2D YUYV to RGB565\n");
+        return ret;
+    }
+
     return ret;
+}
+
+int av_server_jpeg_decode_manager_get_decoder_type(void)
+{
+    if (db_device_info->manager != NULL) {
+        return db_device_info->manager->decoder_type;
+    }
+
+    LOGI("%s %d decoder_type is NULL, default decoder type is software\n", __func__, __LINE__);
+
+    return 0;
 }
 
 #if 1

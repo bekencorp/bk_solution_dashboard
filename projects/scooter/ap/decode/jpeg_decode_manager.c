@@ -43,29 +43,29 @@ static bk_err_t in_complete(frame_buffer_t *in_frame)
 static frame_buffer_t *out_malloc(uint32_t size)
 {
     frame_buffer_t *frame_temp = NULL;
-    if(get_navigation_type() == NAVIGATION_TYPE_BT)
-    {
-        if (frame == NULL) {
-            frame_temp = frame_buffer_display_malloc(size);
-            if (frame_temp == NULL) {
-                LOGE("%s %d Failed to allocate output frame\n", __func__, __LINE__);
-                return NULL;
-            }
-            frame = frame_temp;
-        }
-        else
-        {
-            frame_temp = frame;
-        }
-    }
-    else
-    {
+    // if (get_navigation_type() == NAVIGATION_TYPE_BT)
+    // {
+    //     if (frame == NULL) {
+    //         frame_temp = frame_buffer_display_malloc(size);
+    //         if (frame_temp == NULL) {
+    //             LOGE("%s %d Failed to allocate output frame\n", __func__, __LINE__);
+    //             return NULL;
+    //         }
+    //         frame = frame_temp;
+    //     }
+    //     else
+    //     {
+    //         frame_temp = frame;
+    //     }
+    // }
+    // else
+    // {
         frame_temp = frame_buffer_display_malloc(size);
         if (frame_temp == NULL) {
             LOGE("%s %d Failed to allocate output frame\n", __func__, __LINE__);
             return NULL;
         }
-    }
+    // }
     return frame_temp;
 }
 

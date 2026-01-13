@@ -479,14 +479,9 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
-            if (get_navigation_type() == NAVIGATION_TYPE_BT)
-            {
-                #if CONFIG_LCD_PANEL_USE_480X272
-                    lvgl_app_enter_navigation();
-                #endif
-            }
-            else
-            {
+            #if CONFIG_LCD_PANEL_USE_480X272
+                lvgl_app_enter_navigation();
+            #else
                 ret = lvgl_app_suspend_display();
                 if (ret != BK_OK)
                 {
@@ -495,7 +490,8 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                     bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
-            }
+            #endif
+
             break;
         }
 
@@ -509,14 +505,9 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
-            if (get_navigation_type() == NAVIGATION_TYPE_BT)
-            {
-                #if CONFIG_LCD_PANEL_USE_480X272
-                    lvgl_app_exit_navigation();
-                #endif
-            }
-            else
-            {
+            #if CONFIG_LCD_PANEL_USE_480X272
+                lvgl_app_exit_navigation();
+            #else
                 ret = lvgl_app_resume_display();
                 if (ret != BK_OK)
                 {
@@ -524,7 +515,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                     bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
-            }
+            #endif
 
             ret = media_navigation_transfer_cancel();
             if (ret != BK_OK)
