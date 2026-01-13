@@ -4,7 +4,7 @@
 
 ## 1 项目概述
 
-本项目是一个基于BK7258芯片的两轮车解决方案，实现了通过WiFi传输图像数据并在LCD屏幕上显示的功能。项目集成了丰富的多媒体处理能力、网络通信功能和用户界面显示，适用于智能出行设备的开发。
+本项目是一个基于BK7258芯片和BK3515NS芯片的两轮车解决方案，实现了通过WiFi传输图像数据并在LCD屏幕上显示的功能。项目集成了丰富的多媒体处理能力、网络通信功能和用户界面显示，适用于智能出行设备的开发。
 
 ## 2 功能特性
 
@@ -13,20 +13,13 @@
 - 支持AP模式创建WiFi热点供其他设备连接
 - 支持TCP/UDP协议传输图像数据
 
-### 2.2 多媒体处理
-- UVC摄像头控制与图像采集，摄像头需要为YUV422的摄像头，解码时使用硬解码
-- H.264编码功能
-- H264编码后的图像数据存储到SD卡上
-- 帧缓冲区管理
-- wifi图传图像解码显示，解码时使用软解码
-
-### 2.3 显示功能
+### 2.2 显示功能
 - LCD屏幕显示
 - LVGL图形库支持
 - 支持显示切换（LVGL界面与wifi图传图像）
 - AVI视频播放（可选）
 
-### 2.4 蓝牙功能
+### 2.3 蓝牙功能
 - 蓝牙基础功能
 - A2DP音频接收
 - HFP免提通话
@@ -35,11 +28,10 @@
 
 ## 3 快速开始
 
-### 3.1 硬件准备
-- BK7258开发板
-- LCD屏幕
-- 可选：UVC摄像头模块
-- 电源和连接线
+### 3.1 硬件信息
+- 两轮车方案开发板V1.1（BK3515NS使用UART2与BK7258连接（开发板上从UART1开始标记））
+- LCD屏幕：1024x600
+- LCD转接板：v1.0(不兼容CAN功能)
 
 ### 3.2 编译和烧录
 
@@ -49,15 +41,33 @@
 
 编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
+BK3515NS bin文件获取路径：``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v01/``
+
 ### 3.3 基本操作流程
 
 详细操作流程请参考 `dashboard_app使用指南 <../dashboard_app/index.html>`_ 。
 
+手机APP配置参数如下：
+
+    +----------------+------------+------------+
+    | 手机参数配置   | 蓝牙导航   | WIFI导航   |
+    +================+============+============+
+    | 图像宽度       | 1024       | 1024       |
+    +----------------+------------+------------+
+    | 图像高度       | 600        | 600        |
+    +----------------+------------+------------+
+    | 图像质量       | 0-100      | 0-100      |
+    +----------------+------------+------------+
+    | 旋转角度       | 0          | 0          |
+    +----------------+------------+------------+
+    | JPEG转换       | 打开或关闭 | 打开或关闭 |
+    +----------------+------------+------------+
+
+
 ### 3.4 基本使用场景
 1. 设备开机，显示lvgl界面
 2. 连接到WiFi网络，显示wifi图传图像，同时将显示从lvgl切换到wifi图传，
-3. 使用UVC摄像头采集图像，编码为H.264格式，存储到SD卡上
-4. 当做音响播放音乐，当做耳机接听拨打电话
+3. 当做音响播放音乐，当做耳机接听拨打电话
 
 ## 4 命令行接口
 
@@ -72,34 +82,7 @@ ap_cmd test sta [ssid] [password]
 ap_cmd test ap [ssid] [password]
 ```
 
-### 4.2 摄像头控制命令
-```
-// 打开UVC摄像头，默认输出分辨率为864x480，帧率为30fps
-ap_cmd test uvc open [width] [height]
-
-// 关闭UVC摄像头
-ap_cmd test uvc close
-```
-
-### 4.3 H.264编码控制命令
-```
-// 打开H.264编码器，默认输出分辨率为864x480，帧率为30fps
-ap_cmd test h264e open [width] [height]
-
-// 关闭H.264编码器
-ap_cmd test h264e close
-```
-
-### 4.4 存储控制命令
-```
-// 打开存储功能
-ap_cmd test storage open [filename]
-
-// 关闭存储功能
-ap_cmd test storage close
-```
-
-### 4.5 显示切换命令
+### 4.2 显示切换命令
 ```
 // 切换到LVGL界面显示
 ap_cmd test switch lvgl
@@ -108,7 +91,7 @@ ap_cmd test switch lvgl
 ap_cmd test switch wifi
 ```
 
-### 4.6 视频服务器控制命令
+### 4.3 视频服务器控制命令
 ```
 // 打开视频服务器
 ap_cmd test video_server open
@@ -117,7 +100,7 @@ ap_cmd test video_server open
 ap_cmd test video_server close
 ```
 
-### 4.7 蓝牙控制命令
+### 4.4 蓝牙控制命令
 - 必须和手机连接成功才能使用
 
 ```
@@ -158,100 +141,16 @@ headset pair_mode
 
 ## 5 API参考
 
-### 5.1 摄像头管理API
-
-#### 5.1.1 uvc_camera_open
-```c
-/**
- * @brief 打开UVC摄像头设备
- * @details 初始化UVC摄像头硬件，配置视频流参数，准备视频数据采集
- * @param pcWriteBuffer 输出缓冲区指针，用于返回操作结果信息
- * @param xWriteBufferLen 输出缓冲区长度，确保无缓冲区溢出
- * @param argc 命令行参数数量，用于解析配置选项
- * @param argv 命令行参数数组，包含设备配置参数
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t uvc_camera_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-#### 5.1.2 uvc_camera_close
-```c
-/**
- * @brief 关闭UVC摄像头设备
- * @details 释放摄像头资源，停止视频流采集，清理相关内存
- * @param pcWriteBuffer 输出缓冲区指针，用于返回操作结果信息
- * @param xWriteBufferLen 输出缓冲区长度，确保无缓冲区溢出
- * @param argc 命令行参数数量
- * @param argv 命令行参数数组
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t uvc_camera_close(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-### 5.2 H.264编码API
-
-#### 5.2.1 h264_encode_open
-```c
-/**
- * @brief 打开H.264编码器
- * @details 初始化H.264编码器，配置编码参数（分辨率、帧率、码率等）
- * @param pcWriteBuffer 输出缓冲区指针，用于返回操作结果信息
- * @param xWriteBufferLen 输出缓冲区长度，确保无缓冲区溢出
- * @param argc 命令行参数数量，用于解析编码器配置选项
- * @param argv 命令行参数数组，包含编码器配置参数
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t h264_encode_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-#### 5.2.2 h264_encode_close
-```c
-/**
- * @brief 关闭H.264编码器
- * @details 释放编码器资源，停止编码过程，清理相关内存
- * @param pcWriteBuffer 输出缓冲区指针，用于返回操作结果信息
- * @param xWriteBufferLen 输出缓冲区长度，确保无缓冲区溢出
- * @param argc 命令行参数数量
- * @param argv 命令行参数数组
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t h264_encode_close(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-### 5.3 存储API
-
-#### 5.3.1 h264e_storage_open
-```c
-/**
- * @brief 打开H.264流存储功能
- * @details 初始化存储系统，创建文件句柄，准备接收H.264流数据并写入存储介质
- * @param name 存储文件名，文件默认会以0-0xFFFF_name格式重命名存储
- * @param timer_interval 定时器间隔（毫秒），控制创建新文件的频率，小于1分钟的值会被设置为1分钟
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t h264e_storage_open(const char *name, uint32_t timer_interval);
-```
-
-#### 5.3.2 h264e_storage_close
-```c
-/**
- * @brief 关闭H.264流存储功能
- * @details 关闭存储文件，释放存储资源，确保流数据完全写入
- * @return 成功返回AVDK_ERR_OK，失败返回具体错误码
- */
-avdk_err_t h264e_storage_close(void);
-```
-
-### 5.4 帧缓冲区队列管理API
+### 5.1 帧缓冲区队列管理API
 
 本方案中存在两种帧缓冲区队列：
 
 1. frame_buffer_que：用于管理UVC摄像头输出的图像，和H264编码输出的图像；这里面UVC的图像会被解码后，经过H264编码成H264图像，最终可以存储到SD卡上
 2. media_data_process_que：用于管理导航时wif收到的图像，这里的图像会被用来解码显示到LCD屏幕上
 
-#### 5.4.1 frame_buffer_que
+#### 5.1.1 frame_buffer_que
 
-##### 5.4.1.1 frame_queue_init_all
+##### 5.1.1.1 frame_queue_init_all
 ```c
 /**
  * @brief 初始化所有帧队列数据结构
@@ -261,7 +160,7 @@ avdk_err_t h264e_storage_close(void);
 bk_err_t frame_queue_init_all(void);
 ```
 
-##### 5.4.1.2 frame_queue_deinit_all
+##### 5.1.1.2 frame_queue_deinit_all
 ```c
 /**
  * @brief 反初始化所有帧队列数据结构
@@ -271,7 +170,7 @@ bk_err_t frame_queue_init_all(void);
 bk_err_t frame_queue_deinit_all(void);
 ```
 
-##### 5.4.1.3 frame_queue_malloc
+##### 5.1.1.3 frame_queue_malloc
 ```c
 /**
  * @brief 分配帧缓冲区
@@ -283,7 +182,7 @@ bk_err_t frame_queue_deinit_all(void);
 frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 ```
 
-##### 5.4.1.4 frame_queue_get_frame
+##### 5.1.1.4 frame_queue_get_frame
 ```c
 /**
  * @brief 从就绪队列获取帧缓冲区
@@ -295,7 +194,7 @@ frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 ```
 
-##### 5.4.1.5 frame_queue_complete
+##### 5.1.1.5 frame_queue_complete
 ```c
 /**
  * @brief 将帧缓冲区返回就绪队列
@@ -307,7 +206,7 @@ frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 ```
 
-##### 5.4.1.6 frame_queue_free
+##### 5.1.1.6 frame_queue_free
 ```c
 /**
  * @brief 释放帧缓冲区并发送消息到空闲队列
@@ -318,9 +217,9 @@ bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 ```
 
-#### 5.4.2 media_data_process_que
+#### 5.1.2 media_data_process_que
 
-##### 5.4.2.1 media_frame_queue_init
+##### 5.1.2.1 media_frame_queue_init
 ```c
 /**
  * @brief 初始化frame_queue数据结构
@@ -335,7 +234,7 @@ void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 avdk_err_t media_frame_queue_init(image_format_t format);
 ```
 
-##### 5.4.2.2 media_frame_queue_deinit
+##### 5.1.2.2 media_frame_queue_deinit
 ```c
 /**
  * @brief 释放frame_queue数据结构
@@ -345,7 +244,7 @@ avdk_err_t media_frame_queue_init(image_format_t format);
 avdk_err_t media_frame_queue_deinit(void);
 ```
 
-##### 5.4.2.3 media_frame_queue_malloc
+##### 5.1.2.3 media_frame_queue_malloc
 ```c
 /**
  * @brief 从frame_queue中申请一个frame_buffer
@@ -356,7 +255,7 @@ avdk_err_t media_frame_queue_deinit(void);
 frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 ```
 
-##### 5.4.2.4 media_frame_queue_get_frame
+##### 5.1.2.4 media_frame_queue_get_frame
 ```c
 /**
  * @brief 从frame_queue的ready队列中获取一个frame_buffer
@@ -367,7 +266,7 @@ frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 ```
 
-##### 5.4.2.5 media_frame_queue_complete
+##### 5.1.2.5 media_frame_queue_complete
 ```c
 /**
  * @brief 将frame_buffer放回ready_que队列
@@ -378,7 +277,7 @@ frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 bk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 ```
 
-##### 5.4.2.6 media_frame_queue_free
+##### 5.1.2.6 media_frame_queue_free
 ```c
 /**
  * @brief 根据图像格式释放frame_buffer，并将消息发送到free_que
@@ -389,9 +288,9 @@ bk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 void media_frame_queue_free(frame_buffer_t *frame);
 ```
 
-### 5.5 LVGL应用API
+### 5.2 LVGL应用API
 
-#### 5.5.1 lvgl_app_init
+#### 5.2.1 lvgl_app_init
 ```c
 /**
  * @brief 初始化LVGL应用
@@ -400,7 +299,7 @@ void media_frame_queue_free(frame_buffer_t *frame);
 void lvgl_app_init(void);
 ```
 
-#### 5.5.2 lvgl_app_deinit
+#### 5.2.2 lvgl_app_deinit
 ```c
 /**
  * @brief 反初始化LVGL应用
@@ -410,7 +309,7 @@ void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
 ```
 
-#### 5.5.3 lvgl_app_suspend_display
+#### 5.2.3 lvgl_app_suspend_display
 ```c
 /**
  * @brief 暂停LVGL显示
@@ -420,7 +319,7 @@ bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 ```
 
-#### 5.5.4 lvgl_app_resume_display
+#### 5.2.4 lvgl_app_resume_display
 ```c
 /**
  * @brief 恢复LVGL显示
@@ -430,7 +329,7 @@ bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 ```
 
-### 5.6 导航应用API
+### 5.3 导航应用API
 
 针对流媒体来说导航的基本流程如下：
 
@@ -444,14 +343,14 @@ bk_err_t lvgl_app_resume_display(void);
 .. note::
     本解决方案是基于自定义的数据传输协议和导航数据格式的，用户可以自定义导航的数据格式和对应的解包流程
 
-#### 5.6.1 启动导航服务
+#### 5.3.1 启动导航服务
 
 启动导航服务包含两个方面：
 
 1. 初始化导航服务，准备接收导航数据，启动导航数据接收线程，监听导航数据端口
 2. 初始化解码服务，准备读取导航完整帧数据，启动解码线程，将LVGL显示切换到导航显示
 
-##### 5.6.1.1 初始化接收线程
+##### 5.3.1.1 初始化接收线程
 ```c
 /**
  * @brief 初始化视频数据处理线程
@@ -464,7 +363,7 @@ bk_err_t lvgl_app_resume_display(void);
 avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format_t format);
 ```
 
-##### 5.6.1.2 初始化解码线程
+##### 5.3.1.2 初始化解码线程
 ```c
 /**
  * @brief 启动JPEG解码管理器
@@ -479,7 +378,7 @@ avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-#### 5.6.2 接收导航数据
+#### 5.3.2 接收导航数据
 ```c
 /**
  * @brief 处理视频数据接收完成回调
@@ -492,11 +391,11 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_type_t type);
 ```
 
-#### 5.6.3 导航完整帧数据管理
+#### 5.3.3 导航完整帧数据管理
 
 导航完整的帧数据管理是由上面 `media_frame_queue_` 系列函数实现的，在导航开始之前需要初始化导航完整帧数据队列。
 
-#### 5.6.4 关闭导航
+#### 5.3.4 关闭导航
 
 在不考虑网络连接是否要断开的情况下，关闭导航服务需要执行以下步骤：
 
@@ -504,7 +403,7 @@ uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_
 2. 关闭JPEG解码管理器
 3. 释放导航完整帧数据队列
 
-##### 5.6.4.1 释放导航接收线程
+##### 5.3.4.1 释放导航接收线程
 
 ```c
 /**
@@ -515,7 +414,7 @@ uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_
 avdk_err_t video_data_process_close(void);
 ```
 
-##### 5.6.4.2 关闭解码线程
+##### 5.3.4.2 关闭解码线程
 ```c
 /**
  * @brief 关闭JPEG解码管理器
@@ -530,7 +429,7 @@ avdk_err_t video_data_process_close(void);
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-##### 5.6.4.3 释放导航完整帧数据队列
+##### 5.3.4.3 释放导航完整帧数据队列
 
 释放导航完整帧数据队列是由上面 `media_frame_queue_deinit` 函数实现的
 

@@ -4,7 +4,7 @@
 
 ## 1 Project Overview
 
-This project is a Scooter solution based on the BK7258 chip, enabling image data transmission via WiFi and display on LCD screens. The project integrates rich multimedia processing capabilities, network communication functions, and user interface display, suitable for the development of smart mobility devices.
+This project is a Scooter solution based on the BK7258 chip and BK3515NS chip, enabling image data transmission via WiFi and display on LCD screens. The project integrates rich multimedia processing capabilities, network communication functions, and user interface display, suitable for the development of smart mobility devices.
 
 ## 2 Features
 
@@ -13,20 +13,13 @@ This project is a Scooter solution based on the BK7258 chip, enabling image data
 - Support AP mode to create WiFi hotspots for other devices to connect
 - Support TCP/UDP protocol for image data transmission
 
-### 2.2 Multimedia Processing
-- UVC camera control and image acquisition, the camera needs to be a YUV422 camera, using hardware decoding during decoding
-- H.264 encoding function
-- Image data storage to SD card after H.264 encoding
-- Frame buffer management
-- WiFi image transmission decoding and display, using software decoding during decoding
-
-### 2.3 Display Functions
+### 2.2 Display Functions
 - LCD screen display
 - LVGL graphics library support
 - Support display switching (LVGL interface and WiFi image transmission)
 - AVI video playback (optional)
 
-### 2.4 Bluetooth Functions
+### 2.3 Bluetooth Functions
 - Support A2DP/HFP/HID protocols
 - Support classic Bluetooth and BLE controllers (multi-controller mode)
 - Support BLE broadcast and connection
@@ -34,11 +27,10 @@ This project is a Scooter solution based on the BK7258 chip, enabling image data
 
 ## 3 Quick Start
 
-### 3.1 Hardware Preparation
-- BK7258 development board
-- LCD screen
-- Optional: UVC camera module
-- Power supply and connecting cables
+### 3.1 Hardware Information
+- The Two-Wheeled Vehicle Development Board V1.2(BK3515NS defaults to using UART1 to connect with BK7258(Start from UART1 in development board))
+- LCD screen: 800x480
+- LCD Adapter Board V1.1 (Compatible with CAN Function)
 
 ### 3.2 Compilation and Burning
 
@@ -48,9 +40,27 @@ Please refer to [Burning Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/
 
 The path of the compiled burning bin file: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
+The path The path to obtain the bk3515ns bin file: ``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v02/``
+
 ### 3.3 Basic Operation Flow
 
 For detailed operation flow, please refer to [dashboard_app User Guide](../dashboard_app/index.html).
+
+The mobile app configuration is as follows:
+
+    +---------------+------------+------------+
+    |Mobile Config  |Bluetooth   |WIFI Nav    |
+    +===============+============+============+
+    |Image Width    |800         |480         |
+    +---------------+------------+------------+
+    |Image Height   |480         |320         |
+    +---------------+------------+------------+
+    |Image Quality  |0-100       |0-100       |
+    +---------------+------------+------------+
+    |Rotation Angle |0           |0           |
+    +---------------+------------+------------+
+    |JPEG Convert   |On or Off   |On or Off   |
+    +---------------+------------+------------+
 
 ### 3.4 Basic Usage Scenarios
 1. The device powers on and displays the lvgl interface
@@ -70,34 +80,7 @@ ap_cmd test sta [ssid] [password]
 ap_cmd test ap [ssid] [password]
 ```
 
-### 4.2 Camera Control Commands
-```
-// Open UVC camera, default resolution is 864X480 30fps
-ap_cmd test uvc open [width] [height]
-
-// Close UVC camera
-ap_cmd test uvc close
-```
-
-### 4.3 H.264 Encoding Control Commands
-```
-// Open H.264 encoder, default resolution is 864X480 30fps
-ap_cmd test h264e open [width] [height]
-
-// Close H.264 encoder
-ap_cmd test h264e close
-```
-
-### 4.4 Storage Control Commands
-```
-// Open storage function
-ap_cmd test storage open [filename]
-
-// Close storage function
-ap_cmd test storage close
-```
-
-### 4.5 Display Switching Commands
+### 4.2 Display Switching Commands
 ```
 // Switch to LVGL interface display
 ap_cmd test switch lvgl
@@ -106,7 +89,7 @@ ap_cmd test switch lvgl
 ap_cmd test switch wifi
 ```
 
-### 4.6 Video Server Control Commands
+### 4.3 Video Server Control Commands
 ```
 // Open video server
 ap_cmd test video_server open
@@ -115,7 +98,7 @@ ap_cmd test video_server open
 ap_cmd test video_server close
 ```
 
-### 4.7 bluetooth ctrl cmd
+### 4.4 bluetooth ctrl cmd
 - can be used when connection completed
 
 ```
@@ -156,100 +139,16 @@ headset pair_mode
 
 ## 5 API Reference
 
-### 5.1 Camera Management API
-
-#### 5.1.1 uvc_camera_open
-```c
-/**
- * @brief Open UVC camera device
- * @details Initialize UVC camera hardware, configure video stream parameters, prepare for video data capture
- * @param pcWriteBuffer Output buffer pointer for returning operation result information
- * @param xWriteBufferLen Output buffer length to ensure no buffer overflow
- * @param argc Command line argument count for parsing configuration options
- * @param argv Command line argument array containing device configuration parameters
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t uvc_camera_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-#### 5.1.2 uvc_camera_close
-```c
-/**
- * @brief Close UVC camera device
- * @details Release camera resources, stop video stream capture, clean up related memory
- * @param pcWriteBuffer Output buffer pointer for returning operation result information
- * @param xWriteBufferLen Output buffer length to ensure no buffer overflow
- * @param argc Command line argument count
- * @param argv Command line argument array
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t uvc_camera_close(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-### 5.2 H.264 Encoding API
-
-#### 5.2.1 h264_encode_open
-```c
-/**
- * @brief Open H.264 encoder
- * @details Initialize H.264 encoder, configure encoding parameters (resolution, frame rate, bitrate, etc.)
- * @param pcWriteBuffer Output buffer pointer for returning operation result information
- * @param xWriteBufferLen Output buffer length to ensure no buffer overflow
- * @param argc Command line argument count for parsing encoder configuration options
- * @param argv Command line argument array containing encoder configuration parameters
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t h264_encode_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-#### 5.2.2 h264_encode_close
-```c
-/**
- * @brief Close H.264 encoder
- * @details Release encoder resources, stop encoding process, clean up related memory
- * @param pcWriteBuffer Output buffer pointer for returning operation result information
- * @param xWriteBufferLen Output buffer length to ensure no buffer overflow
- * @param argc Command line argument count
- * @param argv Command line argument array
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t h264_encode_close(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
-```
-
-### 5.3 Storage API
-
-#### 5.3.1 h264e_storage_open
-```c
-/**
- * @brief Open H.264 stream storage function
- * @details Initialize storage system, create file handle, prepare to receive H.264 stream data and write to storage medium (SD card)
- * @param name Storage file name, files will be renamed and stored in 0-0xFFFF_name format by default
- * @param timer_interval Timer interval (milliseconds), controls how often to create a new file for storage, values less than 1min are set to 1min
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t h264e_storage_open(const char *name, uint32_t timer_interval);
-```
-
-#### 5.3.2 h264e_storage_close
-```c
-/**
- * @brief Close H.264 stream storage function
- * @details Close storage file, release storage resources, ensure stream data is completely written
- * @return Returns AVDK_ERR_OK on success, specific error code on failure
- */
-avdk_err_t h264e_storage_close(void);
-```
-
-### 5.4 Frame Buffer Queue Management API
+### 5.1 Frame Buffer Queue Management API
 
 This section describes the frame buffer queue management API in the scooter project. The project uses two types of frame buffer queues:
 
 1. frame_buffer_que：use to manage UVC camera output images and H.264 encoded images; UVC images will be decoded and H.264 encoded, and finally stored on the SD card
 2. media_data_process_que：use to manage images received over WiFi during navigation; these images will be decoded and displayed on the LCD screen
 
-#### 5.4.1 frame_buffer_que
+#### 5.1.1 frame_buffer_que
 
-##### 5.4.1.1 frame_queue_init_all
+##### 5.1.1.1 frame_queue_init_all
 ```c
 /**
  * @brief Initialize all frame queue data structures
@@ -259,7 +158,7 @@ This section describes the frame buffer queue management API in the scooter proj
 bk_err_t frame_queue_init_all(void);
 ```
 
-##### 5.4.1.2 frame_queue_deinit_all
+##### 5.1.1.2 frame_queue_deinit_all
 ```c
 /**
  * @brief Deinitialize all frame queue data structures
@@ -269,7 +168,7 @@ bk_err_t frame_queue_init_all(void);
 bk_err_t frame_queue_deinit_all(void);
 ```
 
-##### 5.4.1.3 frame_queue_malloc
+##### 5.1.1.3 frame_queue_malloc
 ```c
 /**
  * @brief Allocate a frame buffer
@@ -281,7 +180,7 @@ bk_err_t frame_queue_deinit_all(void);
 frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 ```
 
-##### 5.4.1.4 frame_queue_get_frame
+##### 5.1.1.4 frame_queue_get_frame
 ```c
 /**
  * @brief Get a frame buffer from the ready queue
@@ -293,7 +192,7 @@ frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 ```
 
-##### 5.4.1.5 frame_queue_complete
+##### 5.1.1.5 frame_queue_complete
 ```c
 /**
  * @brief Return a frame buffer to the ready queue
@@ -305,7 +204,7 @@ frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 ```
 
-##### 5.4.1.6 frame_queue_free
+##### 5.1.1.6 frame_queue_free
 ```c
 /**
  * @brief Free a frame buffer and send message to free queue
@@ -316,9 +215,9 @@ bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 ```
 
-#### 5.4.2 media_data_process_que
+#### 5.1.2 media_data_process_que
 
-##### 5.4.2.1 media_frame_queue_init
+##### 5.1.2.1 media_frame_queue_init
 ```c
 /**
  * @brief Initialize frame_queue data structure
@@ -333,7 +232,7 @@ void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 avdk_err_t media_frame_queue_init(image_format_t format);
 ```
 
-##### 5.4.2.2 media_frame_queue_deinit
+##### 5.1.2.2 media_frame_queue_deinit
 ```c
 /**
  * @brief Deinitialize frame_queue data structure
@@ -347,7 +246,7 @@ avdk_err_t media_frame_queue_init(image_format_t format);
 avdk_err_t media_frame_queue_deinit(void);
 ```
 
-##### 5.4.2.3 media_frame_queue_malloc
+##### 5.1.2.3 media_frame_queue_malloc
 ```c
 /**
  * @brief Allocate a frame buffer from the frame_queue
@@ -362,7 +261,7 @@ avdk_err_t media_frame_queue_deinit(void);
 frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 ```
 
-##### 5.4.2.4 media_frame_queue_get_frame
+##### 5.1.2.4 media_frame_queue_get_frame
 ```c
 /**
  * @brief Get a frame buffer from the ready queue
@@ -377,7 +276,7 @@ frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 ```
 
-##### 5.4.2.5 media_frame_queue_complete
+##### 5.1.2.5 media_frame_queue_complete
 ```c
 /**
  * @brief Return a frame buffer to the ready queue
@@ -392,7 +291,7 @@ frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 avdk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 ```
 
-##### 5.4.2.6 media_frame_queue_free
+##### 5.1.2.6 media_frame_queue_free
 ```c
 /**
  * @brief Free a frame buffer and send message to free queue
@@ -405,9 +304,9 @@ avdk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 void media_frame_queue_free(frame_buffer_t *frame);
 ```
 
-### 5.5 LVGL Application API
+### 5.2 LVGL Application API
 
-#### 5.5.1 lvgl_app_init
+#### 5.2.1 lvgl_app_init
 ```c
 /**
  * @brief Initialize LVGL application
@@ -416,7 +315,7 @@ void media_frame_queue_free(frame_buffer_t *frame);
 void lvgl_app_init(void);
 ```
 
-#### 5.5.2 lvgl_app_deinit
+#### 5.2.2 lvgl_app_deinit
 ```c
 /**
  * @brief Deinitialize LVGL application
@@ -426,7 +325,7 @@ void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
 ```
 
-#### 5.5.3 lvgl_app_suspend_display
+#### 5.2.3 lvgl_app_suspend_display
 ```c
 /**
  * @brief Suspend LVGL display
@@ -436,7 +335,7 @@ bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 ```
 
-#### 5.5.4 lvgl_app_resume_display
+#### 5.2.4 lvgl_app_resume_display
 ```c
 /**
  * @brief Resume LVGL display
@@ -446,7 +345,7 @@ bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 ```
 
-### 5.6 Navigation Application API
+### 5.3 Navigation Application API
 
 For streaming navigation, the basic flow is as follows:
 
@@ -460,14 +359,14 @@ For streaming navigation, the basic flow is as follows:
 .. note::
     This solution is based on a custom data transmission protocol and navigation data format. Users can customize the navigation data format and corresponding unpacking process.
 
-#### 5.6.1 Start Navigation Service
+#### 5.3.1 Start Navigation Service
 
 Starting the navigation service includes the following aspects:
 
 1. Initialize the navigation service, prepare to receive navigation data, start the navigation data receiving thread, and listen to the navigation data port
 2. Initialize the decoding service, prepare to read navigation complete frame data, start the decoding thread, and switch the LVGL display to navigation display
 
-##### 5.6.1.1 Initialize Receiving Thread
+##### 5.3.1.1 Initialize Receiving Thread
 ```c
 /**
  * @brief Initialize video data processing thread
@@ -480,7 +379,7 @@ Starting the navigation service includes the following aspects:
 avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format_t format);
 ```
 
-##### 5.6.1.2 Initialize Decoding Thread
+##### 5.3.1.2 Initialize Decoding Thread
 ```c
 /**
  * @brief Initialize JPEG decoding manager
@@ -494,7 +393,7 @@ avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format
 avdk_err_t av_server_jpeg_decode_manager_turn_on(uint32_t queue_size, uint32_t thread_priority, uint32_t stack_size, image_format_t output_format);
 ```
 
-#### 5.6.2 Receive Navigation Data
+#### 5.3.2 Receive Navigation Data
 ```c
 /**
  * @brief Handle video data receive complete callback
@@ -507,11 +406,11 @@ avdk_err_t av_server_jpeg_decode_manager_turn_on(uint32_t queue_size, uint32_t t
 uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_type_t type);
 ```
 
-#### 5.6.3 Navigation Complete Frame Data Management
+#### 5.3.3 Navigation Complete Frame Data Management
 
 Navigation complete frame data management is implemented by the `media_frame_queue_` series functions, please initialize the frame queue before using.
 
-#### 5.6.4 Close Navigation Service
+#### 5.3.4 Close Navigation Service
 
 In cases where network disconnection is not a concern, closing the navigation service requires the following steps:
 
@@ -519,7 +418,7 @@ In cases where network disconnection is not a concern, closing the navigation se
 2. Close the JPEG decoding manager
 3. Release the navigation complete frame data queue
 
-##### 5.6.4.1 Release Navigation Receiving Thread
+##### 5.3.4.1 Release Navigation Receiving Thread
 ```c
 /**
  * @brief Close video data processing thread
@@ -529,7 +428,7 @@ In cases where network disconnection is not a concern, closing the navigation se
 avdk_err_t video_data_process_close(void);
 ```
 
-##### 5.6.4.2 Close Decoding Thread
+##### 5.3.4.2 Close Decoding Thread
 ```c
 /**
  * @brief Close JPEG decoding manager
@@ -539,7 +438,7 @@ avdk_err_t video_data_process_close(void);
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-##### 5.6.4.3 Release Navigation Complete Frame Data Queue
+##### 5.3.4.3 Release Navigation Complete Frame Data Queue
 
 Release navigation complete frame data queue is implemented by the `media_frame_queue_deinit` function.
 
