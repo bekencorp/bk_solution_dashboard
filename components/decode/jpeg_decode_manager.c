@@ -358,6 +358,14 @@ bk_err_t jpeg_decode_manager_destroy(jpeg_decode_manager_t *manager)
     // Wait for thread to exit
     rtos_get_semaphore(&manager->decode_semaphore, BEKEN_WAIT_FOREVER);
 
+    frame_buffer_t *frame = NULL;
+    do {
+        frame = media_frame_queue_get_frame(500);
+        if (frame) {
+            media_frame_queue_free(frame);
+        }
+    } while (frame);
+
     if (g_jpeg_decode_manager->decoder_type == DECODER_TYPE_SW)
     {
         // Close and delete CP1 decoder
