@@ -67,9 +67,40 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 4. 代码烧录
 ------------------------------------
 
+4.1 母板
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
 编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
 烧录流程参考 `烧录代码 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/get-started/index.html#id7>`_
+
+4.2 3515
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
+1. 引出母板上H2的BT_P0/BT_P1/BT_RST/VBAT/GND，按以下方法接入串口小板
+    - BT_P0: 串口小板rx
+    - BT_P1: 串口小板tx
+    - BT_RST: 高
+    - VBAT: 3.3v供电
+    - GND: 地
+
+2. 下载Beken_BT_Toolkit_V7.6.0.14 `https://dl.bekencorp.com/tools/Beken_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ 或更新版本
+
+3. 下载3515固件 `https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+
+4. 打开Beken_BT_Toolkit，chipset选择bk3296，点击login
+
+5. 选择flash烧录，选择刚刚下载的3515固件。选择串口设置，更改对应的串口号
+
+6. 同时按住母板的3515NS RESET/7258 RESET键，等待5秒，点击Beken_BT_Toolkit下载按钮
+
+7. 松开3515NS RESET，此时可以看到正在下载，如果失败，从第6步重试
+
+8. 烧录成功会提示Download successful，此时可以松开7258 RESET
+
+.. note::
+
+    尽量让母版不工作可以提高烧录成功率。
 
 本文档基于Armino SMP架构, 帮助用户开发应用;
 
@@ -87,6 +118,3 @@ Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/armino
     示例工程 <projects/index>
 
 * :ref:`genindex`
-
-
-

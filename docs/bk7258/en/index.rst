@@ -70,9 +70,40 @@ Compile using Docker as follows::
 4. Code Burning
 ------------------------------------
 
+4.1 Mother board
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
 Path of the generated burning bin file after compilation: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
 For burning process, please refer to `Burning Code <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.0.1/get-started/index.html#burn-code>`_
+
+4.2 3515
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
+1. Connect BT_P0/BT_P1/BT_RST/VBAT/GND on mother board, lead to uart board below:
+    - BT_P0: uart board rx
+    - BT_P1: uart board tx
+    - BT_RST: high
+    - VBAT: 3.3v power
+    - GND: ground
+
+2. Download Beken_BT_Toolkit_V7.6.0.14 `https://dl.bekencorp.com/tools/Beken_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ or newest version
+
+3. Download 3515 firmware `https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+
+4. Launch Beken_BT_Toolkit，set bk3296 in chipset，click login
+
+5. Select flash download with 3515 firmware above. select uart setting，change uart id
+
+6. Press 3515NS RESET/7258 RESET on mother board simultaneously，wait 5 seconds，click Beken_BT_Toolkit download button.
+
+7. Relase 3515NS RESET，you will see download processing, if fail, try again from step 6
+
+8. It will prompt Download successful，you cant release 7258 RESET now.
+
+.. note::
+
+    It will increase download successfully rate when mother board doesn't work.
 
 This document is based on the Armino SMP architecture to help users develop applications.
 
@@ -90,6 +121,3 @@ For Communication Processor (CP) configuration and usage, please refer to `Armin
     Example Projects <projects/index>
 
 * :ref:`genindex`
-
-
-
