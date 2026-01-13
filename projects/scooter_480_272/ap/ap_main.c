@@ -491,7 +491,7 @@ static int32_t app_bsc_init(void)
             .flow_ctrl = UART_FLOWCTRL_DISABLE,
             .src_clk = UART_SCLK_XTAL_26M,
 
-            .enable_sw_flow_ctrl = 1,
+            .enable_sw_flow_ctrl = 0,
             .rts_gpio = CONFIG_BLUETOOTH_BSC_RTS_PIN,
             .cts_gpio = CONFIG_BLUETOOTH_BSC_CTS_PIN,
         },

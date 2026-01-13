@@ -425,6 +425,48 @@ static int32_t bsc_init(int32_t (*report)(uint8_t *data, uint32_t len))
         goto end;
     }
 
+    if (
+        s_bsc_config.uart_config.flow_ctrl == UART_FLOWCTRL_DISABLE &&
+#if CONFIG_UART_SW_FLOW_CTRL
+        !s_bsc_config.uart_config.enable_sw_flow_ctrl
+#else
+        1
+#endif
+    )
+    {
+        //for 3515 enable flow ctrl
+        gpio_config_t cfg = {.io_mode = GPIO_OUTPUT_ENABLE, .pull_mode = GPIO_PULL_DOWN_EN, .func_mode = GPIO_SECOND_FUNC_DISABLE};
+
+        LOGI("set rts gpio %d to low", s_bsc_config.uart_config.rts_gpio);
+
+        ret = gpio_dev_unmap(s_bsc_config.uart_config.rts_gpio);
+
+        if (ret)
+        {
+            LOGE("gpio %d rts unmap err %d", s_bsc_config.uart_config.rts_gpio, ret);
+            ret = -1;
+            goto end;
+        }
+
+        ret = bk_gpio_set_config(s_bsc_config.uart_config.rts_gpio, &cfg);
+
+        if (ret)
+        {
+            LOGE("gpio %d rts set config err %d", s_bsc_config.uart_config.rts_gpio, ret);
+            ret = -1;
+            goto end;
+        }
+
+        ret = bk_gpio_set_value(s_bsc_config.uart_config.rts_gpio, 0);
+
+        if (ret)
+        {
+            LOGE("gpio %d rts set value err %d", s_bsc_config.uart_config.rts_gpio, ret);
+            ret = -1;
+            goto end;
+        }
+    }
+
     ret = bsc_power_ctrl(0);
 
     if (ret)
