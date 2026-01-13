@@ -430,6 +430,7 @@ CONFIG_ICU=y
 #
 CONFIG_MEDIA_DISPLAY_SERVICE=y
 CONFIG_DISPLAY_RGB888_HIGH_BIT_SHIFT=y
+# CONFIG_RGB_FLUSH_BY_SOF is not set
 # end of Display Service
 
 #
@@ -517,7 +518,7 @@ CONFIG_BK_BLE_PROVISIONING=y
 CONFIG_BK_NTWK_TRANSFER=y
 # CONFIG_MEDIA_DROP_STRATEGY_ENABLE is not set
 CONFIG_DATA_NODE_SIZE=1472
-CONFIG_DATA_POOL_LEN=51520
+CONFIG_DATA_POOL_LEN=103040
 # end of Bk Network Transfer
 
 #
@@ -584,6 +585,7 @@ CONFIG_LCD_ST7282=y
 #
 # DVP Camera
 #
+# end of DVP Camera
 
 #
 # TP
@@ -1579,6 +1581,7 @@ CONFIG_PWM_V1PX=y
 # CONFIG_PWM_PM_CB_SUPPORT is not set
 # CONFIG_PWM_PHASE_SHIFT is not set
 # CONFIG_PWM_API_TEST is not set
+CONFIG_PWM_USE_DEFAULT_GPIO_MAP=y
 # end of PWM
 
 #
@@ -1855,10 +1858,10 @@ CONFIG_SPE=1
 # end of ARMINO Configuration
 
 #
-# Scooter_800_480 Example Configuration
+# Scooter_800_480_v2 Example Configuration
 #
 CONFIG_MEDIA_RECEIVE_DEMO=y
 CONFIG_MEDIA_DEMO_MODE_TCP=y
 CONFIG_LCD_PANEL_USE_800X480=y
 CONFIG_AVI_PLAYER_WITHOUT_LVGL=y
-# end of Scooter_800_480 Example Configuration
+# end of Scooter_800_480_v2 Example Configuration

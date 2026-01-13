@@ -185,7 +185,14 @@ static void avi_player_thread(beken_thread_arg_t data)
             lv_screen_load(bk_lv_tool_ui.page_1);
             lv_vendor_disp_unlock();
             g_avi_player_is_running = false;
-
+#if CONFIG_DISPLAY_RGB888_HIGH_BIT_SHIFT
+            bk_avi_player_close();
+            bk_avi_player_vfs_deinit();
+            rtos_deinit_semaphore(&g_avi_player_sem);
+            g_avi_player_sem = NULL;
+            os_free(lcd_frame_buffer);
+            lcd_frame_buffer = NULL;
+#endif
             break;
         }
 
