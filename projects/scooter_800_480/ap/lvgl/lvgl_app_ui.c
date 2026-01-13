@@ -233,7 +233,11 @@ bk_err_t bk_avi_player_start(char *file_path)
     }
 
     avi_player_config.file_path = file_path;
+#if CONFIG_DISPLAY_RGB888_HIGH_BIT_SHIFT
+    avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_RGB565;
+#else
     avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_YUYV;
+#endif
     avi_player_config.segment_flag = false;
     avi_player_config.rgb565_byte_swap_flag = false;
     ret = bk_avi_player_open(&avi_player_config);
@@ -265,7 +269,11 @@ bk_err_t bk_avi_player_start(char *file_path)
     lcd_frame_buffer->size = handle->frame_size;
     lcd_frame_buffer->width = handle->avi->width;
     lcd_frame_buffer->height = handle->avi->height;
+#if CONFIG_DISPLAY_RGB888_HIGH_BIT_SHIFT
+    lcd_frame_buffer->fmt = PIXEL_FMT_RGB565;
+#else
     lcd_frame_buffer->fmt = PIXEL_FMT_YUYV;
+#endif
 
     ret = rtos_create_thread(&g_avi_player_thread,
                             BEKEN_DEFAULT_WORKER_PRIORITY - 1,
