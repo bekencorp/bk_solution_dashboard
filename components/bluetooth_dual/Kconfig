@@ -1,0 +1,43 @@
+menu "Bluetooth_Dual"
+
+    config A2DP_SINK_DEMO
+        bool "a2dp sink demo"
+        depends on BT
+        default y
+
+    config HFP_HF_DEMO
+        bool "hfp hf demo"
+        depends on BT
+        default n
+
+    config BLUETOOTH_BSC_UART_ID
+        int "bluetooth secondary controller uart id, see UART_ID_0 == 0"
+        range 0 2
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 2
+
+    config BLUETOOTH_BSC_RESET_PIN
+        int "bluetooth secondary controller reset pin"
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 38
+    
+    config BLUETOOTH_BSC_CTS_PIN
+        int "bluetooth secondary controller cts pin"
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 28
+
+    config BLUETOOTH_BSC_RTS_PIN
+        int "bluetooth secondary controller rts pin"
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 29
+
+    config BLUETOOTH_BSC_INIT_BAUD
+        int "bluetooth secondary controller init baud"
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 115200
+
+    config BLUETOOTH_BSC_NEGO_BAUD
+        int "bluetooth secondary controller nego baud"
+        depends on BLUETOOTH_MULTI_CONTROLLER
+        default 2000000
+endmenu

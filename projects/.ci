@@ -1,1 +1,3 @@
-cd scooter;make bk7258
+cd scooter_480_272;make bk7258
+cd scooter_800_480;make bk7258
+cd scooter_1024_600;make bk7258

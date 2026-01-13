@@ -1,0 +1,20 @@
+menu "Scooter_480_272 Example Configuration"
+
+    config MEDIA_RECEIVE_DEMO
+        bool "media receive other device data"
+        depends on MEDIA
+        default n
+
+    config MEDIA_DEMO_MODE_TCP
+        bool "MEDIA RECEIVE DEMO USE TCP MODE"
+        depends on MEDIA_RECEIVE_DEMO
+        default n
+
+    config LCD_PANEL_USE_480X272
+        bool "LCD Panel Use 480x272"
+        default y
+
+    config AVI_PLAYER_WITHOUT_LVGL
+        bool "Enable AVI Player without LVGL"
+        default n
+endmenu
