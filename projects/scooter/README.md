@@ -49,11 +49,8 @@ Please refer to [Burning Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/
 The path of the compiled burning bin file: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
 ### 3.3 Basic Operation Flow
-1. Power on the device
-2. Configure WiFi connection mode (STA or AP) via serial commands
-3. Run the corresponding image sending application on the phone
-4. Ensure the phone and device are on the same network segment and connect to the device IP via TCP
-5. The phone sends image data, and the device receives and displays the image
+
+For detailed operation flow, please refer to [dashboard_app User Guide](../dashboard_app/index.html).
 
 ### 3.4 Basic Usage Scenarios
 1. The device powers on and displays the lvgl interface

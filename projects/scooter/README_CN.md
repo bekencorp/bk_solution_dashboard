@@ -50,13 +50,8 @@
 编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
 ### 3.3 基本操作流程
-1. 设备上电启动
-2. 通过串口命令配置WiFi连接方式（STA或AP）
-3. 在手机上运行配套的图像发送应用
-4. 手机与设备在同一网段，通过TCP连接设备IP
-5. 手机发送图像数据，设备接收并显示图像
-6. 手机连接soundbar_xxxxxx的设备，并播放歌曲
-7. 手机拨打电话，可以当做耳机对话
+
+详细操作流程请参考 `dashboard_app使用指南 <../dashboard_app/index.html>`_ 。
 
 ### 3.4 基本使用场景
 1. 设备开机，显示lvgl界面
