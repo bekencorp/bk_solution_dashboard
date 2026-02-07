@@ -1,4 +1,4 @@
-# Scooter Project Development Guide
+# scooter_1024_600 Development Guide
 
 * [中文](./README_CN.md)
 
@@ -20,17 +20,27 @@ This project is a Scooter solution based on the BK7258 chip and BK3515NS chip, e
 - AVI video playback (optional)
 
 ### 2.3 Bluetooth Functions
-- Support A2DP/HFP/HID protocols
-- Support classic Bluetooth and BLE controllers (multi-controller mode)
-- Support BLE broadcast and connection
-- Support Bluetooth power management
+- Basic Bluetooth functions
+- A2DP audio reception
+- HFP hands-free calling
+- BLE functions
+- WiFi configuration via Bluetooth
 
 ## 3 Quick Start
 
 ### 3.1 Hardware Information
-- The Two-Wheeled Vehicle Development Board V1.1(BK3515NS use UART2 to connect with BK7258(Start from UART1 in development board))
+- The Two-Wheeled Vehicle Development Board V1.1 20250904 (BK3515NS uses UART2 to connect with BK7258 (UART1 is the first UART marked on the development board))
 - LCD screen: 1024x600
-- LCD Adapter Board V1.0 (Incompatible with CAN Function)
+- LCD Adapter Board: v1.0 20250905 (Incompatible with CAN function)
+
+.. note::
+    Differences between Two-Wheeled Vehicle Development Board V1.1 20250904 and V1.2 20251027:
+     - On V1.2 20251027 development board, the UART connection between BK7258 and BK3515NS can be freely selected, default is UART1, UART1 corresponds to BK3515NS firmware V02 bin;
+     - On V1.1 20250904 development board, the UART connection between BK7258 and BK3515NS cannot be selected, must be UART2, UART2 corresponds to BK3515NS firmware V01 bin.
+
+    Differences between LCD Adapter Board V1.0 20250905 and V1.1 20251114:
+     - V1.1 20251114 is compatible with CAN function, can only use projects with V2 suffix;
+     - V1.0 20250905 is not compatible with CAN function, can only use projects without V2 suffix.
 
 ### 3.2 Compilation and Burning
 
@@ -63,9 +73,9 @@ The mobile app configuration is as follows:
     +---------------+------------+------------+
 
 ### 3.4 Basic Usage Scenarios
-1. The device powers on and displays the lvgl interface
-2. Connect to WiFi network, display WiFi image transmission, and switch display from lvgl to WiFi image transmission
-3. Use UVC camera to capture images, encode to H.264 format, and store to SD card
+1. Device powers on and displays LVGL interface
+2. Connect to WiFi network, display WiFi image transmission, and switch display from LVGL to WiFi image transmission
+3. Use as audio speaker to play music, use as headset to answer and make calls
 
 ## 4 Command Line Interface
 
@@ -98,8 +108,8 @@ ap_cmd test video_server open
 ap_cmd test video_server close
 ```
 
-### 4.4 bluetooth ctrl cmd
-- can be used when connection completed
+### 4.4 Bluetooth Control Commands
+- Can only be used after successful connection with mobile phone
 
 ```
 // connection to peer
@@ -349,7 +359,7 @@ bk_err_t lvgl_app_resume_display(void);
 
 For streaming navigation, the basic flow is as follows:
 
-1. Start navigation service
+1. Start navigation service, initialize navigation complete data queue
 2. Receive navigation data
 3. Parse navigation data, output complete frame
 4. Decode navigation complete frame data
@@ -408,7 +418,7 @@ uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_
 
 #### 5.3.3 Navigation Complete Frame Data Management
 
-Navigation complete frame data management is implemented by the `media_frame_queue_` series functions, please initialize the frame queue before using.
+Navigation complete frame data management is implemented by the `media_frame_queue_` series functions above. The navigation complete frame data queue needs to be initialized before starting navigation.
 
 #### 5.3.4 Close Navigation Service
 
@@ -446,12 +456,12 @@ Release navigation complete frame data queue is implemented by the `media_frame_
 
 1. Ensure the phone and device are on the same WiFi network segment
 2. Device IP address can be viewed through serial commands
-3. LVGL interface display will be paused during image transmission
-4. After transmission, you can resume LVGL display with the command: `ap_cmd test switch lvgl`
+3. LVGL interface display will be paused when switching to navigation image
+4. After completion, LVGL display can be restored with the command: `ap_cmd test switch lvgl`
 5. When using a UVC camera, ensure correct hardware connection and sufficient power supply
-6. Storage function requires SD card support, and the SD card needs to be properly formatted
-7. Ensure the phone and device are on the same WiFi network segment
-8. default BK7258 uses GPIO_28 to control USB LDO, pull high to power on, note GPIO conflict issues
+6. Storage function requires SD card support
+7. When modifying WiFi name and password, ensure compliance with WiFi specifications
+8. BK7258 default uses GPIO_28 to control USB LDO, pull high to power on, note GPIO conflict issues
 
 ## 7 System Architecture
 
@@ -466,11 +476,11 @@ Each module interacts through clear API interfaces, ensuring system maintainabil
 
 
 
-## 7 Important Processes
+## 8 Important Processes
 
 Key processes in this project
 
-### 7.1 Bluetooth
+### 8.1 Bluetooth
 #### 8.1.1 A2DP/AVRCP Initialization
 Initialize A2DP in a2dp_sink_demo_init:
 
@@ -731,8 +741,8 @@ static void bt_audio_sink_demo_main(void *arg)
 }
 ```
 
-### 8.1.4 avrcp Callback Processing
-avrcp ct
+### 8.1.4 AVRCP Callback Processing
+AVRCP CT
 
 ```c
 static void bk_bt_app_avrcp_ct_cb(bk_avrcp_ct_cb_event_t event, bk_avrcp_ct_cb_param_t *param)
@@ -769,7 +779,7 @@ static void bk_bt_app_avrcp_ct_cb(bk_avrcp_ct_cb_event_t event, bk_avrcp_ct_cb_p
 }
 ```
 
-avrcp tg
+AVRCP TG
 
 ```c
 static void avrcp_tg_cb(bk_avrcp_tg_cb_event_t event, bk_avrcp_tg_cb_param_t *param)
@@ -827,10 +837,10 @@ static void avrcp_tg_cb(bk_avrcp_tg_cb_event_t event, bk_avrcp_tg_cb_param_t *pa
 }
 ```
 
-### 8.1.5 avrcp active control
-call bk_bt_app_avrcp_ct_xxx
+### 8.1.5 AVRCP Active Control
+Call bk_bt_app_avrcp_ct_xxx
 
-### 8.1.6 hfp init
+### 8.1.6 HFP Initialization
 
 ```c
 int hfp_hf_demo_init(uint8_t msbc_supported)
@@ -864,7 +874,7 @@ int hfp_hf_demo_init(uint8_t msbc_supported)
 }
 ```
 
-### 8.1.7 hfp calllback processing
+### 8.1.7 HFP Callback Processing
 
 ```c
 static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_cb_param_t *param)
@@ -1076,8 +1086,7 @@ static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_
 Similar to A2DP audio data callback processing, but the data format is PCM.
 
 ### 8.1.9 HFP Upstream Data Processing
-
-When a BT_AUDIO_VOICE_START_MSG is received, first start the Blue Audio Recorder, then call mic_task_init to launch the mic_task task. This task reads data (currently PCM) from the Blue Audio Recorder.
+When BT_AUDIO_VOICE_START_MSG is received, first start blue audio recorder, then call mic_task_init to start mic_task task, read data (currently PCM) from blue audio recorder
 
 ```c
 static void mic_task(void *arg)
