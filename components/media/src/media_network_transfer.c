@@ -73,12 +73,8 @@ bk_err_t media_bk_net_frame_send (frame_buffer_t *data)
     s_media_video_cfg->debug_info.wifi_transfer_frame_count++;
     s_media_video_cfg->debug_info.wifi_transfer_frame_size += data->length;
 
-#if defined(CONFIG_LVGL) && CONFIG_LVGL
-    /*
-     * UVC preview is only useful when current LVGL view is UVC.
-     * If current view is navigation, drop this frame directly to save decode/queue pressure.
-     */
-    if (lvgl_app_get_view() != LVGL_VIEW_NAVIGATION)
+#if CONFIG_LVGL
+    if (lvgl_app_get_view() == LVGL_VIEW_UVC)
     {
         media_frame_queue_free(data);
         return BK_OK;
