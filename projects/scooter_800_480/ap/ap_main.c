@@ -136,7 +136,7 @@ void media_receive_softap_demo_init(void)
 void media_receive_p2p_demo_init(void)
 {
     LOGD("+++start p2p connect\n");
-    BK_LOG_ON_ERR(bk_wifi_p2p_enable(p2p_ssid));
+    BK_LOG_ON_ERR(bk_wifi_p2p_enable_with_intent(p2p_ssid, 15));
     BK_LOG_ON_ERR(bk_wifi_p2p_find());
 
 #if CONFIG_MEDIA_DEMO_MODE_TCP

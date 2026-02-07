@@ -645,7 +645,7 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
                 os_strcpy(p2p_name, "bk_db_p2p_000000");
             }
 
-            bk_wifi_p2p_enable(p2p_name);
+            bk_wifi_p2p_enable_with_intent(p2p_name, 15);
             bk_wifi_p2p_find();
 
             // 发送成功状态码 0 给手机APP
