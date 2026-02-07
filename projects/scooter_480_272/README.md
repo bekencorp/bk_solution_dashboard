@@ -35,8 +35,8 @@ This project is a Scooter solution based on the BK7258 chip and BK3515NS chip, e
 
 .. note::
     Differences between Two-Wheeled Vehicle Development Board V1.1 20250904 and V1.2 20251027:
-     - On V1.2 20251027 development board, the UART connection between BK7258 and BK3515NS can be freely selected, default is UART1, UART1 corresponds to BK3515NS firmware V02 bin;
-     - On V1.1 20250904 development board, the UART connection between BK7258 and BK3515NS cannot be selected, must be UART2, UART2 corresponds to BK3515NS firmware V01 bin.
+     - On V1.2 20251027 development board, the UART connection between BK7258 and BK3515NS is UART1;
+     - On V1.1 20250904 development board, the UART connection between BK7258 and BK3515NS is UART2.
 
     Differences between LCD Adapter Board V1.0 20250905 and V1.1 20251114:
      - V1.1 20251114 is compatible with CAN function, can only use projects with V2 suffix;
@@ -50,7 +50,7 @@ Please refer to [Burning Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/
 
 The path of the compiled burning bin file: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
-The path The path to obtain the bk3515ns bin file: ``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v01/``
+bk3515ns see: ``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
 
 ### 3.3 Basic Operation Flow
 

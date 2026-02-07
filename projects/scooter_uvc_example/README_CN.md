@@ -44,7 +44,7 @@
 
 编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
-BK3515NS bin文件获取路径：``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v01/``
+BK3515NS参见：``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
 
 ### 3.3 基本操作流程
 

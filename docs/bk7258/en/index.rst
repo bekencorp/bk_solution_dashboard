@@ -81,8 +81,8 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 1. Connect BT_P0/BT_P1/BT_RST/VBAT/GND on mother board, lead to uart board below:
-    - BT_P0: uart board rx
-    - BT_P1: uart board tx
+    - BT_P0: uart board rx, be careful that some uart board tx/rx is confused.
+    - BT_P1: uart board tx, be careful that some uart board tx/rx is confused.
     - BT_RST: high
     - VBAT: 3.3v power
     - GND: ground
@@ -90,6 +90,16 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 2. Download Beken_BT_Toolkit_V7.6.0.14 `https://dl.bekencorp.com/tools/Beken_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ or newest version
 
 3. Download 3515 firmware `https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+
+- relationship:
+
+    +------------------+----------------------+----------------+------------------+
+    | EVB version      | relative dir         | 3515 used uart | bk7258 used uart |
+    +------------------+----------------------+----------------+------------------+
+    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11        | P30 P31          |
+    +------------------+----------------------+----------------+------------------+
+    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1          | P30 P31          |
+    +------------------+----------------------+----------------+------------------+
 
 4. Launch Beken_BT_Toolkit，set bk3296 in chipset，click login
 
@@ -100,6 +110,8 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 7. Relase 3515NS RESET，you will see download processing, if fail, try again from step 6
 
 8. It will prompt Download successful，you cant release 7258 RESET now.
+
+9. Disconnect all connected wires above, press 7258 RESET
 
 .. note::
 

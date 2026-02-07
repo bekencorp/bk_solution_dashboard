@@ -35,8 +35,8 @@
 
 .. note::
     两轮车方案开发板V1.1 20250904和V1.2 20251027的差异：
-     - V1.2 20251027开发板上BK7258和BK3515NS的连接串口可以自由选择，默认使用UART1，UART1对应BK3515NS烧录V02的bin；
-     - V1.1 20250904开发板上BK7258和BK3515NS的连接串口无法选择，只能是UART2，UART2对应BK3515NS烧录V01的bin。
+     - V1.2 20251027开发板上BK7258和BK3515NS的连接串口使用UART1；
+     - V1.1 20250904开发板上BK7258和BK3515NS的连接串口使用UART2。
 
     LCD转接板V1.0 20250905和V1.1 20251114的差异：
      - V1.1 20251114兼容CAN功能，只能使用后缀名带V2的工程，V1.0 20250905不兼容CAN功能，只能使用后缀名不带V2的工程。
@@ -49,7 +49,7 @@
 
 编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
-BK3515NS bin文件获取路径：``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v02/``
+BK3515NS参见：``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
 
 ### 3.3 基本操作流程
 

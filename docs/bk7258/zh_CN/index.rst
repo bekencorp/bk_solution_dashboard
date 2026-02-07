@@ -78,8 +78,8 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 1. 引出母板上H2的BT_P0/BT_P1/BT_RST/VBAT/GND，按以下方法接入串口小板
-    - BT_P0: 串口小板rx
-    - BT_P1: 串口小板tx
+    - BT_P0: 串口小板rx, 注意，某些串口小板tx rx是反的
+    - BT_P1: 串口小板tx，注意，某些串口小板tx rx是反的
     - BT_RST: 高
     - VBAT: 3.3v供电
     - GND: 地
@@ -87,6 +87,16 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 2. 下载Beken_BT_Toolkit_V7.6.0.14 `https://dl.bekencorp.com/tools/Beken_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ 或更新版本
 
 3. 下载3515固件 `https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+
+- 对应关系:
+
+    +------------------+----------------------+---------------+----------------+
+    | EVB版本          | 对应固件目录         | 3515使用串口  | bk7258使用串口 |
+    +------------------+----------------------+---------------+----------------+
+    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11       | P30 P31        |
+    +------------------+----------------------+---------------+----------------+
+    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1         | P30 P31        |
+    +------------------+----------------------+---------------+----------------+
 
 4. 打开Beken_BT_Toolkit，chipset选择bk3296，点击login
 
@@ -97,6 +107,8 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 7. 松开3515NS RESET，此时可以看到正在下载，如果失败，从第6步重试
 
 8. 烧录成功会提示Download successful，此时可以松开7258 RESET
+
+9. 拔掉所有引出的线，按7258 RESET复位
 
 .. note::
 

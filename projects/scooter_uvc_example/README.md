@@ -44,7 +44,7 @@ Please refer to [Burning Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/
 
 The path of the compiled burning bin file: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
 
-The path The path to obtain the bk3515ns bin file: ``https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller/v01/``
+bk3515ns see: ``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
 
 ### 3.3 Basic Operation Flow
 
