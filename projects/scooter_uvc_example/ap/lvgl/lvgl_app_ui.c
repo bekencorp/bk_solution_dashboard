@@ -60,7 +60,7 @@ static lv_image_dsc_t avi_img_dsc =
 #define LCD_LDO_IO GPIO_39
 
 bk_display_rgb_ctlr_config_t rgb_config = {
-    .lcd_device = &lcd_device_st7282,
+    .lcd_device = &lcd_device_h050iwv,
     .clk_pin = -1,
     .cs_pin = -1,
     .sda_pin = -1,
@@ -380,7 +380,7 @@ void lvgl_app_init(void)
     init_page_page_1(&bk_lv_tool_ui);
     lv_vendor_disp_unlock();
 
-    ret = bk_avi_player_start(PATH_SD_FILE("animation_480_272.avi"));
+    ret = bk_avi_player_start(PATH_SD_FILE("animation_800_480.avi"));
     if (ret != BK_OK) {
         LOGE("%s %d bk_avi_player_start failed\r\n", __func__, __LINE__);
         lv_vendor_disp_lock();
@@ -400,8 +400,8 @@ void lvgl_app_init(void)
         LOGE("%s %d bk_avi_player_vfs_init failed\r\n", __func__, __LINE__);
         goto avi_player_fail;
     }
-
-    avi_player_config.file_path = PATH_SD_FILE("animation_480_272.avi");
+ 
+    avi_player_config.file_path = PATH_SD_FILE("animation_800_480.avi");
     avi_player_config.output_format = AVI_PLAYER_OUTPUT_FORMAT_RGB565;
     avi_player_config.segment_flag = false;
     avi_player_config.rgb565_byte_swap_flag = false;
@@ -486,23 +486,30 @@ bk_err_t lvgl_app_resume_display(void)
     return BK_OK;
 }
 
-
-#define NAVIGATION_MAP_WIDTH         265
-#define NAVIGATION_MAP_HEIGHT        195
+#define LVGL_DATA_WIDTH         480
+#define LVGL_DATA_HEIGHT        320
 
 static bool navigation_is_opened = false;
-static bool navigation_map_is_first_frame = true;
-static beken_semaphore_t navigation_map_dma2d_sem = NULL;
-static uint8_t *navigation_map_data_rgb565 = NULL;
-static bool navigation_map_dma2d_is_initialized = false;
+static bool navigation_is_first_frame = true;
+static beken_semaphore_t lvgl_dma2d_sem = NULL;
+static uint8_t *lvgl_data_rgb565 = NULL;
+static bool lvgl_dma2d_is_initialized = false;
+
+
+static bool uvc_is_opened = false;
+static bool uvc_is_first_frame = true;
 static lvgl_view_t s_lvgl_view = LVGL_VIEW_DEFAULT;
 
-static lv_image_dsc_t navigation_map = {
+/* Forward declarations (used before definitions) */
+void lvgl_app_exit_uvc(void);
+
+/* Shared LVGL image descriptor for both navigation and UVC views */
+static lv_image_dsc_t lvgl_video_img = {
     .header.cf = LV_COLOR_FORMAT_RGB565,
     .header.magic = LV_IMAGE_HEADER_MAGIC,
-    .header.w = NAVIGATION_MAP_WIDTH,
-    .header.h = NAVIGATION_MAP_HEIGHT,
-    .data_size = NAVIGATION_MAP_WIDTH * NAVIGATION_MAP_HEIGHT * sizeof(bk_color_t),
+    .header.w = LVGL_DATA_WIDTH,
+    .header.h = LVGL_DATA_HEIGHT,
+    .data_size = LVGL_DATA_WIDTH * LVGL_DATA_HEIGHT * sizeof(bk_color_t),
     .data = NULL,
     .reserved = NULL,
 };
@@ -519,21 +526,22 @@ static void navigation_map_dma2d_transfer_error(void *arg)
 
 static void navigation_map_dma2d_transfer_complete(void *arg)
 {
-    rtos_set_semaphore(&navigation_map_dma2d_sem);
+    rtos_set_semaphore(&lvgl_dma2d_sem);
 }
 
-bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void)
+bk_err_t lvgl_dma2d_yuyv2rgb565_init(void)
 {
     bk_err_t ret;
 
-    if (navigation_map_dma2d_is_initialized) {
+    /* Shared DMA2D resources for both navigation and UVC views */
+    if (lvgl_dma2d_is_initialized) {
         LOGW("%s already initialized\n", __func__);
         return BK_OK;
     }
 
-    ret = rtos_init_semaphore_ex(&navigation_map_dma2d_sem, 1, 0);
+    ret = rtos_init_semaphore_ex(&lvgl_dma2d_sem, 1, 0);
     if (BK_OK != ret) {
-        LOGE("%s %d navigation_map_dma2d_sem init failed\n", __func__, __LINE__);
+        LOGE("%s %d lvgl_dma2d_sem init failed\n", __func__, __LINE__);
         return ret;
     }
 
@@ -543,22 +551,22 @@ bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void)
     bk_dma2d_register_int_callback_isr(DMA2D_TRANS_COMPLETE_ISR, navigation_map_dma2d_transfer_complete, NULL);
     bk_dma2d_int_enable(DMA2D_CFG_ERROR | DMA2D_TRANS_ERROR | DMA2D_TRANS_COMPLETE, 1);
 
-    navigation_map_data_rgb565 = psram_malloc(NAVIGATION_MAP_WIDTH * NAVIGATION_MAP_HEIGHT * sizeof(bk_color_t));
-    if (navigation_map_data_rgb565 == NULL) {
-        LOGE("%s %d navigation_map_data_rgb565 malloc failed\r\n", __func__, __LINE__);
+    lvgl_data_rgb565 = psram_malloc(LVGL_DATA_WIDTH * LVGL_DATA_HEIGHT * sizeof(bk_color_t));
+    if (lvgl_data_rgb565 == NULL) {
+        LOGE("%s %d lvgl_data_rgb565 malloc failed\r\n", __func__, __LINE__);
         return BK_FAIL;
     }
 
-    navigation_map_dma2d_is_initialized = true;
+    lvgl_dma2d_is_initialized = true;
 
     return ret;
 }
 
-bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void)
+bk_err_t lvgl_dma2d_yuyv2rgb565_deinit(void)
 {
     bk_err_t ret;
 
-    if (!navigation_map_dma2d_is_initialized) {
+    if (!lvgl_dma2d_is_initialized) {
         LOGW("%s already deinitialized\n", __func__);
         return BK_OK;
     }
@@ -566,22 +574,32 @@ bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void)
     bk_dma2d_stop_transfer();
     bk_dma2d_int_enable(DMA2D_CFG_ERROR | DMA2D_TRANS_ERROR | DMA2D_TRANS_COMPLETE, 0);
     bk_dma2d_driver_deinit();
-    ret = rtos_deinit_semaphore(&navigation_map_dma2d_sem);
+    ret = rtos_deinit_semaphore(&lvgl_dma2d_sem);
     if (BK_OK != ret) {
-        LOGE("%s %d navigation_map_dma2d_sem deinit failed\n", __func__, __LINE__);
+        LOGE("%s %d lvgl_dma2d_sem deinit failed\n", __func__, __LINE__);
     }
 
-    if (navigation_map_data_rgb565) {
-        psram_free(navigation_map_data_rgb565);
-        navigation_map_data_rgb565 = NULL;
+    if (lvgl_data_rgb565) {
+        psram_free(lvgl_data_rgb565);
+        lvgl_data_rgb565 = NULL;
     }
 
-    navigation_map_dma2d_is_initialized = false;
+    lvgl_dma2d_is_initialized = false;
 
     return ret;
 }
 
-static void navigation_map_dma2d_yuyv2rgb565(void *src, const void *dst, uint16_t width, uint16_t height, bool byte_swap)
+bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void)
+{
+    return lvgl_dma2d_yuyv2rgb565_init();
+}
+
+bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void)
+{
+    return lvgl_dma2d_yuyv2rgb565_deinit();
+}
+
+static void lvgl_dma2d_yuyv2rgb565(void *src, void *dst, uint16_t width, uint16_t height, bool byte_swap)
 {
     dma2d_memcpy_pfc_t dma2d_memcpy_pfc = {0};
 
@@ -605,16 +623,12 @@ static void navigation_map_dma2d_yuyv2rgb565(void *src, const void *dst, uint16_
     dma2d_memcpy_pfc.input_red_blue_swap = 0;
     dma2d_memcpy_pfc.output_red_blue_swap = 0;
 
-    if (byte_swap) {
-        dma2d_memcpy_pfc.out_byte_by_byte_reverse = 1;
-    } else {
-        dma2d_memcpy_pfc.out_byte_by_byte_reverse = 0;
-    }
+    dma2d_memcpy_pfc.out_byte_by_byte_reverse = byte_swap ? 1 : 0;
 
     bk_dma2d_memcpy_or_pixel_convert(&dma2d_memcpy_pfc);
     bk_dma2d_start_transfer();
 
-    rtos_get_semaphore(&navigation_map_dma2d_sem, BEKEN_NEVER_TIMEOUT);
+    rtos_get_semaphore(&lvgl_dma2d_sem, BEKEN_NEVER_TIMEOUT);
 }
 
 void lvgl_app_enter_navigation(void)
@@ -624,10 +638,19 @@ void lvgl_app_enter_navigation(void)
         return;
     }
 
+    if (uvc_is_opened)
+    {
+        /* Only one “video-like” view is allowed at a time */
+        LOGW("%s %d uvc view is opened, exit uvc first\r\n", __func__, __LINE__);
+        /* safe: loads page_1 and deletes uvc screen */
+        lvgl_app_exit_uvc();
+    }
+
     lv_vendor_disp_lock();
     init_page_page_2(&bk_lv_tool_ui);
     lv_vendor_disp_unlock();
 
+    navigation_is_first_frame = true;
     navigation_is_opened = true;
     s_lvgl_view = LVGL_VIEW_NAVIGATION;
 }
@@ -644,7 +667,7 @@ void lvgl_app_exit_navigation(void)
     destroy_page_page_2(&bk_lv_tool_ui);
     lv_vendor_disp_unlock();
 
-    navigation_map_is_first_frame = true;
+    navigation_is_first_frame = true;
     navigation_is_opened = false;
     if (s_lvgl_view == LVGL_VIEW_NAVIGATION)
     {
@@ -659,26 +682,26 @@ void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_
         return;
     }
 
-    if (navigation_map.data_size != data_len) {
-        LOGE("%s %d data_len is not equal to navigation_map.data_size\r\n", __func__, __LINE__);
+    if (lvgl_video_img.data_size != data_len) {
+        LOGE("%s %d data_len is not equal to lvgl_video_img.data_size\r\n", __func__, __LINE__);
         return;
     }
 
     if (data_is_rgb565 == false) {
-        navigation_map_dma2d_yuyv2rgb565(data, navigation_map_data_rgb565, NAVIGATION_MAP_WIDTH, NAVIGATION_MAP_HEIGHT, false);
-        navigation_map.data = navigation_map_data_rgb565;
+        lvgl_dma2d_yuyv2rgb565(data, lvgl_data_rgb565, LVGL_DATA_WIDTH, LVGL_DATA_HEIGHT, false);
+        lvgl_video_img.data = lvgl_data_rgb565;
     } else {
-        navigation_map.data = data;
+        lvgl_video_img.data = data;
     }
 
     lv_vendor_disp_lock();
 
-    if (navigation_map_is_first_frame) {
-        navigation_map_is_first_frame = false;
-        lv_image_set_src(bk_lv_tool_ui.page_2_image_8, &navigation_map);
+    if (navigation_is_first_frame) {
+        navigation_is_first_frame = false;
+        lv_image_set_src(bk_lv_tool_ui.page_2_image_10, &lvgl_video_img);
         lv_screen_load(bk_lv_tool_ui.page_2);
     } else {
-        lv_obj_invalidate(bk_lv_tool_ui.page_2_image_8);
+        lv_obj_invalidate(bk_lv_tool_ui.page_2_image_10);
     }
     lv_vendor_disp_unlock();
 }
@@ -688,7 +711,94 @@ lvgl_view_t lvgl_app_get_view(void)
     return s_lvgl_view;
 }
 
+void lvgl_app_enter_uvc(void)
+{
+    if (uvc_is_opened)
+    {
+        LOGE("%s %d uvc view is already entered\r\n", __func__, __LINE__);
+        return;
+    }
+
+    if (navigation_is_opened)
+    {
+        LOGW("%s %d navigation is opened, exit navigation first\r\n", __func__, __LINE__);
+        lvgl_app_exit_navigation();
+    }
+
+    lv_vendor_disp_lock();
+    init_page_page_2(&bk_lv_tool_ui);
+    lv_vendor_disp_unlock();
+
+    uvc_is_first_frame = true;
+    uvc_is_opened = true;
+    s_lvgl_view = LVGL_VIEW_UVC;
+}
+
+void lvgl_app_exit_uvc(void)
+{
+    if (!uvc_is_opened)
+    {
+        LOGE("%s %d uvc view is already exited\r\n", __func__, __LINE__);
+        return;
+    }
+
+    lv_vendor_disp_lock();
+
+    lv_screen_load(bk_lv_tool_ui.page_1);
+    destroy_page_page_2(&bk_lv_tool_ui);
+
+    lv_vendor_disp_unlock();
+
+    uvc_is_first_frame = true;
+    uvc_is_opened = false;
+    if (s_lvgl_view == LVGL_VIEW_UVC)
+    {
+        s_lvgl_view = LVGL_VIEW_DEFAULT;
+    }
+}
+
+void lvgl_app_display_uvc(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
+{
+    if (data == NULL || data_len == 0) {
+        LOGE("%s %d data is NULL or data_len is 0\r\n", __func__, __LINE__);
+        return;
+    }
+
+    /* Keep the same behavior as navigation: strict size check */
+    if (lvgl_video_img.data_size != data_len) {
+        LOGE("%s %d data_len is not equal to lvgl_video_img.data_size\r\n", __func__, __LINE__);
+        return;
+    }
+
+    if (data_is_rgb565 == false) {
+        lvgl_dma2d_yuyv2rgb565(data, lvgl_data_rgb565, LVGL_DATA_WIDTH, LVGL_DATA_HEIGHT, false);
+        lvgl_video_img.data = lvgl_data_rgb565;
+    } else {
+        lvgl_video_img.data = data;
+    }
+
+    lv_vendor_disp_lock();
+
+    if (uvc_is_first_frame) {
+        uvc_is_first_frame = false;
+        lv_image_set_src(bk_lv_tool_ui.page_2_image_10, &lvgl_video_img);
+        lv_screen_load(bk_lv_tool_ui.page_2);
+    } else {
+        lv_obj_invalidate(bk_lv_tool_ui.page_2_image_10);
+    }
+
+    lv_vendor_disp_unlock();
+}
+
 void lvgl_app_display(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
 {
-    lvgl_app_display_navigation(data, data_len, data_is_rgb565);
+    lvgl_view_t view = lvgl_app_get_view();
+    if (view == LVGL_VIEW_UVC)
+    {
+        lvgl_app_display_uvc(data, data_len, data_is_rgb565);
+    }
+    else if (view == LVGL_VIEW_NAVIGATION || view == LVGL_VIEW_DEFAULT)
+    {
+        lvgl_app_display_navigation(data, data_len, data_is_rgb565);
+    }
 }

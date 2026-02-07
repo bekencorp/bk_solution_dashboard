@@ -15,6 +15,21 @@
 avdk_err_t uvc_camera_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
 
 /**
+ * @brief Open UVC camera device for recorder preview mode (MJPEG -> media frame queue)
+ * @details
+ * This API is designed for "recorder mode" preview. UVC MJPEG frames are allocated by
+ * `media_frame_queue_malloc()` and returned to the ready queue by `media_frame_queue_complete()`,
+ * so the JPEG decode manager can fetch and decode them.
+ *
+ * @param pcWriteBuffer Output buffer pointer for returning operation result information
+ * @param xWriteBufferLen Output buffer length to ensure no buffer overflow
+ * @param argc Command line argument count for parsing configuration options
+ * @param argv Command line argument array containing device configuration parameters
+ * @return Returns AVDK_ERR_OK on success, specific error code on failure
+ */
+avdk_err_t uvc_camera_open_recorder(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv);
+
+/**
  * @brief Close UVC camera device
  * @details Release camera resources, stop video stream capture, clean up related memory
  * @param pcWriteBuffer Output buffer pointer for returning operation result information

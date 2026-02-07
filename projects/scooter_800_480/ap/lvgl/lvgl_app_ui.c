@@ -494,6 +494,7 @@ static bool navigation_map_is_first_frame = true;
 static beken_semaphore_t navigation_map_dma2d_sem = NULL;
 static uint8_t *navigation_map_data_rgb565 = NULL;
 static bool navigation_map_dma2d_is_initialized = false;
+static lvgl_view_t s_lvgl_view = LVGL_VIEW_DEFAULT;
 
 static lv_image_dsc_t navigation_map = {
     .header.cf = LV_COLOR_FORMAT_RGB565,
@@ -627,6 +628,7 @@ void lvgl_app_enter_navigation(void)
     lv_vendor_disp_unlock();
 
     navigation_is_opened = true;
+    s_lvgl_view = LVGL_VIEW_NAVIGATION;
 }
 
 void lvgl_app_exit_navigation(void)
@@ -643,6 +645,10 @@ void lvgl_app_exit_navigation(void)
 
     navigation_map_is_first_frame = true;
     navigation_is_opened = false;
+    if (s_lvgl_view == LVGL_VIEW_NAVIGATION)
+    {
+        s_lvgl_view = LVGL_VIEW_DEFAULT;
+    }
 }
 
 void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
@@ -674,4 +680,14 @@ void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_
         lv_obj_invalidate(bk_lv_tool_ui.page_2_image_10);
     }
     lv_vendor_disp_unlock();
+}
+
+lvgl_view_t lvgl_app_get_view(void)
+{
+    return s_lvgl_view;
+}
+
+void lvgl_app_display(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
+{
+    lvgl_app_display_navigation(data, data_len, data_is_rgb565);
 }

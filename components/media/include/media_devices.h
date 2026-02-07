@@ -1,6 +1,8 @@
 #ifndef __AV_SERVER_DEVICES_H__
 #define __AV_SERVER_DEVICES_H__
 
+#include <stdbool.h>
+
 //#include "av_server_transmission.h"
 
 #define DB_SAMPLE_RARE_8K (8000)
@@ -91,7 +93,20 @@ bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void);
 
 void lvgl_app_enter_navigation(void);
 void lvgl_app_exit_navigation(void);
-void lvgl_app_display_navigation(uint8_t *data, uint32_t data_len, bool data_is_rgb565);
+
+/* UVC view (dashcam / reverse camera preview) */
+typedef enum
+{
+    LVGL_VIEW_DEFAULT = 0,
+    LVGL_VIEW_NAVIGATION = 1,
+    LVGL_VIEW_UVC = 2,
+} lvgl_view_t;
+
+lvgl_view_t lvgl_app_get_view(void);
+void lvgl_app_enter_uvc(void);
+void lvgl_app_exit_uvc(void);
+
+void lvgl_app_display(uint8_t *data, uint32_t data_len, bool data_is_rgb565);
 
 void set_lcd_use_module(lcd_source_module_t module);
 #endif

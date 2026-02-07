@@ -25,6 +25,9 @@
 #include "frame_buffer.h"
 #include "media_data_process_que.h"
 #include "components/media_types.h"
+#if defined(CONFIG_LVGL) && CONFIG_LVGL
+#include "media_devices.h"
+#endif
 
 #define TAG "media-nav"
 
@@ -245,6 +248,20 @@ bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data
         s_nav_ctx.frame->fmt = convert_file_type(s_nav_ctx.file_type);
         s_nav_ctx.frame->timestamp = rtos_get_time();
         s_nav_ctx.frame->sequence = s_frame_sequence++;
+
+#if defined(CONFIG_LVGL) && CONFIG_LVGL
+        /*
+         * Navigation image (WiFi/BT) is only useful when current LVGL view is navigation.
+         * If current view is UVC, drop this image directly to save decode/queue pressure.
+         */
+        if (lvgl_app_get_view() != LVGL_VIEW_NAVIGATION)
+        {
+            media_frame_queue_free(s_nav_ctx.frame);
+            s_nav_ctx.frame = NULL;
+            reset_context();
+            return BK_OK;
+        }
+#endif
 
         bk_err_t ret = media_frame_queue_complete(s_nav_ctx.frame);
         if (ret != BK_OK)

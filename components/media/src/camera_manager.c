@@ -4,6 +4,10 @@
 #include <components/usbh_hub_multiple_classes_api.h>
 #include <components/bk_camera_ctlr.h>
 #include "frame_buffer_que.h"
+#include "media_data_process_que.h"
+#if defined(CONFIG_LVGL) && CONFIG_LVGL
+#include "media_devices.h"
+#endif
 
 #define TAG "camera_cli"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -96,6 +100,60 @@ static void uvc_frame_complete(uint8_t port, image_format_t format, frame_buffer
     frame_queue_complete(format, frame);
 }
 
+static frame_buffer_t *uvc_media_frame_malloc(image_format_t format, uint32_t size)
+{
+    /*
+     * Recorder preview mode uses media frame queue as the producer side.
+     * The queue MUST be initialized by media_frame_queue_init(IMAGE_MJPEG) before opening UVC.
+     */
+    if (format != IMAGE_MJPEG)
+    {
+        LOGW("%s: unsupported format:%d, size:%u\n", __func__, format, (unsigned int)size);
+        return NULL;
+    }
+
+    return media_frame_queue_malloc(size);
+}
+
+static void uvc_media_frame_complete(uint8_t port, image_format_t format, frame_buffer_t *frame, int result)
+{
+    if (frame == NULL)
+    {
+        LOGE("%s: frame is NULL\n", __func__);
+        return;
+    }
+
+    if (result != BK_OK)
+    {
+        LOGW("%s: capture failed, port:%u format:%d result:%d\n", __func__, port, format, result);
+        media_frame_queue_free(frame);
+        return;
+    }
+
+#if defined(CONFIG_LVGL) && CONFIG_LVGL
+    /*
+     * UVC preview is only useful when current LVGL view is UVC.
+     * If current view is navigation, drop this frame directly to save decode/queue pressure.
+     */
+    if (lvgl_app_get_view() != LVGL_VIEW_UVC)
+    {
+        media_frame_queue_free(frame);
+        return;
+    }
+#endif
+
+    /*
+     * Return filled MJPEG frame to ready queue, so decode manager can consume it.
+     * If complete fails (queue full), free the frame to avoid memory leak.
+     */
+    bk_err_t ret = media_frame_queue_complete(frame);
+    if (ret != BK_OK)
+    {
+        LOGW("%s: media_frame_queue_complete failed:%d, drop frame\n", __func__, ret);
+        media_frame_queue_free(frame);
+    }
+}
+
 static void uvc_connect_successful_callback(bk_usb_hub_port_info *port_info, void *arg)
 {
     LOGI("%s, %d\n", __func__, __LINE__);
@@ -138,6 +196,7 @@ static avdk_err_t uvc_camera_power_on_handle(uvc_test_info_t *info, uint32_t tim
         {
             LOGE("%s, %d, timeout:%d\n", __func__, __LINE__, timeout);
         }
+        ret = BK_OK;
     }
 
     return ret;
@@ -176,6 +235,12 @@ static void uvc_event_callback(bk_usb_hub_port_info *port_info,void *arg, uvc_er
 static const bk_uvc_callback_t uvc_cbs = {
     .malloc = uvc_frame_malloc,
     .complete = uvc_frame_complete,
+    .uvc_event_callback = uvc_event_callback,
+};
+
+static const bk_uvc_callback_t uvc_media_cbs = {
+    .malloc = uvc_media_frame_malloc,
+    .complete = uvc_media_frame_complete,
     .uvc_event_callback = uvc_event_callback,
 };
 
@@ -337,6 +402,85 @@ avdk_err_t uvc_camera_open(char *pcWriteBuffer, int xWriteBufferLen, int argc, c
 
 exit:
 
+    uvc_camera_power_off_handle(uvc_test_info);
+    return ret;
+}
+
+avdk_err_t uvc_camera_open_recorder(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
+{
+    avdk_err_t ret = uvc_test_info_init();
+    if (ret != AVDK_ERR_OK)
+    {
+        LOGE("%s: uvc_test_info_init failed\n", __func__);
+        return ret;
+    }
+
+    if (uvc_test_info->handle)
+    {
+        LOGE("%s, %d, already opened\n", __func__, __LINE__);
+        return AVDK_ERR_OK;
+    }
+
+    /*
+     * Power on the camera device and check have connected.
+     * NOTE: media_frame_queue_init() is handled by upper layer (CLI) to keep responsibilities clear.
+     */
+    ret = uvc_camera_power_on_handle(uvc_test_info, 10000);
+    if (ret != AVDK_ERR_OK)
+    {
+        LOGE("%s: uvc_camera_power_on_handle failed\n", __func__);
+        goto exit;
+    }
+
+    bk_uvc_ctlr_config_t uvc_ctlr_config = {
+        .config = BK_UVC_864X480_30FPS_MJPEG_CONFIG(),
+        .cbs = &uvc_media_cbs,
+    };
+
+    /*
+     * Default recorder preview uses 480x320 because LVGL navigation widget expects
+     * NAVIGATION_MAP_WIDTH x NAVIGATION_MAP_HEIGHT (see lvgl_app_ui.c).
+     * Users can override by CLI, but non-480x320 may not be displayed.
+     */
+    uvc_ctlr_config.config.width = 480;
+    uvc_ctlr_config.config.height = 320;
+
+    if (argc >= 5)
+    {
+        uvc_ctlr_config.config.width = os_strtoul(argv[3], NULL, 10);
+        uvc_ctlr_config.config.height = os_strtoul(argv[4], NULL, 10);
+    }
+
+    uvc_ctlr_config.config.user_data = uvc_test_info;
+
+    ret = uvc_checkout_port_info_mjpeg(uvc_test_info, &uvc_ctlr_config.config);
+    if (ret != AVDK_ERR_OK)
+    {
+        LOGE("%s, %d: uvc_checkout_port_info_mjpeg failed\n", __func__, __LINE__);
+        goto exit;
+    }
+
+    ret = bk_camera_uvc_ctlr_new(&uvc_test_info->handle, &uvc_ctlr_config);
+    if (ret != AVDK_ERR_OK)
+    {
+        LOGE("%s, %d: bk_camera_uvc_ctlr_new failed\n", __func__, __LINE__);
+        goto exit;
+    }
+
+    ret = bk_camera_open(uvc_test_info->handle);
+    if (ret != AVDK_ERR_OK)
+    {
+        LOGE("%s, %d: bk_camera_open failed\n", __func__, __LINE__);
+        bk_camera_delete(uvc_test_info->handle);
+        uvc_test_info->handle = NULL;
+        goto exit;
+    }
+
+    LOGD("%s open successful\n", __func__);
+
+    return ret;
+
+exit:
     uvc_camera_power_off_handle(uvc_test_info);
     return ret;
 }

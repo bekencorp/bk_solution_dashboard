@@ -55,7 +55,7 @@ typedef struct
 
 static const lcd_device_t *lcd_device =  &lcd_device_st7282;
 db_device_info_t *db_device_info = NULL;
-static frame_buffer_t *last_navigation_frame = NULL;
+static frame_buffer_t *last_lvgl_video_frame = NULL;
 
 // static aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
 // static aud_intf_work_mode_t aud_work_mode = AUD_INTF_WORK_MODE_NULL;
@@ -86,16 +86,16 @@ static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, 
         // 例如：显示图像、保存图像等
         if (db_device_info->lcd_use_module == LCD_SOURCE_MODULE_DECODER)
         {
-            if (last_navigation_frame) {
-                frame_buffer_display_free(last_navigation_frame);
-                last_navigation_frame = NULL;
+            if (last_lvgl_video_frame) {
+                frame_buffer_display_free(last_lvgl_video_frame);
+                last_lvgl_video_frame = NULL;
             }
 
             if (get_navigation_type() == NAVIGATION_TYPE_BT)
             {
                 #if CONFIG_LCD_PANEL_USE_480X272
-                    last_navigation_frame = out_frame;
-                    lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, true);
+                    last_lvgl_video_frame = out_frame;
+                    lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, true);
                 #else
                     ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
                     if (ret != BK_OK)
@@ -108,11 +108,12 @@ static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, 
             else
             {
                 #if CONFIG_LCD_PANEL_USE_800X480
-                    last_navigation_frame = out_frame;
                     if (db_device_info->manager->decoder_type == DECODER_TYPE_SW) {
-                        lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, true);
+                        last_lvgl_video_frame = out_frame;
+                        lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, true);
                     } else {
-                        lvgl_app_display_navigation((uint8_t *)out_frame->frame, out_frame->size, false);
+                        last_lvgl_video_frame = out_frame;
+                        lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, false);
                     }
                 #else
                     ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
@@ -156,18 +157,20 @@ int av_server_jpeg_decode_manager_resume(void)
 int av_server_jpeg_decode_manager_turn_on(void)
 {
     int ret = -1;
-    os_memset(&db_device_info->config, 0, sizeof(jpeg_decode_manager_config_t));
-    db_device_info->config.queue_size = 10;                // 队列大小为10
-    db_device_info->config.thread_priority = BEKEN_DEFAULT_WORKER_PRIORITY;           // 线程优先级为6
-    db_device_info->config.thread_stack_size = 2 * 1024;   // 线程栈大小为2KB
-    db_device_info->config.decode_cbs.out_complete = decode_complete_callback; // 设置完成回调
-    db_device_info->config.out_format = JPEG_DECODE_SW_OUT_FORMAT_RGB565;
-    db_device_info->config.byte_order = JPEG_DECODE_LITTLE_ENDIAN;
-
-    db_device_info->debug_info.decode_frame_count = 0;
-    db_device_info->debug_info.last_decode_frame_count = 0;
     // 创建解码管理器
     if (db_device_info->manager == NULL) {
+
+        os_memset(&db_device_info->config, 0, sizeof(jpeg_decode_manager_config_t));
+        db_device_info->config.queue_size = 10;                // 队列大小为10
+        db_device_info->config.thread_priority = BEKEN_DEFAULT_WORKER_PRIORITY;           // 线程优先级为6
+        db_device_info->config.thread_stack_size = 2 * 1024;   // 线程栈大小为2KB
+        db_device_info->config.decode_cbs.out_complete = decode_complete_callback; // 设置完成回调
+        db_device_info->config.out_format = JPEG_DECODE_SW_OUT_FORMAT_RGB565;
+        db_device_info->config.byte_order = JPEG_DECODE_LITTLE_ENDIAN;
+    
+        db_device_info->debug_info.decode_frame_count = 0;
+        db_device_info->debug_info.last_decode_frame_count = 0;
+
         db_device_info->manager = jpeg_decode_manager_create(&db_device_info->config);
         if (db_device_info->manager == NULL) {
             LOGE("Failed to create JPEG decode manager\n");
@@ -177,6 +180,7 @@ int av_server_jpeg_decode_manager_turn_on(void)
     else
     {
         LOGE("JPEG decode manager already created\n");
+        return BK_OK;
     }
 
     ret = navigation_map_dma2d_yuyv2rgb565_init();
