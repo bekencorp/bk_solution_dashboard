@@ -606,6 +606,23 @@ static int32_t bsc_init(int32_t (*report)(uint8_t *data, uint32_t len))
         goto end;
     }
 
+    //5
+    write_buffer_index = build_cmd(tmp_write_buffer, TCI_READ_FRQ_OFFSET_FROM_FLASH, 0);
+    bsc_send(tmp_write_buffer, write_buffer_index);
+    LOGI("wait TCI_READ_FRQ_OFFSET_FROM_FLASH");
+    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_READ_FRQ_OFFSET_FROM_FLASH);
+
+    if (ret)
+    {
+        LOGE("TCI_READ_FRQ_OFFSET_FROM_FLASH rsp err %d", ret);
+        ret = -1;
+        goto end;
+    }
+
+    p = tmp_read_buffer + 7;
+
+    LOGI("TCI_READ_FRQ_OFFSET_FROM_FLASH 0x%x", *p);
+
     ret = bk_uart_disable_rx_interrupt(s_bsc_config.uart_id);
 
     if (ret)
