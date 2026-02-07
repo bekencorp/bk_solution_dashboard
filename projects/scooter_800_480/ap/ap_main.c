@@ -18,7 +18,7 @@
 #if CONFIG_BK_BLE_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
-
+#include "network_provisioning.h"
 #include "components/bk_display.h"
 #include "lcd_panel_devices.h"
 #include "gpio_driver.h"
@@ -516,7 +516,7 @@ static void ap_bt_app_init(void)
     hfp_hf_demo_init(0);
 #endif
 
-#if 0//CONFIG_BLE
+#if !CONFIG_BK_BLE_PROVISIONING
     cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
     dm_gatt_main(&param);
@@ -568,15 +568,9 @@ static void ap_bt_startup_task(void *arg)
     media_msg_init();
 
 #if CONFIG_BK_BLE_PROVISIONING
-extern void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data);
-extern void ble_msg_handle_demo_cb(ble_prov_msg_t *msg);
-extern int cli_network_provisioning_init(void);
-    //for user to receive network provisioning status change event
-    bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
-    //if default provisioning type is ble, then set msg handle cb
-    bk_ble_provisioning_set_msg_handle_cb(ble_msg_handle_demo_cb);
-    bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
-    cli_network_provisioning_init();
+    bk_sl_np_init(0);
+#else
+    bk_sl_np_init(1);
 #endif
 
 end:;

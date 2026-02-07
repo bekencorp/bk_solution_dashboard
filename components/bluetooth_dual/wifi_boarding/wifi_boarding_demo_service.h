@@ -61,6 +61,8 @@ typedef enum
     DBEVT_OTA_START_DOWNLOAD,
     DBEVT_OTA_DO_DOWNLOADING,
     DBEVT_OTA_COMPLETE_DOWNLOAD,
+    DBEVT_OTHER_EVT,
+
     DBEVT_EXIT,
 } dbevt_t;
 
@@ -69,9 +71,13 @@ typedef struct
     uint32_t event;
     uint32_t param;
     uint16_t length;
+    uint32_t sub_evt;
 } boarding_msg_t;
 
 bk_err_t boarding_send_msg(boarding_msg_t *msg);
 int32_t wifi_boarding_demo_service_main(void);
+int32_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len));
+void bk_boarding_event_notify(uint16_t opcode, int status);
+void bk_boarding_event_notify_with_data(uint16_t opcode, int status, char *payload, uint16_t length);
 void ble_ota_start_timer(void);
 void ble_ota_stop_timer(void);

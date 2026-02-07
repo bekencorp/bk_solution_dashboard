@@ -1079,7 +1079,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
     {
         struct gatts_conf_evt_param *param = (typeof(param))comm_param;
 
-        gatt_logi("BK_GATTS_CONF_EVT %d %d %d", param->status, param->conn_id, param->handle);
+        gatt_logv("BK_GATTS_CONF_EVT %d %d %d", param->status, param->conn_id, param->handle);
 
         common_env_tmp = dm_ble_find_app_env_by_conn_id(param->conn_id);
 
@@ -1110,7 +1110,7 @@ static int32_t bk_gatts_cb (bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk
     {
         struct gatts_rsp_evt_param *param = (typeof(param))comm_param;
 
-        gatt_logi("BK_GATTS_RESPONSE_EVT 0x%x %d conn_id %d", param->status, param->handle, param->conn_id);
+        gatt_logv("BK_GATTS_RESPONSE_EVT 0x%x %d conn_id %d", param->status, param->handle, param->conn_id);
 
         dm_gatts_db_reg_t *tmp_reg = find_db_ctx_by_attr_handle(param->handle);
 

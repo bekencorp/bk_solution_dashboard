@@ -22,6 +22,7 @@ static bk_boarding_info_t *bk_boarding_info = NULL;
 static f_ota_t *s_ble_ota = NULL;
 static uint8_t *s_ota_data_ptr = NULL;
 static beken2_timer_t s_ble_ota_tmr;
+static void (*s_cmd_cb)(uint16_t op, uint8_t *data, uint32_t len);
 
 static void ble_ota_timer_hdl(void *param1, void *param2)
 {
@@ -117,7 +118,7 @@ bk_err_t boarding_send_msg(boarding_msg_t *msg)
 
 void bk_boarding_operation_handle(uint16_t opcode, uint16_t length, uint8_t *data)
 {
-    wboard_logw("opcode: %04X, length: %u", opcode, length);
+    wboard_logi("opcode: %04X, length: %u", opcode, length);
 
     switch (opcode)
     {
@@ -203,7 +204,17 @@ void bk_boarding_operation_handle(uint16_t opcode, uint16_t length, uint8_t *dat
 
     default:
     {
-        wboard_loge("unsupported opcode: 0x%04X !!!", __func__, opcode);
+        wboard_logi("unsupported opcode: 0x%04X, try external call", opcode);
+        boarding_msg_t msg = {0};
+        uint8_t *tmp_buff = NULL;
+        msg.event = DBEVT_OTHER_EVT;
+        msg.length = length;
+        msg.sub_evt = opcode;
+
+        OTA_MALLOC_WITHOUT_RETURN(tmp_buff, length);
+        os_memcpy(tmp_buff, data, length);
+        msg.param = (uint32_t)(tmp_buff);
+        boarding_send_msg(&msg);
     }
     break;
 
@@ -403,11 +414,29 @@ static void boarding_message_handle(void)
             }
             break;
 
+            case DBEVT_OTHER_EVT:
+            {
+                wboard_logi("unknow board cmd %d, call external %p !!!", msg.sub_evt, s_cmd_cb);
+
+                if(s_cmd_cb)
+                {
+                    s_cmd_cb(msg.sub_evt, (uint8_t *)msg.param, msg.length);
+                }
+
+                if(msg.param)
+                {
+                    os_free((void *)msg.param);
+                    msg.param = 0;
+                }
+            }
+            break;
+
             case DBEVT_EXIT:
                 goto exit;
                 break;
 
             default:
+
                 break;
             }
         }
@@ -433,6 +462,12 @@ exit:
     s_boarding_thd = NULL;
 
     wboard_loge("delete task complete");
+}
+
+int32_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len))
+{
+    s_cmd_cb = cb;
+    return 0;
 }
 
 int32_t wifi_boarding_demo_service_main(void)

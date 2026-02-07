@@ -32,6 +32,7 @@ typedef struct
 
 #define PROFILE_ID 1
 #define MIN_VALUE(x, y) (((x) < (y)) ? (x): (y))
+#define SYNC_CMD_TIMEOUT_MS 4000
 
 static ble_boarding_info_t *s_ble_boarding_info = NULL;
 
@@ -40,6 +41,8 @@ static uint8_t s_ssid[64];
 static uint8_t s_password[64];
 static uint8_t s_wifi_boarding_is_init;
 static uint8_t s_db_init;
+static uint8_t s_log_level = BOARDING_DEBUG_LEVEL_INFO;
+static beken_semaphore_t s_send_sem;
 
 enum
 {
@@ -102,7 +105,6 @@ static const bk_gatts_attr_db_t s_gatts_attr_db_service_boarding[] =
 
 static uint16_t s_boarding_attr_handle_list[sizeof(s_gatts_attr_db_service_boarding) / sizeof(s_gatts_attr_db_service_boarding[0])];
 
-#if !defined(CONFIG_BK_BLE_PROVISIONING)
 int wifi_boarding_notify(uint8_t *data, uint16_t length)
 {
     int16_t current_conn_id = dm_ble_gap_get_current_conn_id();
@@ -114,12 +116,20 @@ int wifi_boarding_notify(uint8_t *data, uint16_t length)
     }
     else
     {
+        int32_t ret = 0;
+
         wboard_logi("len %d", length);
         bk_ble_gatts_send_indicate(dm_gatts_get_current_if(), (uint16_t)current_conn_id, s_boarding_attr_handle_list[BOARDING_IDX_CHAR1], length, data, 0);
+
+        ret = rtos_get_semaphore(&s_send_sem, SYNC_CMD_TIMEOUT_MS);
+
+        if (ret)
+        {
+            wboard_loge("wait send completed err %d handle %d len %d", ret, current_conn_id, length);
+        }
         return BK_OK;
     }
 }
-#endif
 
 static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t gatts_if, bk_ble_gatts_cb_param_t *comm_param)
 {
@@ -189,6 +199,11 @@ static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t ga
     case BK_GATTS_CONF_EVT:
     {
         wboard_logi("BK_GATTS_CONF_EVT");
+
+        if (s_send_sem)
+        {
+            rtos_set_semaphore(&s_send_sem);
+        }
     }
     break;
 
@@ -447,9 +462,20 @@ static int32_t wifi_boarding_demo_reg_db(void)
 
 #endif
 
+uint8_t wifi_boarding_demo_get_log_level(void)
+{
+    return s_log_level;
+}
+
+void wifi_boarding_demo_set_log_level(uint8_t level)
+{
+    s_log_level = level;
+}
+
 int32_t wifi_boarding_demo_main(ble_boarding_info_t *info)
 {
 #if WIFI_BOARDING_DEMO_ENABLE
+    int32_t ret = 0;
 
     if (!dm_gatts_is_init())
     {
@@ -462,6 +488,14 @@ int32_t wifi_boarding_demo_main(ble_boarding_info_t *info)
         wboard_loge("already init");
         return -1;
     }
+
+    if ((ret = rtos_init_semaphore(&s_send_sem, 1)))
+    {
+        wboard_loge("init sem err %d", ret);
+        return -1;
+    }
+
+    s_log_level = BOARDING_DEBUG_LEVEL_INFO;
 
     s_wifi_boarding_is_init = 1;
 
@@ -478,6 +512,7 @@ int32_t wifi_boarding_demo_main(ble_boarding_info_t *info)
 int32_t wifi_boarding_demo_deinit(uint8_t deinit_bluetooth_future)
 {
 #if WIFI_BOARDING_DEMO_ENABLE
+    int32_t ret = 0;
 
     if (!s_wifi_boarding_is_init)
     {
@@ -493,6 +528,18 @@ int32_t wifi_boarding_demo_deinit(uint8_t deinit_bluetooth_future)
         s_db_init = 0;
     }
 
+    if (s_send_sem)
+    {
+        if ((ret = rtos_deinit_semaphore(&s_send_sem)))
+        {
+            wboard_loge("deinit sem err %d", ret);
+            return -1;
+        }
+
+        s_send_sem = NULL;
+    }
+
+    s_send_sem = NULL;
     s_wifi_boarding_is_init = 0;
 #endif
     return 0;

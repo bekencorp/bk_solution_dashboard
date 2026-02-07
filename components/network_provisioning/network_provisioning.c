@@ -39,7 +39,8 @@
 #include "media_devices.h"
 #include "media_navigation_transfer.h"
 #include "network_provisioning.h"
-
+#include "wifi_boarding_demo_service.h"
+#include "wifi_boarding_demo.h"
 #define TAG "np_demo"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -48,7 +49,11 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
+//bk_ble_provisioning_event_notify_with_data
+static void (*s_send)(uint16_t opcode, int status);
+static void (*s_send_data)(uint16_t opcode, int status, char *payload, uint16_t length);
 static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
+//static uint8_t s_reg_method;
 
 static void set_navigation_type(navigation_type_t type)
 {
@@ -149,7 +154,7 @@ static void demo_np_upload_supported_mode(uint os_code)
     uint8_t *val = NULL;
     uint8_t len = 0;
     val = demo_np_get_supported_mode(os_code, &len);
-    bk_ble_provisioning_event_notify_with_data(BOARDING_OP_SYNC_PHONE_OS, 0, (char *)val, len);
+    if(s_send_data) s_send_data(BOARDING_OP_SYNC_PHONE_OS, 0, (char *)val, len);
     os_printf("supported mode: %s\n", val);
     if (val)
         os_free(val);
@@ -292,9 +297,12 @@ again:
     len += os_snprintf(payload+len, BLE_SPLIT_PKT_LEN, "]");
     LOGI("upload scan_rst %s, sended:%d, total:%d\r\n", payload, j, scan_result.ap_num);
     if ((j >= scan_result.ap_num) || (enable_ble_split_pkt == false))
-        bk_ble_provisioning_event_notify_with_data(BOARDING_OP_GET_SCAN_RESULTS, 0, payload, len);
-    else {
-        bk_ble_provisioning_event_notify_with_data(BOARDING_OP_GET_SCAN_RESULTS, 1, payload, len);
+    {
+        if(s_send_data) s_send_data(BOARDING_OP_GET_SCAN_RESULTS, 0, payload, len);
+    }
+    else
+    {
+        if(s_send_data) s_send_data(BOARDING_OP_GET_SCAN_RESULTS, 1, payload, len);
         //rtos_delay_milliseconds(200);
         goto again;
     }
@@ -313,7 +321,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
     if ((data_ptr == NULL) || (length < sizeof(file_transfer_control_t)))
     {
         LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
-        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
         return;
     }
 
@@ -325,7 +333,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
     {
         LOGE("%s %d unsupported version %u (valid %u-%u)\n", __func__, __LINE__,
              ctrl->version, FILE_TRANSFER_PROTOCOL_VERSION_MIN, FILE_TRANSFER_PROTOCOL_VERSION_MAX);
-        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
         return;
     }
 
@@ -342,7 +350,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
                     if (ret != BK_OK)
                     {
                         LOGE("%s %d cancel failed (%d)\n", __func__, __LINE__, ret);
-                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
                         return;
                     }
                     break;
@@ -365,7 +373,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
                     if (length < base_len)
                     {
                         LOGE("%s %d start payload too short (%u)\n", __func__, __LINE__, length);
-                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
                         return;
                     }
 
@@ -395,7 +403,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
                     if (ret != BK_OK)
                     {
                         LOGE("%s %d begin failed (%d)\n", __func__, __LINE__, ret);
-                        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
                         return;
                     }
                     break;
@@ -403,7 +411,7 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
 
                 default:
                     LOGE("%s %d unknown controller %u\n", __func__, __LINE__, ctrl->controller);
-                    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+                    if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
                     return;
             }
             break;
@@ -411,11 +419,11 @@ static void handle_transfer_file_control_msg(uint8_t *data_ptr, uint16_t length)
 
         default:
             LOGE("%s %d handler missing for version %u\n", __func__, __LINE__, ctrl->version);
-            bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
+            if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_ERROR);
             return;
     }
 
-    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_OK);
+    if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_CONTROL, EVT_STATUS_OK);
 }
 
 static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
@@ -426,7 +434,7 @@ static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
     if ((data_ptr == NULL) || (length < sizeof(uint16_t)))
     {
         LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
-        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
         return;
     }
 
@@ -439,7 +447,7 @@ static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
     if (ret != BK_OK)
     {
         LOGE("%s %d push failed (%d)\n", __func__, __LINE__, ret);
-        bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
         return;
     }
 
@@ -448,7 +456,7 @@ static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
         LOGV("%s %d transfer complete\n", __func__, __LINE__);
     }
 
-    bk_ble_provisioning_event_notify(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);
+    if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);
 }
 
 static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
@@ -459,7 +467,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
     if ((data_ptr == NULL) || (length < sizeof(navigation_control_t)))
     {
         LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
-        bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
         return;
     }
 
@@ -475,7 +483,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
             if (ret != BK_OK)
             {
                 LOGE("%s %d turn_on failed (%d)\n", __func__, __LINE__, ret);
-                bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                 return;
             }
 
@@ -487,21 +495,29 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 {
                     LOGE("%s %d suspend display failed (%d)\n", __func__, __LINE__, ret);
                     av_server_jpeg_decode_manager_turn_off();
-                    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                    if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
             #endif
 
+#if CONFIG_BK_BLE_PROVISIONING
+#else
+            wifi_boarding_demo_set_log_level(BOARDING_DEBUG_LEVEL_WARNING);
+#endif
             break;
         }
 
         case NAVIGATION_CONTROL_STOP:
         {
+#if CONFIG_BK_BLE_PROVISIONING
+#else
+            wifi_boarding_demo_set_log_level(BOARDING_DEBUG_LEVEL_INFO);
+#endif
             ret = av_server_jpeg_decode_manager_turn_off();
             if (ret != BK_OK)
             {
                 LOGE("%s %d turn_off failed (%d)\n", __func__, __LINE__, ret);
-                bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                 return;
             }
 
@@ -512,7 +528,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 if (ret != BK_OK)
                 {
                     LOGE("%s %d resume display failed (%d)\n", __func__, __LINE__, ret);
-                    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+                    if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
                     return;
                 }
             #endif
@@ -527,11 +543,11 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
 
         default:
             LOGE("%s %d unknown controller %u\n", __func__, __LINE__, nav_ctrl->controller);
-            bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
+            if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
             return;
     }
 
-    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_OK);
+    if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_OK);
 }
 
 static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t length)
@@ -540,7 +556,7 @@ static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t lengt
     if ((data_ptr == NULL) || (length < sizeof(navigation_type_control_t)))
     {
         LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
-        bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_ERROR);
+        if(s_send) s_send(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_ERROR);
         return;
     }
 
@@ -550,10 +566,10 @@ static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t lengt
 
     set_navigation_type(nav_type_ctrl->type);
 
-    bk_ble_provisioning_event_notify(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_OK);
+    if(s_send) s_send(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_OK);
 }
 
-void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
+static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
 {
     switch (msg->event)
     {
@@ -577,7 +593,7 @@ void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
             }
             // 发送成功状态码 0 给手机APP
             static const uint8_t success_status = 0;
-            bk_ble_provisioning_event_notify_with_data(BOARDING_OP_CONFIG_WIFI_AP, BK_OK, 
+            if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_AP, BK_OK,
                                                        (char *)&success_status, sizeof(success_status));
         }
         break;
@@ -634,7 +650,7 @@ void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
 
             // 发送成功状态码 0 给手机APP
             static const uint8_t success_status = 0;
-            bk_ble_provisioning_event_notify_with_data(BOARDING_OP_CONFIG_WIFI_P2P, BK_OK,
+            if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_P2P, BK_OK,
                                                        (char *)&success_status, sizeof(success_status));
         }
         break;
@@ -671,7 +687,20 @@ void ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
     }
 }
 
-void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data)
+static void bk_sl_np_ble_msg_handle_demo_low_layer_cb(uint16_t op, uint8_t *data, uint32_t len)
+{
+    ble_prov_msg_t msg = {0};
+    msg.event = op;
+    msg.param = (typeof(msg.param))data;
+    msg.length = len;
+
+    bk_sl_np_ble_msg_handle_demo_cb(&msg);
+}
+
+
+#if CONFIG_BK_BLE_PROVISIONING
+
+static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data)
 {
     LOGI("demo network provisioning status: %d\n", status);
     switch (status)
@@ -681,19 +710,20 @@ void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status
         case BK_NETWORK_PROVISIONING_STATUS_RUNNING:
             break;
         case BK_NETWORK_PROVISIONING_STATUS_SUCCEED:
-            if (bk_network_provisioning_get_type() == BK_NETWORK_PROVISIONING_TYPE_BLE) {
+            if (bk_network_provisioning_get_type() == BK_NETWORK_PROVISIONING_TYPE_BLE)
+            {
                 netif_if_t netif_idx = (netif_if_t)user_data;
 #if 0
                 netif_ip4_config_t ip4_config = {0};
 
                 bk_netif_get_ip4_config(netif_idx, &ip4_config);
                 LOGI("netif_idx:%d, ip: %s\n", netif_idx, ip4_config.ip);
-                bk_ble_provisioning_event_notify_with_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, ip4_config.ip, strlen(ip4_config.ip));
+                if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, ip4_config.ip, strlen(ip4_config.ip));
 #else
                 if (netif_idx == NETIF_IF_STA) {
                     // 发送成功状态码 0 给手机APP
                     static const uint8_t success_status = 0;
-                    bk_ble_provisioning_event_notify_with_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, 
+                    if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK,
                                                                (char *)&success_status, 1);
                 }
 #endif
@@ -711,35 +741,40 @@ void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status
             break;
     }
 }
+#endif
+// static void cli_network_provisioning(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
+// {
+//     if (argC == 1) {
+//         bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
+//     } else if (argC == 2) {
+//         if (os_strcmp(argV[1], "ble") == 0) {
+//             bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
+//         } else if (os_strcmp(argV[1], "console") == 0) {
+//             bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_CONSOLE);
+//         }
+//     }
+// }
 
-static void cli_network_provisioning(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
-{
-    if (argC == 1) {
-        bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
-    } else if (argC == 2) {
-        if (os_strcmp(argV[1], "ble") == 0) {
-            bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
-        } else if (os_strcmp(argV[1], "console") == 0) {
-            bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_CONSOLE);
-        }
-    }
-}
+// static void cli_erase_network_provisioning_info(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
+// {
+//     erase_network_auto_reconnect_info();
+// }
 
-static void cli_erase_network_provisioning_info(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
-{
-    erase_network_auto_reconnect_info();
-}
-
-int demo_netif_event_cb(void *arg, event_module_t event_module,
+static int demo_netif_event_cb(void *arg, event_module_t event_module,
 					   int event_id, void *event_data)
 {
 	netif_event_got_ip4_t *got_ip;
 
 	switch (event_id) {
 	case EVENT_NETIF_GOT_IP4:
+    {
 		got_ip = (netif_event_got_ip4_t *)event_data;
-		LOGD("%s got ip\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
-		break;
+		LOGI("%s got ip\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
+        uint8_t success_status = 0;
+        if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, (char *)&success_status, sizeof(success_status));
+    }
+    break;
+
 	default:
 		LOGD("rx event <%d %d>\n", event_module, event_id);
 		break;
@@ -748,7 +783,7 @@ int demo_netif_event_cb(void *arg, event_module_t event_module,
 	return BK_OK;
 }
 
-int demo_wifi_event_cb(void *arg, event_module_t event_module,
+static int demo_wifi_event_cb(void *arg, event_module_t event_module,
 					  int event_id, void *event_data)
 {
 	wifi_event_sta_disconnected_t *sta_disconnected;
@@ -791,16 +826,50 @@ int demo_wifi_event_cb(void *arg, event_module_t event_module,
 
 	return BK_OK;
 }
-#define NP_CMD_COUNT (sizeof(s_network_provisioning_commands) / sizeof(s_network_provisioning_commands[0]))
-static const struct cli_command s_network_provisioning_commands[] = {
-    {"np", "np or np [ble]|[console]", cli_network_provisioning},
-    {"np_erase", "np_erase", cli_erase_network_provisioning_info},
-};
 
-int cli_network_provisioning_init(void)
+// static const struct cli_command s_network_provisioning_commands[] = {
+//     {"np", "np or np [ble]|[console]", cli_network_provisioning},
+//     {"np_erase", "np_erase", cli_erase_network_provisioning_info},
+// };
+
+// int cli_network_provisioning_init(void)
+// {
+//     return 0;
+//     //bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
+//     //bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
+
+//     return cli_register_commands(s_network_provisioning_commands, sizeof(s_network_provisioning_commands) / sizeof(s_network_provisioning_commands[0]));
+// }
+
+
+int32_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use solution component)
 {
-    //bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
-    //bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
+    int32_t ret = 0;
+
+    if(reg_method == 1)
+    {
+        wifi_boarding_demo_reg_external_cmd(bk_sl_np_ble_msg_handle_demo_low_layer_cb);
+        bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
+        bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
+        s_send = bk_boarding_event_notify;
+        s_send_data = bk_boarding_event_notify_with_data;
+    }
+#if CONFIG_BK_BLE_PROVISIONING
+    else if(!reg_method)
+    {
+        bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
+        bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
+        bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
+        //cli_network_provisioning_init();
+        bk_network_provisioning_get_send_cb(&s_send, &s_send_data);
+    }
+#endif
+    else
+    {
+        LOGE("%s invalid reg method %d\n", __func__, reg_method);
+        return -1;
+    }
+
 #if CONFIG_MEDIA_RECEIVE_DEMO
 #if CONFIG_MEDIA_DEMO_MODE_TCP
     media_bk_network_transfer_init("tcp_service", NULL);
@@ -808,5 +877,6 @@ int cli_network_provisioning_init(void)
     media_bk_network_transfer_init("udp_service", NULL);
 #endif
 #endif
-    return cli_register_commands(s_network_provisioning_commands, NP_CMD_COUNT);
+
+    return ret;
 }

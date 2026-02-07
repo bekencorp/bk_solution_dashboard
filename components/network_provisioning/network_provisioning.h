@@ -1,11 +1,8 @@
 #pragma once
 
 
-#include "ble_provisioning.h"
-
 typedef enum
 {
-    BOARDING_OP_UNKNOWN = 0,
     BOARDING_OP_SYNC_PHONE_OS = 30,
     BOARDING_OP_CONFIG_WIFI_AP = 31,
     BOARDING_OP_GET_SCAN_RESULTS = 32,
@@ -16,7 +13,7 @@ typedef enum
     BOARDING_OP_NAVIGATION_CONTROL = 52,
     BOARDING_OP_NAVIGATION_TYPE_CONTROL = 53,
     BOARDING_OP_MAX
-} boarding_opcode_t;
+} boarding_opcode_cmd_t;
 
 #define EVT_STATUS_OK               (0)
 #define EVT_STATUS_ERROR            (1)
@@ -95,6 +92,14 @@ typedef struct
     uint8_t type;
 } __attribute__((packed)) navigation_type_control_t;
 
-void ble_msg_handle_demo_cb(ble_prov_msg_t *msg);
-navigation_type_t get_navigation_type(void);
+#if !CONFIG_BK_BLE_PROVISIONING
+typedef struct
+{
+    int32_t event;
+    uint32_t param;
+    uint16_t length;
+} ble_prov_msg_t;
+#endif
 
+int32_t bk_sl_np_init(uint8_t reg_method);
+navigation_type_t get_navigation_type(void);

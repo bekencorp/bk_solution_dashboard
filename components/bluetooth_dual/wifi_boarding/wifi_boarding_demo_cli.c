@@ -51,6 +51,8 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
         rtos_delay_milliseconds(100);
         bk_bluetooth_init();
+        extern int32_t bk_sl_np_init(uint8_t reg_method);
+        bk_sl_np_init(1);
 #endif
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
