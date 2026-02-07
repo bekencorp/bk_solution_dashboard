@@ -4,7 +4,7 @@
 #include "dm_gattc.h"
 
 #include <unistd.h>
-
+#include <components/bluetooth/bk_dm_bluetooth.h>
 #include "wifi_boarding_demo.h"
 
 #if WIFI_BOARDING_DEMO_ENABLE
@@ -19,6 +19,13 @@ static void wboarding_demo_usage(void)
 
     return;
 }
+
+#if CONFIG_BK_BLE_PROVISIONING
+__attribute__((weak)) void bk_ble_np_deinit(void)
+{
+    CLI_LOGW("%s can't run here !!!\n");
+}
+#endif
 
 static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
 {
@@ -37,6 +44,14 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
     if (os_strcmp(argv[1], "init") == 0)
     {
+#if CONFIG_BK_BLE_PROVISIONING
+        CLI_LOGW("%s bk_ble_np_deinit is temporary used for only deinit bk_network_provisioning ble !!!\n", __func__);
+        extern void bk_ble_np_deinit(void);
+        bk_ble_np_deinit();
+
+        rtos_delay_milliseconds(100);
+        bk_bluetooth_init();
+#endif
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
         dm_gatt_main(&param);

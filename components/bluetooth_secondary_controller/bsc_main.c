@@ -655,7 +655,7 @@ static int32_t bsc_deinit(void)
     bk_uart_take_rx_isr(s_bsc_config.uart_id, NULL, NULL);
     ret = bsc_uart_enable(s_bsc_config.uart_id, 0, s_bsc_config.init_baud);
     bsc_power_ctrl(0);
-    os_memset(&s_bsc_config, 0, sizeof(s_bsc_config));
+    //os_memset(&s_bsc_config, 0, sizeof(s_bsc_config));
     rtos_delay_milliseconds(200);
 
     return ret;

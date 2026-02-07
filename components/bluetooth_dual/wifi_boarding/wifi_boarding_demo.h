@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#if !defined(CONFIG_BK_BLE_PROVISIONING)
+#if 1//!defined(CONFIG_BK_BLE_PROVISIONING)
 #define WIFI_BOARDING_DEMO_ENABLE 1
 #else
 #define WIFI_BOARDING_DEMO_ENABLE 0
