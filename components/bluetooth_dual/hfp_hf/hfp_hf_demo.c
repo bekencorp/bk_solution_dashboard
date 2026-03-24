@@ -130,6 +130,8 @@ enum
     HFP_STATUS_WAIT_DONE,
 };
 
+#define MSBC_EXPECT_FRAME_LEN (4 + ((4 * 8 * 1) >> 3) + ((15 * 26 + 7) >> 3))
+
 static uint8_t bt_audio_hfp_hf_codec = CODEC_VOICE_CVSD;
 static uint8_t hfp_peer_addr [ 6 ] = {0};
 static uint8_t hfp_profile_peer_addr [ 6 ] = {0};
@@ -145,7 +147,7 @@ static beken_semaphore_t s_connect_sema = NULL;
 static uint8_t s_hf_spk_user_vote = 1;
 
 static uint8_t hf_mic_sco_data [ 1024 ] = {0};
-static uint16_t hf_mic_data_count = 0;
+static uint16_t hf_mic_data_count = 2;
 
 volatile uint8_t hf_auido_start = 0;
 
@@ -228,7 +230,25 @@ static void bt_audio_hfp_client_voice_data_ind(const uint8_t *data, uint16_t dat
         return;
     }
 
-    os_memcpy(demo_msg.data, data, data_len);
+#if HFP_RESET_AUDIO_DATA_WHEN_ERR
+    uint8_t *raw_data = ((uint8_t *)data) - 3;
+    uint8_t flag = ((raw_data[1] >> 4) & 0b1111);
+
+    if(flag != 0)
+    {
+        LOGI("%s esco flag %d codec %d !!!\n", __func__, flag, bt_audio_hfp_hf_codec);
+    }
+	
+	if(CODEC_VOICE_CVSD == bt_audio_hfp_hf_codec)
+	{
+        os_memset(demo_msg.data, 0, data_len);
+	}
+    else
+#endif
+    {
+        os_memcpy(demo_msg.data, data, data_len);
+    }
+
     demo_msg.type = BT_AUDIO_VOICE_IND_MSG;
     demo_msg.len = data_len;
 
@@ -415,6 +435,7 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     case BLUE_AUDIO_DECODER_TYPE_SBC:
     {
         blue_audio_recorder_cfg_t tmp_config = DEFAULT_BLUE_AUDIO_RECORDER_SBC_ONBOARD_MIC_CONFIG();
+        tmp_config.mic_cfg.ob_mic_cfg.adc_cfg.sample_rate = 16000;
 #if HF_MIC_EQ_ENABLE
         tmp_config.eq_en = true;
         eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG();
@@ -919,6 +940,99 @@ uint8_t hfp_hf_check_is_iphone(void)
     return s_hfp_hf_is_iphone;
 }
 
+static bk_err_t bk_sbc_frame_length_parse(uint8_t *buf, uint16_t len)
+{
+    // Check input parameters
+    if (buf == NULL || len < 3)
+    {
+        LOGE("Invalid input parameters\n");
+        return BK_FAIL;
+    }
+
+    uint8_t syncword = buf[0];
+    uint8_t channel_mode = 0;
+    uint8_t blocks = 0;
+    uint8_t subbands = 0;
+    uint8_t bitpool = 0;
+    uint8_t num_channels = 1;
+    int32_t calculated_frame_len = 0;
+
+    // Determine whether it is an SBC frame or an mSBC frame
+    if (syncword == 0x9C)    // SBC frame sync word
+    {
+        // Parse SBC frame header information
+        channel_mode = (buf[1] >> 2) & 0x03;
+        blocks = (((buf[1] >> 4) & 0x03) + 1) << 2; // 4, 8, 12, 16
+        subbands = ((buf[1] & 0x01) + 1) << 2; // 4 or 8
+        bitpool = buf[2];
+
+        // Determine the number of channels based on the channel mode
+        num_channels = (channel_mode == 0) ? 1 : 2; // 0 indicates MONO mode
+    }
+    else if (syncword == 0xAD)    // mSBC frame sync word (according to common definition)
+    {
+        // mSBC usually has a fixed configuration
+        blocks = 15;
+        subbands = 8;
+        bitpool = 26;
+        num_channels = 1;
+        channel_mode = 0; // MONO mode
+
+        // For some extended mSBC formats, they may contain additional configuration information
+        if (buf[1] != 0 || buf[2] != 0)
+        {
+            channel_mode = (buf[1] >> 2) & 0x03;
+            subbands = ((buf[1] & 0x01) + 1) << 2;
+            bitpool = buf[2];
+            num_channels = (channel_mode == 0) ? 1 : 2;
+            LOGW("%s spec msbc 0x%02x%02x !!!\n", __func__, buf[1], buf[2]);
+        }
+    }
+    else
+    {
+        // Not a valid SBC or mSBC frame header
+        LOGE("Invalid syncword: 0x%x\n", syncword);
+        return BK_FAIL;
+    }
+
+    // Check if the bitpool is out of range
+    if (((channel_mode == 0 || channel_mode == 1) && (bitpool > (subbands << 4))) ||
+        ((channel_mode == 2 || channel_mode == 3) && (bitpool > (subbands << 5))))
+    {
+        LOGE("Bitpool out of bounds: %d\n", bitpool);
+        return BK_FAIL;
+    }
+
+    // Calculate the frame length
+    calculated_frame_len = 4 + ((4 * subbands * num_channels) >> 3);
+
+    if (channel_mode == 0 || channel_mode == 1)    // MONO or DUAL_CHANNEL
+    {
+        calculated_frame_len += ((blocks * num_channels * bitpool) + 7) >> 3;
+    }
+    else    // STEREO or JOINT_STEREO
+    {
+        if (channel_mode == 3)    // JOINT_STEREO
+        {
+            calculated_frame_len += (subbands + blocks * bitpool + 7) >> 3;
+        }
+        else    // STEREO
+        {
+            calculated_frame_len += (blocks * bitpool + 7) >> 3;
+        }
+    }
+
+    // Check if the calculated frame length exceeds the input data length
+    if (calculated_frame_len > len)
+    {
+        LOGE("Frame length %d exceeds buffer length %d\n", calculated_frame_len, len);
+        return BK_FAIL;
+    }
+
+    // Return the calculated frame length
+    return calculated_frame_len;
+}
+
 static void bt_audio_hf_demo_main(void *arg)
 {
     uint8_t recon_addr[6] = {0};
@@ -989,7 +1103,7 @@ static void bt_audio_hf_demo_main(void *arg)
                     hf_auido_start = 1;
 
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-                    if (BK_OK != bt_audio_player_open(decoder_type, decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC ? 58 : 0, spk_task_start_vote))
+                    if (BK_OK != bt_audio_player_open(decoder_type, decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC ? MSBC_EXPECT_FRAME_LEN : 0, spk_task_start_vote))
                     {
                         LOGE("%s bt_audio_player_open failed\n", __func__);
                     }
@@ -1122,17 +1236,28 @@ static void bt_audio_hf_demo_main(void *arg)
 
                     if (CODEC_VOICE_MSBC == bt_audio_hfp_hf_codec)
                     {
-                        LOGI("%s -->len %d, 0x%x 0x%x 0x%x\n", __func__, msg.len, fb[0], fb[1], fb[2]);
+                        //LOGI("%s -->len %d, 0x%x 0x%x 0x%x\n", __func__, msg.len, fb[0], fb[1], fb[2]);
+
+                        int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb + 2, msg.len - 2);
+
+                        if(tmp_frame_len < 0)
+                        {
+                            LOGE("%s parse msbc err ret %d msg len %d, ignore\n", __func__, tmp_frame_len, msg.len);
+                            goto send_end;
+                        }
+                        else if(tmp_frame_len < msg.len - 2)
+                        {
+                            LOGV("%s recv frame bytes %d != parse frame bytes %d\n", __func__, msg.len - 2, tmp_frame_len);
+                        }
+
+                        packet_len = tmp_frame_len;
                     }
 
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
 
                     if (CODEC_VOICE_MSBC == bt_audio_hfp_hf_codec)
                     {
-                        //todo: msbc
-                        fb += 2; //Skip Synchronization Header
-                        //ret = bk_sbc_decoder_frame_decode(&bt_audio_hf_sbc_decoder, fb, msg.len - 2);
-                        blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb, msg.len - 2);
+                        blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb + 2, packet_len);
                     }
                     else
                     {
@@ -1146,7 +1271,7 @@ static void bt_audio_hf_demo_main(void *arg)
                         blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb, packet_len);
                     }
 #endif
-
+send_end:;
                     psram_free(msg.data);
                 }
                 break;
@@ -1430,6 +1555,8 @@ static int mic_task_init()
 static void mic_task(void *arg)
 {
     int32_t ret = 0;
+    uint8_t h2_index = 0;
+    uint8_t first_mic_buff_index = 0;
 
     LOGI("%s wait a2dp task end\n", __func__);
     extern int32_t wait_a2dp_speaker_task_end(void);
@@ -1439,26 +1566,36 @@ static void mic_task(void *arg)
 
     LOGI("%s init success!! \r\n", __func__);
 
+    if(bt_audio_hfp_hf_codec == CODEC_VOICE_CVSD)
+    {
+        first_mic_buff_index = 0;
+    }
+    else if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
+    {
+        first_mic_buff_index = 2;
+    }
+
     while (hf_auido_start)
     {
         int32_t expect_len = 0;
         int32_t read_len = 0;
         int32_t read_all_len = 0;
 
+        hf_mic_data_count = first_mic_buff_index;
+
         if(bt_audio_hfp_hf_codec == CODEC_VOICE_CVSD)
         {
             expect_len = SCO_CVSD_SAMPLES_PER_FRAME * 2;
-
         }
         else if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
         {
-            expect_len = 58;
+            expect_len = MSBC_EXPECT_FRAME_LEN;
         }
 
         if (hf_mic_data_count + expect_len > sizeof(hf_mic_sco_data))
         {
             LOGE("%s mic data buffer overflow\n", __func__);
-            hf_mic_data_count = 0;
+            continue;
         }
 
         while(hf_auido_start && read_all_len < expect_len)
@@ -1471,11 +1608,6 @@ static void mic_task(void *arg)
                 continue;
             }
 
-            if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
-            {
-                LOGI("read msbc len %d\n", read_len);
-            }
-
             read_all_len += read_len;
 
             if(read_all_len < expect_len)
@@ -1485,12 +1617,24 @@ static void mic_task(void *arg)
 
             hf_mic_data_count += read_all_len;
 
-            if(hf_mic_data_count)
+            if(hf_mic_data_count > first_mic_buff_index)
             {
                 LOGV("send sco %d\n", hf_mic_data_count);
 
-                bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count);
-                hf_mic_data_count = 0;
+                if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
+                {
+#define MSBC_PADDED (60 - (MSBC_EXPECT_FRAME_LEN + 2))
+                    const uint8_t sn[] = {0b0000, 0b0011, 0b1100, 0b1111};
+                    hf_mic_sco_data[0] = 1;
+                    hf_mic_sco_data[1] = (0b1000 | (sn[h2_index] << 4));
+                    os_memset(hf_mic_sco_data + hf_mic_data_count, 0, MSBC_PADDED);
+                    h2_index = (h2_index + 1) % 3;
+                    bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count + MSBC_PADDED);
+                }
+                else
+                {
+                    bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count);
+                }
             }
 
             break;
