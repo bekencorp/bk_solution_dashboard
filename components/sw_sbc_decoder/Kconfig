@@ -1,0 +1,20 @@
+menu "SW SBC Decoder"
+
+	config SW_SBC_DECODER
+		bool "Enable Software SBC Decoder"
+		default n
+		help
+			Enable software SBC decoder for A2DP audio playback
+			on chips without hardware SBC accelerator (e.g. BK7259).
+
+	config PIPELINE_DEBUG_STAGE
+		depends on SW_SBC_DECODER
+		int "Pipeline debug cutoff stage"
+		default 0
+		help
+			0 = normal passthrough
+			1 = cutoff at decoder (dump to UART2, no forward to mix_alg)
+			2 = cutoff at pcm_tap (dump to UART2, no forward to speaker)
+			Use to pinpoint which stage causes send queue failed.
+
+endmenu

@@ -43,6 +43,12 @@ static uint8_t s_wifi_boarding_is_init;
 static uint8_t s_db_init;
 static uint8_t s_log_level = BOARDING_DEBUG_LEVEL_INFO;
 static beken_semaphore_t s_send_sem;
+static void (*s_ble_disconnect_cb)(void) = NULL;
+
+void wifi_boarding_demo_reg_ble_disconnect_cb(void (*cb)(void))
+{
+    s_ble_disconnect_cb = cb;
+}
 
 enum
 {
@@ -105,7 +111,7 @@ static const bk_gatts_attr_db_t s_gatts_attr_db_service_boarding[] =
 
 static uint16_t s_boarding_attr_handle_list[sizeof(s_gatts_attr_db_service_boarding) / sizeof(s_gatts_attr_db_service_boarding[0])];
 
-int wifi_boarding_notify(uint8_t *data, uint16_t length)
+__attribute__((weak)) int wifi_boarding_notify(uint8_t *data, uint16_t length)
 {
     int16_t current_conn_id = dm_ble_gap_get_current_conn_id();
 
@@ -174,6 +180,11 @@ static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t ga
                     param->remote_bda[2],
                     param->remote_bda[1],
                     param->remote_bda[0]);
+
+        if (s_ble_disconnect_cb)
+        {
+            s_ble_disconnect_cb();
+        }
 
         common_env_tmp = dm_ble_find_app_env_by_addr(param->remote_bda);
 

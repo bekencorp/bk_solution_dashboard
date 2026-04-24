@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <common/bk_err.h>
 #include "driver/uart.h"
 
 typedef struct
@@ -12,5 +13,5 @@ typedef struct
     gpio_id_t reset_pin;
 } bsc_config_t;
 
-int32_t bk_cpn_bsc_init(bsc_config_t *config);
-int32_t bk_cpn_bsc_deinit(void);
+bk_err_t bk_cpn_bsc_init(bsc_config_t *config);
+bk_err_t bk_cpn_bsc_deinit(void);

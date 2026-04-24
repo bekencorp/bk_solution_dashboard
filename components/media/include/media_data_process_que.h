@@ -1,6 +1,7 @@
 #ifndef _MEDIA_DATA_PROCESS_QUEUE_H_
 #define _MEDIA_DATA_PROCESS_QUEUE_H_
 
+#include <common/bk_err.h>
 #include <components/media_types.h>
 #include <components/avdk_utils/avdk_error.h>
 
@@ -41,7 +42,7 @@ frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
  * @param frame Frame buffer to return to queue
  * @return avdk_err_t Operation result
  */
-avdk_err_t media_frame_queue_complete(frame_buffer_t *frame);
+bk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 
 /**
  * @brief Free a frame buffer and send message to free queue

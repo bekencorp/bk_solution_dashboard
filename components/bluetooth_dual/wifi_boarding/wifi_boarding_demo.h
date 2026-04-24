@@ -36,3 +36,5 @@ int32_t wifi_boarding_demo_deinit_because_bluetooth_deinit_future(void);
 uint8_t wifi_boarding_demo_get_log_level(void);
 void wifi_boarding_demo_set_log_level(uint8_t level);
 int wifi_boarding_notify(uint8_t *data, uint16_t length);
+
+void wifi_boarding_demo_reg_ble_disconnect_cb(void (*cb)(void));

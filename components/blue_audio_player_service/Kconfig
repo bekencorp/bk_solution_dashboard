@@ -1,7 +1,7 @@
 menu "Blue Audio Player Service"
 
 	config BLUE_AUDIO_PLAYER_SERVICE
-		depends on ADK_RAW_STREAM && (ADK_SBC_DECODER || ADK_AAC_DECODER) && (ADK_ONBOARD_SPEAKER_STREAM || ADK_UAC_SPEAKER_STREAM)
+		depends on ADK_RAW_STREAM && (ADK_SBC_DECODER || ADK_AAC_DECODER || SW_SBC_DECODER) && (ADK_ONBOARD_SPEAKER_STREAM || ADK_UAC_SPEAKER_STREAM)
 		bool "Enable Blue Audio Player Service"
 		default n
 		help
@@ -42,5 +42,22 @@ menu "Blue Audio Player Service"
 		default n
 		help
 			Enable EQ algorithm support in Blue Audio Player Service for audio equalization processing
+
+	config PIPELINE_DEBUG_PCM_TAP
+		depends on BLUE_AUDIO_PLAYER_SERVICE && SW_SBC_DECODER
+		bool "Pipeline debug: insert PCM tap element before speaker"
+		default n
+		help
+			Insert a passthrough PCM tap element before speaker for debugging.
+			It logs PCM sample info periodically and optionally dumps data via UART2.
+			Disable this in production to save one task, one ring-buffer copy and one frame latency.
+
+	config PIPELINE_DEBUG_USE_NULL_SINK
+		depends on BLUE_AUDIO_PLAYER_SERVICE && SW_SBC_DECODER
+		bool "Pipeline debug: use null_sink instead of speaker"
+		default n
+		help
+			Replace onboard_speaker with null_sink (read and discard, no resample/DMA) to verify
+			whether send queue failed is caused by speaker resample/DMA or by any downstream consumer.
 
 endmenu

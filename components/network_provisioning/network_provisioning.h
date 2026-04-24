@@ -1,5 +1,6 @@
 #pragma once
 
+#include <common/bk_err.h>
 
 typedef enum
 {
@@ -101,5 +102,5 @@ typedef struct
 } ble_prov_msg_t;
 #endif
 
-int32_t bk_sl_np_init(uint8_t reg_method);
+bk_err_t bk_sl_np_init(uint8_t reg_method);
 navigation_type_t get_navigation_type(void);

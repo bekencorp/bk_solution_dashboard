@@ -2,6 +2,7 @@
 #define __AV_SERVER_DEVICES_H__
 
 #include <stdbool.h>
+#include <common/bk_err.h>
 
 //#include "av_server_transmission.h"
 
@@ -67,21 +68,21 @@ typedef enum
 
 
 void av_server_devices_deinit(void);
-int av_server_devices_init(void);
+bk_err_t av_server_devices_init(void);
 
-int av_server_audio_turn_on(audio_parameters_t *parameters);
-int av_server_audio_turn_off(void);
-int av_server_audio_acoustics(uint32_t index, uint32_t param);
+bk_err_t av_server_audio_turn_on(audio_parameters_t *parameters);
+bk_err_t av_server_audio_turn_off(void);
+bk_err_t av_server_audio_acoustics(uint32_t index, uint32_t param);
 void av_server_audio_data_callback(uint8_t *data, uint32_t length);
 
-int av_server_display_turn_on(void *lcd, uint16_t rotate);
-int av_server_display_turn_off(void);
+bk_err_t av_server_display_turn_on(void *lcd, uint16_t rotate);
+bk_err_t av_server_display_turn_off(void);
 
-int av_server_jpeg_decode_manager_turn_on(void);
-int av_server_jpeg_decode_manager_turn_off(void);
-int av_server_jpeg_decode_manager_suspend(void);
-int av_server_jpeg_decode_manager_resume(void);
-int av_server_jpeg_decode_manager_get_decoder_type(void);
+bk_err_t av_server_jpeg_decode_manager_turn_on(void);
+bk_err_t av_server_jpeg_decode_manager_turn_off(void);
+bk_err_t av_server_jpeg_decode_manager_suspend(void);
+bk_err_t av_server_jpeg_decode_manager_resume(void);
+bk_err_t av_server_jpeg_decode_manager_get_decoder_type(void);
 
 void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
@@ -93,18 +94,6 @@ bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void);
 
 void lvgl_app_enter_navigation(void);
 void lvgl_app_exit_navigation(void);
-
-/* UVC view (dashcam / reverse camera preview) */
-typedef enum
-{
-    LVGL_VIEW_DEFAULT = 0,
-    LVGL_VIEW_NAVIGATION = 1,
-    LVGL_VIEW_UVC = 2,
-} lvgl_view_t;
-
-lvgl_view_t lvgl_app_get_view(void);
-void lvgl_app_enter_uvc(void);
-void lvgl_app_exit_uvc(void);
 
 void lvgl_app_display(uint8_t *data, uint32_t data_len, bool data_is_rgb565);
 

@@ -19,7 +19,11 @@
 extern "C" {
 #endif
 
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+#include <components/bk_audio/audio_streams/onboard_speaker_stream_v2.h>
+#else
 #include <components/bk_audio/audio_streams/onboard_speaker_stream.h>
+#endif
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
 #include <components/bk_audio/audio_streams/raw_stream.h>
 #include <components/bk_audio/audio_decoders/sbc_decoder.h>
@@ -157,6 +161,36 @@ typedef struct
 /**
  * @brief Default onboard speaker configuration
  */
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+#define BLUE_AUDIO_PLAYER_DEFAULT_ONBOARD_SPK_CONFIG() {    \
+    .chl_num = 1,                                           \
+    .sample_rate[0] = 44100,                                \
+    .sample_rate[1] = 16000,                                \
+    .sample_rate[2] = 16000,                                \
+    .dig_gain = 0x2d,                                       \
+    .ana_gain = 0x00,                                       \
+    .work_mode = AUD_DAC_WORK_MODE_DIFFEN,                  \
+    .bits = 16,                                             \
+    .clk_src = AUD_CLK_XTAL,                                \
+    .multi_in_port_num = 0,                                 \
+    .multi_out_port_num = 0,                                \
+    .frame_size[0] = 3528,                                  \
+    .frame_size[1] = 320,                                   \
+    .frame_size[2] = 320,                                   \
+    .pool_length = 0,                                       \
+    .pool_play_thold = 0,                                   \
+    .pool_pause_thold = 0,                                  \
+    .pa_ctrl_en = false,                                    \
+    .pa_ctrl_gpio = 0,                                      \
+    .pa_on_level = 0,                                       \
+    .pa_on_delay = 0,                                       \
+    .pa_off_delay = 0,                                      \
+    .task_stack = ONBOARD_SPEAKER_STREAM_TASK_STACK,        \
+    .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
+    .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
+    .dac_source_bitmap = DEFAULT_ACTIVE_DAC_SOURCE_BITMAP,  \
+}
+#else
 #define BLUE_AUDIO_PLAYER_DEFAULT_ONBOARD_SPK_CONFIG() {    \
     .chl_num = 1,                                           \
     .sample_rate = 44100,                                   \
@@ -180,6 +214,62 @@ typedef struct
     .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
     .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
 }
+#endif
+
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+#define BLUE_AUDIO_PLAYER_DEFAULT_PCM_ONBOARD_SPK_CONFIG() { \
+    .chl_num = 1,                                           \
+    .sample_rate[0] = 8000,                                 \
+    .sample_rate[1] = 8000,                                 \
+    .sample_rate[2] = 8000,                                 \
+    .dig_gain = 0x2d,                                       \
+    .ana_gain = 0x07,                                       \
+    .work_mode = AUD_DAC_WORK_MODE_DIFFEN,                  \
+    .bits = 16,                                             \
+    .clk_src = AUD_CLK_XTAL,                                \
+    .multi_in_port_num = 0,                                 \
+    .multi_out_port_num = 0,                                \
+    .frame_size[0] = 640,                                   \
+    .frame_size[1] = 640,                                   \
+    .frame_size[2] = 640,                                   \
+    .pool_length = 0,                                       \
+    .pool_play_thold = 0,                                   \
+    .pool_pause_thold = 0,                                  \
+    .pa_ctrl_en = false,                                    \
+    .pa_ctrl_gpio = 0,                                      \
+    .pa_on_level = 0,                                       \
+    .pa_on_delay = 0,                                       \
+    .pa_off_delay = 0,                                      \
+    .task_stack = ONBOARD_SPEAKER_STREAM_TASK_STACK,        \
+    .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
+    .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
+    .dac_source_bitmap = DEFAULT_ACTIVE_DAC_SOURCE_BITMAP,  \
+}
+#else
+#define BLUE_AUDIO_PLAYER_DEFAULT_PCM_ONBOARD_SPK_CONFIG() { \
+    .chl_num = 1,                                           \
+    .sample_rate = 8000,                                    \
+    .dig_gain = 0x2d,                                       \
+    .ana_gain = 0x07,                                       \
+    .work_mode = AUD_DAC_WORK_MODE_DIFFEN,                  \
+    .bits = 16,                                             \
+    .clk_src = AUD_CLK_XTAL,                                \
+    .multi_in_port_num = 0,                                 \
+    .multi_out_port_num = 0,                                \
+    .frame_size = 640,                                      \
+    .pool_length = 0,                                       \
+    .pool_play_thold = 0,                                   \
+    .pool_pause_thold = 0,                                  \
+    .pa_ctrl_en = false,                                    \
+    .pa_ctrl_gpio = 0,                                      \
+    .pa_on_level = 0,                                       \
+    .pa_on_delay = 0,                                       \
+    .pa_off_delay = 0,                                      \
+    .task_stack = ONBOARD_SPEAKER_STREAM_TASK_STACK,        \
+    .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
+    .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
+}
+#endif
 
 #define BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG() {  \
     .buf_sz             = 1280,                             \
@@ -188,7 +278,7 @@ typedef struct
     .task_stack         = MIX_ALGORITHM_TASK_STACK,         \
     .task_core          = MIX_ALGORITHM_TASK_CORE,          \
     .task_prio          = MIX_ALGORITHM_TASK_PRIO,          \
-    .input_channel_num  = 2,                                \
+    .input_channel_num  = 1,                                \
 }
 
 /**
@@ -241,6 +331,34 @@ typedef struct
 }
 
 /**
+ * @brief Default AAC player configuration (onboard speaker)
+ */
+#define DEFAULT_BLUE_AUDIO_PLAYER_AAC_ONBOARD_SPK_CONFIG() {            \
+    .decoder_type = BLUE_AUDIO_DECODER_TYPE_AAC,                        \
+    .speaker_type = BLUE_AUDIO_SPEAKER_TYPE_ONBOARD,                    \
+    .raw_strm_cfg = {                                                   \
+        .type = AUDIO_STREAM_WRITER,                                    \
+        .out_block_size = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_SIZE,         \
+        .out_block_num = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_NUM,           \
+        .output_port_type = PORT_TYPE_FB                                \
+    },                                                                  \
+    .task_stack = BLUE_AUDIO_PLAYER_DEFAULT_TASK_STACK,                 \
+    .task_core = BLUE_AUDIO_PLAYER_DEFAULT_TASK_CORE,                   \
+    .task_prio = BLUE_AUDIO_PLAYER_DEFAULT_TASK_PRIO,                   \
+    .mix_en = true,                                                     \
+    .play_threshold = BLUE_AUDIO_PLAYER_DEFAULT_PLAY_THRESHOLD,         \
+    .decoder_cfg = {                                                    \
+        .aac_dec_cfg = BLUE_AUDIO_PLAYER_DEFAULT_AAC_DEC_CONFIG()       \
+    },                                                                  \
+    .speaker_cfg = {                                                    \
+        .ob_spk_cfg = BLUE_AUDIO_PLAYER_DEFAULT_ONBOARD_SPK_CONFIG()    \
+    },                                                                  \
+    .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
+    .event_handle = NULL,                                               \
+    .args = NULL,                                                       \
+}
+
+/**
  * @brief Default PCM player configuration
  */
 #define DEFAULT_BLUE_AUDIO_PLAYER_PCM_ONBOARD_SPK_CONFIG() {            \
@@ -258,30 +376,7 @@ typedef struct
     .mix_en = false,                                                     \
     .play_threshold = BLUE_AUDIO_PLAYER_DEFAULT_PLAY_THRESHOLD,         \
     .speaker_cfg = {                                                    \
-        .ob_spk_cfg =                                               \
-        {                                                           \
-            .chl_num = 1,                                           \
-            .sample_rate = 8000,                                    \
-            .dig_gain = 0x2d,                                       \
-            .ana_gain = 0x07,                                       \
-            .work_mode = AUD_DAC_WORK_MODE_DIFFEN,                  \
-            .bits = 16,                                             \
-            .clk_src = AUD_CLK_XTAL,                                \
-            .multi_in_port_num = 0,                                 \
-            .multi_out_port_num = 0,                                \
-            .frame_size = 640,                                      \
-            .pool_length = 0,                                       \
-            .pool_play_thold = 0,                                   \
-            .pool_pause_thold = 0,                                  \
-            .pa_ctrl_en = false,                                    \
-            .pa_ctrl_gpio = 0,                                      \
-            .pa_on_level = 0,                                       \
-            .pa_on_delay = 0,                                       \
-            .pa_off_delay = 0,                                      \
-            .task_stack = ONBOARD_SPEAKER_STREAM_TASK_STACK,        \
-            .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
-            .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
-        },                                                          \
+        .ob_spk_cfg = BLUE_AUDIO_PLAYER_DEFAULT_PCM_ONBOARD_SPK_CONFIG(), \
     },                                                                  \
     .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
     .event_handle = NULL,                                               \

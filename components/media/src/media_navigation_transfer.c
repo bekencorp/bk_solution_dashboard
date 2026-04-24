@@ -17,17 +17,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <common/bk_err.h>
 #include <os/os.h>
 #include <os/mem.h>
 #include <os/str.h>
 #include <components/log.h>
 
-#include "frame_buffer.h"
 #include "media_data_process_que.h"
 #include "components/media_types.h"
-#if defined(CONFIG_LVGL) && CONFIG_LVGL
-#include "media_devices.h"
-#endif
+#include "cast_jpeg_pipeline.h"
 
 #define TAG "media-nav"
 
@@ -249,28 +247,22 @@ bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data
         s_nav_ctx.frame->timestamp = rtos_get_time();
         s_nav_ctx.frame->sequence = s_frame_sequence++;
 
-#if CONFIG_LVGL
-        if (lvgl_app_get_view() == LVGL_VIEW_UVC)
-        {
-            media_frame_queue_free(s_nav_ctx.frame);
-            s_nav_ctx.frame = NULL;
-            reset_context();
-            return BK_OK;
-        }
-#endif
+        LOGI("push: frame #%u complete, length=%u\n",
+             (unsigned int)(s_frame_sequence - 1), (unsigned int)s_nav_ctx.frame->length);
 
-        bk_err_t ret = media_frame_queue_complete(s_nav_ctx.frame);
+        bk_err_t ret = cast_jpeg_pipeline_push_frame_buffer(s_nav_ctx.frame);
         if (ret != BK_OK)
         {
-            LOGE("push: media_frame_queue_complete failed: %d\n", ret);
+            LOGE("push: cast pipeline push failed: %d\n", ret);
             media_frame_queue_free(s_nav_ctx.frame);
             s_nav_ctx.frame = NULL;
             reset_context();
+            if (ret == BK_ERR_BUSY)
+                rtos_delay_milliseconds(2);
+            else
+                rtos_delay_milliseconds(1);
             return ret;
         }
-
-        LOGV("push: transfer complete, frame length=%u, seq=%u\n", (unsigned int)s_nav_ctx.frame->length,
-             (unsigned int)(s_frame_sequence - 1));
 
         s_nav_ctx.frame = NULL;
         reset_context();

@@ -39,6 +39,27 @@ static btm_env_s btm_env={0};
 static btm_callback_s btm_cbs[MAX_PROFILE_NUM] = {0};
 static uint8_t s_bt_auto_accept_connection;
 
+static const char *bt_gap_evt_to_str(bk_gap_bt_cb_event_t event)
+{
+    switch (event)
+    {
+    case BK_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
+        return "ACL_DISCONN_CMPL";
+    case BK_BT_GAP_ACL_CONN_CMPL_STAT_EVT:
+        return "ACL_CONN_CMPL";
+    case BK_BT_GAP_AUTH_CMPL_EVT:
+        return "AUTH_CMPL";
+    case BK_BT_GAP_LINK_KEY_NOTIF_EVT:
+        return "LINK_KEY_NOTIF";
+    case BK_BT_GAP_LINK_KEY_REQ_EVT:
+        return "LINK_KEY_REQ";
+    case BK_BT_GAP_CONNECTION_REQ_EVT:
+        return "CONNECTION_REQ";
+    default:
+        return "OTHER";
+    }
+}
+
 void bt_stop_reconnect_timeout_check(void)
 {
     if (rtos_is_oneshot_timer_init(&btm_env.recon_tmr))
@@ -239,6 +260,9 @@ static void bt_clear_reconnect_info(void)
 
 void gap_event_cb(bk_gap_bt_cb_event_t event, bk_bt_gap_cb_param_t *param)
 {
+    LOGI("%s evt=%d(%s) state=%d auto_accept=0x%x\n",
+         __func__, event, bt_gap_evt_to_str(event), btm_env.connect_state, s_bt_auto_accept_connection);
+
     switch (event)
     {
         case BK_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
@@ -502,6 +526,9 @@ void gap_event_cb(bk_gap_bt_cb_event_t event, bk_bt_gap_cb_param_t *param)
             pm->reject_reason = BK_BT_STATUS_CONN_REJ_SECURITY_REASONS;
             break;
         }
+
+        LOGI("%s conn_req type=%d accept=%d reject_reason=0x%x state=%d\n",
+             __func__, pm->type, pm->accept, pm->reject_reason, btm_env.connect_state);
     }
     break;
 
@@ -530,6 +557,29 @@ void bt_manager_set_auto_accept_connection(uint8_t type, uint8_t accept)
     }
 
     LOGW("%s 0x%x\n", __func__, s_bt_auto_accept_connection);
+}
+
+void bt_sync_base_mac_from_cp(void)
+{
+    extern bk_err_t bk_ap_get_mac(uint8_t *mac, mac_type_t type);
+    extern bk_err_t bk_set_base_mac(const uint8_t *mac);
+
+    /*
+     * Force mac_init() to run first so s_mac_inited becomes true.
+     * Otherwise bk_set_base_mac() below would be overwritten by a
+     * later bk_get_mac() call that triggers mac_init() lazily.
+     */
+    uint8_t dummy[6], base_mac[6] = {0};
+    bk_get_mac(dummy, MAC_TYPE_BASE);
+
+    if (bk_ap_get_mac(base_mac, MAC_TYPE_BASE) == BK_OK) {
+        bk_set_base_mac(base_mac);
+        LOGI("synced base mac from CP: %02x:%02x:%02x:%02x:%02x:%02x\n",
+             base_mac[0], base_mac[1], base_mac[2],
+             base_mac[3], base_mac[4], base_mac[5]);
+    } else {
+        LOGW("failed to sync base mac from CP\n");
+    }
 }
 
 int bt_manager_init()

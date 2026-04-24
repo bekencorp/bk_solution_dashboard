@@ -4,10 +4,11 @@
 #include <common/bk_err.h>
 #include <getopt.h>
 
+#if CONFIG_LCD
 #include <driver/lcd.h>
+#endif
 
 #include "media_devices.h"
-#include "frame_buffer_que.h"
 
 #include "media_network_transfer.h"
 #include "network_transfer.h"
@@ -16,15 +17,17 @@
 #include "lv_vendor.h"
 
 #include "components/bk_display.h"
+#if CONFIG_LCD
 #include "lcd_panel_devices.h"
+#endif
 #include "driver/gpio.h"
 #include "gpio_driver.h"
 
-#include "frame_buffer.h"
+#include <components/bk_frame_buffer.h>
+#include "media_frame_psram_alloc.h"
 
-#include "jpeg_decode_manager.h"
-
-#include "network_provisioning.h"
+#include "cast_jpeg_pipeline.h"
+#include "media_msg.h"
 
 #define TAG "db-device"
 
@@ -45,17 +48,16 @@ typedef struct
 
 typedef struct
 {
-    jpeg_decode_manager_t *manager;
-    jpeg_decode_manager_config_t config;
     bk_display_ctlr_handle_t lcd_display_handle;
     uint32_t lcd_use_module;
     db_device_debug_info_t debug_info;
     beken_timer_t debug_timer;
 } db_device_info_t;
 
-static const lcd_device_t *lcd_device =  &lcd_device_st7282;
+#if CONFIG_LCD
+static const lcd_device_t *lcd_device = &lcd_device_st7282;
+#endif
 db_device_info_t *db_device_info = NULL;
-static frame_buffer_t *last_lvgl_video_frame = NULL;
 
 // static aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
 // static aud_intf_work_mode_t aud_work_mode = AUD_INTF_WORK_MODE_NULL;
@@ -69,160 +71,51 @@ void set_lcd_use_module(lcd_source_module_t module)
     }
 }
 
-static avdk_err_t display_frame_free_cb(void *frame)
+bk_err_t av_server_jpeg_decode_manager_suspend(void)
 {
-    frame_buffer_display_free((frame_buffer_t *)frame);
-    return AVDK_ERR_OK;
+    return cast_jpeg_pipeline_suspend();
 }
 
-static bk_err_t decode_complete_callback(uint32_t format_type, uint32_t result, frame_buffer_t *out_frame)
+bk_err_t av_server_jpeg_decode_manager_resume(void)
 {
-    avdk_err_t ret = AVDK_ERR_OK;
-    if (result == BK_OK) {
-        LOGV("Decode complete, format: %d, width: %d, height: %d\n", 
-             format_type, out_frame->width, out_frame->height);
-        db_device_info->debug_info.decode_frame_count++;
-        // 这里可以处理解码后的图像数据
-        // 例如：显示图像、保存图像等
-        if (db_device_info->lcd_use_module == LCD_SOURCE_MODULE_DECODER)
-        {
-            if (last_lvgl_video_frame) {
-                frame_buffer_display_free(last_lvgl_video_frame);
-                last_lvgl_video_frame = NULL;
-            }
-
-            if (get_navigation_type() == NAVIGATION_TYPE_BT)
-            {
-                #if CONFIG_LCD_PANEL_USE_480X272
-                    last_lvgl_video_frame = out_frame;
-                    lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, true);
-                #else
-                    ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
-                    if (ret != BK_OK)
-                    {
-                        LOGE("bk_display_flush failed\n");
-                        frame_buffer_display_free(out_frame);
-                    }
-                #endif
-            }
-            else
-            {
-                #if CONFIG_LCD_PANEL_USE_800X480
-                    if (db_device_info->manager->decoder_type == DECODER_TYPE_SW) {
-                        last_lvgl_video_frame = out_frame;
-                        lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, true);
-                    } else {
-                        last_lvgl_video_frame = out_frame;
-                        lvgl_app_display((uint8_t *)out_frame->frame, out_frame->size, false);
-                    }
-                #else
-                    ret = bk_display_flush(db_device_info->lcd_display_handle, (void *)out_frame, display_frame_free_cb);
-                    if (ret != BK_OK)
-                    {
-                        LOGE("bk_display_flush failed\n");
-                        frame_buffer_display_free(out_frame);
-                    }
-                #endif
-            }
-        }
-        else
-        {
-            frame_buffer_display_free(out_frame);
-        }
-    } else {
-        LOGE("Decode failed with result: %d\n", result);
-    }
-    
-    return BK_OK;
+    return cast_jpeg_pipeline_resume();
 }
 
-int av_server_jpeg_decode_manager_suspend(void)
+bk_err_t av_server_jpeg_decode_manager_turn_on(void)
 {
-    if (db_device_info != NULL && db_device_info->manager != NULL) {
-        jpeg_decode_manager_suspend(db_device_info->manager);
-    }
-    
-    return BK_OK;
-}
-
-int av_server_jpeg_decode_manager_resume(void)
-{
-    if (db_device_info != NULL && db_device_info->manager != NULL) {
-        jpeg_decode_manager_resume(db_device_info->manager);
-    }
-    
-    return BK_OK;
-}
-
-int av_server_jpeg_decode_manager_turn_on(void)
-{
-    int ret = -1;
-    // 创建解码管理器
-    if (db_device_info->manager == NULL) {
-
-        os_memset(&db_device_info->config, 0, sizeof(jpeg_decode_manager_config_t));
-        db_device_info->config.queue_size = 10;                // 队列大小为10
-        db_device_info->config.thread_priority = BEKEN_DEFAULT_WORKER_PRIORITY;           // 线程优先级为6
-        db_device_info->config.thread_stack_size = 2 * 1024;   // 线程栈大小为2KB
-        db_device_info->config.decode_cbs.out_complete = decode_complete_callback; // 设置完成回调
-        db_device_info->config.out_format = JPEG_DECODE_SW_OUT_FORMAT_RGB565;
-        db_device_info->config.byte_order = JPEG_DECODE_LITTLE_ENDIAN;
-    
-        db_device_info->debug_info.decode_frame_count = 0;
-        db_device_info->debug_info.last_decode_frame_count = 0;
-
-        db_device_info->manager = jpeg_decode_manager_create(&db_device_info->config);
-        if (db_device_info->manager == NULL) {
-            LOGE("Failed to create JPEG decode manager\n");
-            return ret;
-        }
-    }
-    else
-    {
-        LOGE("JPEG decode manager already created\n");
-        return BK_OK;
+    if (db_device_info == NULL) {
+        LOGE("db_device_info is NULL\n");
+        return BK_FAIL;
     }
 
-    ret = navigation_map_dma2d_yuyv2rgb565_init();
-    if (ret != BK_OK) {
-        LOGE("Failed to initialize navigation map DMA2D YUYV to RGB565\n");
-        return ret;
-    }
+    db_device_info->debug_info.decode_frame_count = 0;
+    db_device_info->debug_info.last_decode_frame_count = 0;
 
     set_lcd_use_module(LCD_SOURCE_MODULE_DECODER);
 
-    return BK_OK;
+    LOGI("cast jpeg_stream_pipeline on (src=%ux%u dst=%ux%u)\n",
+         (unsigned)CAST_JPEG_SRC_WIDTH, (unsigned)CAST_JPEG_SRC_HEIGHT,
+         (unsigned)CAST_JPEG_DST_WIDTH, (unsigned)CAST_JPEG_DST_HEIGHT);
+
+    return cast_jpeg_pipeline_turn_on(db_device_info->lcd_display_handle);
 }
 
-int av_server_jpeg_decode_manager_turn_off(void)
+bk_err_t av_server_jpeg_decode_manager_turn_off(void)
 {
-    int ret = -1;
-    if (db_device_info->manager != NULL) {
-        ret = jpeg_decode_manager_destroy(db_device_info->manager);
-        db_device_info->manager = NULL;
-    }
+    bk_err_t ret;
 
-    ret = navigation_map_dma2d_yuyv2rgb565_deinit();
-    if (ret != BK_OK) {
-        LOGE("Failed to deinitialize navigation map DMA2D YUYV to RGB565\n");
-        return ret;
-    }
-
+    set_lcd_use_module(LCD_SOURCE_MODULE_LVGL);
+    ret = cast_jpeg_pipeline_turn_off();
+    LOGI("cast jpeg_stream_pipeline off ret=%d\n", (int)ret);
     return ret;
 }
 
-int av_server_jpeg_decode_manager_get_decoder_type(void)
+bk_err_t av_server_jpeg_decode_manager_get_decoder_type(void)
 {
-    if (db_device_info->manager != NULL) {
-        return db_device_info->manager->decoder_type;
-    }
-
-    LOGI("%s %d decoder_type is NULL, default decoder type is software\n", __func__, __LINE__);
-
-    return 0;
+    return BK_OK;
 }
 
-#if 1
+#if CONFIG_LCD
 static avdk_err_t lcd_backlight_open(uint8_t bl_io)
 {
     gpio_dev_unmap(bl_io);
@@ -239,9 +132,9 @@ static avdk_err_t lcd_backlight_close(uint8_t bl_io)
     return AVDK_ERR_OK;
 }
     
-int av_server_display_turn_on(void *param, uint16_t rotate)
+bk_err_t av_server_display_turn_on(void *param, uint16_t rotate)
 {
-    int ret = -1;
+    bk_err_t ret = BK_FAIL;
     bk_display_rgb_ctlr_config_t lcd_display_config = {0};
 
     lcd_display_config.lcd_device = lcd_device;
@@ -264,16 +157,16 @@ int av_server_display_turn_on(void *param, uint16_t rotate)
         LOGE("%s, bk_display_open failed\n", __func__);
         return ret;
     }
-    return 0;
+    return BK_OK;
 }
 
-int av_server_display_turn_off(void)
+bk_err_t av_server_display_turn_off(void)
 {
-    return 0;
+    return BK_OK;
 }
 #endif
 
-int av_server_udp_voice_send_callback(unsigned char *data, unsigned int len)
+bk_err_t av_server_udp_voice_send_callback(unsigned char *data, unsigned int len)
 {
     LOGD("%s, data: %p, len: %u\n", __func__, data, len);
 
@@ -286,9 +179,9 @@ static void av_server_audio_connect_state_cb_handle(uint8_t state)
 }
 
 #if AUDIO_TRANSFER_ENABLE
-int av_server_audio_turn_on(audio_parameters_t *parameters)
+bk_err_t av_server_audio_turn_on(audio_parameters_t *parameters)
 {
-    int ret;
+    bk_err_t ret;
 
     if (db_device_info->audio_enable == BK_TRUE)
     {
@@ -406,7 +299,7 @@ error:
     return BK_FAIL;
 }
 
-int av_server_audio_turn_off(void)
+bk_err_t av_server_audio_turn_off(void)
 {
     if (db_device_info->audio_enable == BK_FALSE)
     {
@@ -430,7 +323,7 @@ int av_server_audio_turn_off(void)
     return BK_OK;
 }
 
-int av_server_audio_acoustics(uint32_t index, uint32_t param)
+bk_err_t av_server_audio_acoustics(uint32_t index, uint32_t param)
 {
     LOGI("%s, %u, %u\n", __func__, index, param);
     bk_err_t ret = BK_FAIL;
@@ -471,7 +364,18 @@ void av_server_audio_data_callback(uint8_t *data, uint32_t length)
 
 #endif
 
-extern lv_vnd_config_t vendor_config;
+#include "display_ui_cast_hooks.h"
+
+/*
+ * Stale-pipeline watchdog: when lcd_use_module == DECODER but no frames have
+ * been decoded for STALE_PIPELINE_MAX_TICKS consecutive timer periods (each
+ * 2 s → 4 s total), the pipeline is orphaned (e.g. CTRL disconnect without VIDEO
+ * disconnect).  Post IMAGE_TCP_SERVICE_DISCONNECTED to safely tear it down
+ * from the media message thread, avoiding the race with live video reception
+ * that a direct turn_off from REMOTE_DEVICE_DISCONNECTED would cause.
+ */
+#define STALE_PIPELINE_MAX_TICKS 2U
+static uint32_t s_stale_pipeline_ticks;
 
 static void av_server_debug_timer_handle(void *arg)
 {
@@ -495,9 +399,28 @@ static void av_server_debug_timer_handle(void *arg)
     LOGD("%s dec:%d[%d], wifi:%d[%d, %dKB]\n", __func__,
                 decode_frame_count, db_device_info->debug_info.decode_frame_count,
                 wifi_transfer_frame_count, wifi_transfer_frame_size, wifi_transfer_frame_size / 1024);
+
+    if (db_device_info->lcd_use_module == LCD_SOURCE_MODULE_DECODER) {
+        if (decode_frame_count == 0 && wifi_transfer_frame_count == 0) {
+            s_stale_pipeline_ticks++;
+            if (s_stale_pipeline_ticks >= STALE_PIPELINE_MAX_TICKS) {
+                LOGW("stale cast pipeline (%u ticks, 0 frames), posting turn_off\n",
+                     (unsigned)s_stale_pipeline_ticks);
+                s_stale_pipeline_ticks = 0;
+                media_msg_t msg = {0};
+                msg.event = MEDIA_EVT_CAST_SESSION_TEARDOWN;
+                msg.param = MEDIA_CAST_TEARDOWN_REASON_STALE_WATCHDOG;
+                media_send_msg_wait(&msg);
+            }
+        } else {
+            s_stale_pipeline_ticks = 0;
+        }
+    } else {
+        s_stale_pipeline_ticks = 0;
+    }
 }
 
-int av_server_devices_init(void)
+bk_err_t av_server_devices_init(void)
 {
     LOGI("%s start\r\n", __func__);
 
@@ -514,11 +437,8 @@ int av_server_devices_init(void)
 
     os_memset(db_device_info, 0, sizeof(db_device_info_t));
 
-    db_device_info->lcd_display_handle = vendor_config.handle;
+    db_device_info->lcd_display_handle = display_ui_get_dpu_handle();
     db_device_info->lcd_use_module = LCD_SOURCE_MODULE_LVGL;
-
-    rtos_init_timer(&db_device_info->debug_timer, 2000, av_server_debug_timer_handle, db_device_info);
-    rtos_start_timer(&db_device_info->debug_timer);
 
     LOGI("%s end\r\n", __func__);
 
@@ -534,4 +454,29 @@ void av_server_devices_deinit(void)
         os_free(db_device_info);
         db_device_info = NULL;
     }
+}
+
+/*
+ * Weak defaults: boards with CONFIG_LCD_PANEL_USE_480X272 / 800X480 may override
+ * in their LVGL app; scooter 1920x1080 uses full-screen DPU path only.
+ */
+__attribute__((weak)) void lvgl_app_enter_navigation(void) {}
+
+__attribute__((weak)) void lvgl_app_exit_navigation(void) {}
+
+__attribute__((weak)) void lvgl_app_display(uint8_t *data, uint32_t data_len, bool data_is_rgb565)
+{
+    (void)data;
+    (void)data_len;
+    (void)data_is_rgb565;
+}
+
+__attribute__((weak)) bk_err_t navigation_map_dma2d_yuyv2rgb565_init(void)
+{
+    return BK_OK;
+}
+
+__attribute__((weak)) bk_err_t navigation_map_dma2d_yuyv2rgb565_deinit(void)
+{
+    return BK_OK;
 }

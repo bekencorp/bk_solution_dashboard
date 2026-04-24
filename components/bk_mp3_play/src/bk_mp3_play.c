@@ -275,12 +275,12 @@ fail:
     return BK_FAIL;
 }
 
-static bk_err_t listener_send_msg(beken_queue_t queue, listener_op_t op, void *param)
+static bk_err_t listener_send_msg(beken_queue_t *queue, listener_op_t op, void *param)
 {
     bk_err_t ret;
     listener_msg_t msg;
 
-    if (!queue)
+    if (!queue || !(*queue))
     {
         BK_LOGE(TAG, "%s, %d, queue: %p \n", __func__, __LINE__, queue);
         return BK_FAIL;
@@ -288,8 +288,8 @@ static bk_err_t listener_send_msg(beken_queue_t queue, listener_op_t op, void *p
 
     msg.op = op;
     msg.param = param;
-    ret = rtos_push_to_queue(&queue, &msg, BEKEN_NO_WAIT);
-    if (kNoErr != ret)
+    ret = rtos_push_to_queue(queue, &msg, BEKEN_NO_WAIT);
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, listener send message: %d fail, ret: %d\n", __func__, __LINE__, op, ret);
         return BK_FAIL;
@@ -312,7 +312,7 @@ static void listener_task_main(beken_thread_arg_t param_data)
     {
         listener_msg_t listener_msg;
         ret = rtos_pop_from_queue(&play_handle->listener_msg_que, &listener_msg, wait_time);
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (listener_msg.op)
             {
@@ -444,7 +444,7 @@ static bk_err_t listener_init(bk_mp3_play_handle_t mp3_play)
     MP3_PLAY_CHECK_NULL(mp3_play, return BK_FAIL);
 
     ret = rtos_init_semaphore(&mp3_play->listener_sem, 1);
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, ceate listener semaphore fail\n", __func__, __LINE__);
         goto fail;
@@ -454,7 +454,7 @@ static bk_err_t listener_init(bk_mp3_play_handle_t mp3_play)
                           "player_listener_que",
                           sizeof(listener_msg_t),
                           5);
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, ceate play listener message queue fail\n", __func__, __LINE__);
         goto fail;
@@ -467,7 +467,7 @@ static bk_err_t listener_init(bk_mp3_play_handle_t mp3_play)
                              2048,
                              (beken_thread_arg_t)mp3_play,
                              1);
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, create mp3 play listener task fail\n", __func__, __LINE__);
         goto fail;
@@ -504,7 +504,7 @@ static bk_err_t listener_deinit(bk_mp3_play_handle_t mp3_play)
 
     BK_LOGD(TAG, "%s\n", __func__);
 
-    if (BK_OK != listener_send_msg(mp3_play->listener_msg_que, LISTENER_EXIT, NULL))
+    if (BK_OK != listener_send_msg(&mp3_play->listener_msg_que, LISTENER_EXIT, NULL))
     {
         return BK_FAIL;
     }
@@ -525,7 +525,7 @@ static bk_err_t listener_start(bk_mp3_play_handle_t mp3_play)
 
     BK_LOGD(TAG, "%s\n", __func__);
 
-    bk_err_t ret = listener_send_msg(mp3_play->listener_msg_que, LISTENER_START, NULL);
+    bk_err_t ret = listener_send_msg(&mp3_play->listener_msg_que, LISTENER_START, NULL);
     if (ret != BK_OK)
     {
         return BK_FAIL;
@@ -540,7 +540,7 @@ static bk_err_t listener_stop(bk_mp3_play_handle_t mp3_play)
 
     BK_LOGD(TAG, "%s\n", __func__);
 
-    bk_err_t ret = listener_send_msg(mp3_play->listener_msg_que, LISTENER_IDLE, NULL);
+    bk_err_t ret = listener_send_msg(&mp3_play->listener_msg_que, LISTENER_IDLE, NULL);
     if (ret != BK_OK)
     {
         return BK_FAIL;
@@ -588,7 +588,7 @@ fail:
 
     play_pipeline_deinit(mp3_play_handle);
 
-    os_free(mp3_play_handle);
+    psram_free(mp3_play_handle);
 
     //bk_pm_module_vote_cpu_freq(PM_DEV_ID_AUDIO, PM_CPU_FRQ_DEFAULT);
     //bk_pm_module_vote_sleep_ctrl(PM_SLEEP_MODULE_NAME_AUDP, 1, 0);
@@ -616,7 +616,7 @@ bk_err_t bk_mp3_play_destroy(bk_mp3_play_handle_t mp3_play)
 
     mp3_play->state = MP3_PLAY_STATE_NONE;
 
-    os_free(mp3_play);
+    psram_free(mp3_play);
 
     //bk_pm_module_vote_cpu_freq(PM_DEV_ID_AUDIO, PM_CPU_FRQ_DEFAULT);
     //bk_pm_module_vote_sleep_ctrl(PM_SLEEP_MODULE_NAME_AUDP, 1, 0);

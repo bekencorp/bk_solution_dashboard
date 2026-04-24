@@ -13,11 +13,11 @@
 // limitations under the License.
 #pragma once
 
-#define BT_AUDIO_SINK_DEMO_MSG_COUNT          (100)
+#define BT_AUDIO_SINK_DEMO_MSG_COUNT          (800)
 
 #define LOCAL_NAME "soundbar"
 
-#define A2DP_SINK_DEMO_TASK_PRIORITY      (4)
+#define A2DP_SINK_DEMO_TASK_PRIORITY      (2)
 
 #define CONFIG_A2DP_CACHE_FRAME_NUM    4
 

@@ -1741,7 +1741,7 @@ int dm_gattc_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore reg err %d", ret);
         return -1;
@@ -1754,7 +1754,7 @@ int dm_gattc_main(cli_gatt_param_t *param)
 
     os_memcpy(current_addr, identity_addr, sizeof(identity_addr));
 
-    snprintf((char *)(dev_name), sizeof(dev_name) - 1, "CENTRAL-%02X%02X%02X", identity_addr[2], identity_addr[1], identity_addr[0]);
+    snprintf((char *)(dev_name), sizeof(dev_name) - 1, "SCOOTER-%02X%02X%02X", identity_addr[2], identity_addr[1], identity_addr[0]);
 
     ret = bk_ble_gap_set_device_name(dev_name);
 
@@ -1797,7 +1797,7 @@ int dm_gattc_main(cli_gatt_param_t *param)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("wait set rand addr err %d", ret);
             goto error;
@@ -1831,7 +1831,7 @@ int dm_gattc_deinit(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore unreg err %d", ret);
     }

@@ -6,6 +6,8 @@
 #include "bk_network_provisioning.h"
 #endif
 
+extern void pet_page_toggle(void);
+
 #define TAG "key_service"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -48,6 +50,10 @@ static void key_event_handler(uint8_t event)
         case USER_ERASE_INFO:
             release_info();
             break;
+        case USER_PET_TOGGLE:
+            LOGI("USER_PET_TOGGLE\r\n");
+            pet_page_toggle();
+            break;
         default:
             break;
     }
@@ -58,6 +64,6 @@ void bk_key_service_init(void)
 {
 
     bk_key_driver_init(key_configs, sizeof(key_configs)/sizeof(KeyConfig_t));
-
+    rtos_delay_milliseconds(200);
     bk_key_register_event_handler(key_event_handler);
 }

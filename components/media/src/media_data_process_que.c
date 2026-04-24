@@ -15,8 +15,9 @@
 #include <os/os.h>
 #include <os/mem.h>
 #include <components/log.h>
+#include <components/bk_frame_buffer.h>
 
-#include "frame_buffer.h"
+#include "media_frame_psram_alloc.h"
 #include "media_data_process_que.h"
 #define TAG "data_process_que"
 
@@ -230,9 +231,7 @@ frame_buffer_t *media_frame_queue_malloc(uint32_t size)
         return NULL;
     }
 
-    frame->type = 0;
     frame->fmt = 0;
-    frame->crc = 0;
     frame->timestamp = 0;
     frame->width = 0;
     frame->height = 0;
@@ -296,10 +295,10 @@ bk_err_t media_frame_queue_complete(frame_buffer_t *frame)
         LOGE("%s, %d rtos_push_to_queue fail\n", __func__, __LINE__);
         // 根据图像格式选择合适的释放函数
         media_frame_queue_free(frame);
-        return AVDK_ERR_GENERIC;
+        return BK_FAIL;
     }
 
-    return AVDK_ERR_OK;
+    return BK_OK;
 }
 
 /**

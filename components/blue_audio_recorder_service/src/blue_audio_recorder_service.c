@@ -26,7 +26,11 @@
 #include <components/bk_audio/audio_streams/uac_mic_stream.h>
 #endif
 
+#if CONFIG_ADK_ONBOARD_MIC_STREAM_V2
+#include <components/bk_audio/audio_streams/onboard_mic_stream_v2.h>
+#else
 #include <components/bk_audio/audio_streams/onboard_mic_stream.h>
+#endif
 #include <components/bk_audio/audio_streams/raw_stream.h>
 
 #if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
@@ -443,12 +447,12 @@ fail:
     return BK_FAIL;
 }
 
-static bk_err_t blue_audio_listener_send_msg(beken_queue_t queue, listener_op_t op, void *param)
+static bk_err_t blue_audio_listener_send_msg(beken_queue_t *queue, listener_op_t op, void *param)
 {
     bk_err_t ret;
     listener_msg_t msg;
 
-    if (!queue)
+    if (!queue || !(*queue))
     {
         BK_LOGE(TAG, "%s, %d, NULL queue\n", __func__, __LINE__);
         return BK_FAIL;
@@ -456,8 +460,8 @@ static bk_err_t blue_audio_listener_send_msg(beken_queue_t queue, listener_op_t 
 
     msg.op = op;
     msg.param = param;
-    ret = rtos_push_to_queue(&queue, &msg, BEKEN_NO_WAIT);
-    if (kNoErr != ret)
+    ret = rtos_push_to_queue(queue, &msg, BEKEN_NO_WAIT);
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Send message failed, op: %d, ret: %d\n", __func__, __LINE__, op, ret);
         return BK_FAIL;
@@ -480,7 +484,7 @@ static void blue_audio_listener_task_main(beken_thread_arg_t param_data)
     {
         listener_msg_t msg;
         ret = rtos_pop_from_queue(&recorder->listener_msg_queue, &msg, wait_time);
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (msg.op)
             {
@@ -566,7 +570,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_recorder_handle_t recorder, 
     bk_err_t ret = BK_OK;
 
     ret = rtos_init_semaphore(&recorder->listener_sem, 1);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create semaphore failed, ret: %d\n", __func__, __LINE__, ret);
         return BK_FAIL;
@@ -576,7 +580,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_recorder_handle_t recorder, 
                         "recorder_listener_que",
                         sizeof(listener_msg_t),
                         5);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create queue failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -589,7 +593,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_recorder_handle_t recorder, 
                             config->task_stack,
                             (beken_thread_arg_t)recorder,
                             config->task_core);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create listener task failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -597,7 +601,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_recorder_handle_t recorder, 
 
     /* Wait for the listener task to initialize */
     ret = rtos_get_semaphore(&recorder->listener_sem, BEKEN_WAIT_FOREVER);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Wait listener task init failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -624,9 +628,9 @@ static bk_err_t blue_audio_listener_deinit(blue_audio_recorder_handle_t recorder
 
     if (recorder->listener_task)
     {
-        blue_audio_listener_send_msg(recorder->listener_msg_queue, LISTENER_EXIT, NULL);
+        blue_audio_listener_send_msg(&recorder->listener_msg_queue, LISTENER_EXIT, NULL);
         ret = rtos_get_semaphore(&recorder->listener_sem, BEKEN_WAIT_FOREVER);
-        if (kNoErr != ret)
+        if (BK_OK != ret)
         {
             BK_LOGE(TAG, "%s, %d, Wait listener task exit failed, ret: %d\n", __func__, __LINE__, ret);
         }
@@ -745,7 +749,7 @@ bk_err_t blue_audio_recorder_start(blue_audio_recorder_handle_t recorder)
     recorder->state = BLUE_AUDIO_RECORDER_STATE_RECORDING;
 
     // Start listener
-    ret = blue_audio_listener_send_msg(recorder->listener_msg_queue, LISTENER_START, NULL);
+    ret = blue_audio_listener_send_msg(&recorder->listener_msg_queue, LISTENER_START, NULL);
     if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, Start listener failed, ret: %d\n", __func__, __LINE__, ret);
@@ -778,7 +782,7 @@ bk_err_t blue_audio_recorder_stop(blue_audio_recorder_handle_t recorder)
     }
 
     // Stop listener
-    ret = blue_audio_listener_send_msg(recorder->listener_msg_queue, LISTENER_IDLE, NULL);
+    ret = blue_audio_listener_send_msg(&recorder->listener_msg_queue, LISTENER_IDLE, NULL);
     if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, Stop listener failed, ret: %d\n", __func__, __LINE__, ret);

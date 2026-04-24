@@ -45,19 +45,30 @@ if (CONFIG_BLE)
 endif()
 
 if (CONFIG_BT)
-    list(APPEND incs
-        hfp_hf
-        a2dp_sink
-    )
-
     list(APPEND srcs
-        a2dp_sink/a2dp_sink_demo.c
-        a2dp_sink/mpeg4_latm_dec.c
-        a2dp_sink_demo_cli.c
-        hfp_hf/hfp_hf_demo.c
-        hfp_hf/ring_buffer_particle.c
         bt_manager.c
     )
+
+    if (CONFIG_A2DP_SINK_DEMO)
+        list(APPEND incs a2dp_sink)
+        list(APPEND srcs
+            a2dp_sink/a2dp_sink_demo.c
+            a2dp_sink/mpeg4_latm_dec.c
+        )
+        if (CONFIG_HFP_HF_DEMO)
+            list(APPEND srcs
+                a2dp_sink_demo_cli.c
+            )
+        endif()
+    endif()
+
+    if (CONFIG_HFP_HF_DEMO)
+        list(APPEND incs hfp_hf)
+        list(APPEND srcs
+            hfp_hf/hfp_hf_demo.c
+            hfp_hf/ring_buffer_particle.c
+        )
+    endif()
 endif()
 
 if (CONFIG_BLE OR CONFIG_BT)
@@ -74,7 +85,7 @@ armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
     PRIV_REQUIRES bk_common include blue_audio_player_service blue_audio_recorder_service sbc_encoder 
-                  bluetooth_secondary_controller lwip_intf_v2_1 ota
+                  bluetooth_secondary_controller lwip_intf_v2_1 ota sw_sbc_decoder
 )
 
 get_filename_component(config_component_name ${CMAKE_CURRENT_LIST_DIR} NAME)

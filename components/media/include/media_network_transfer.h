@@ -12,4 +12,7 @@ bk_err_t media_bk_network_transfer_init(char *service_name, void *param);
 bk_err_t media_bk_network_transfer_deinit(char *service_name);
 void get_last_debug_info(media_data_process_debug_info_t *info);
 
+/** 0: deny media_bk_net_frame_malloc (cast teardown); 1: allow. Wired from cast_jpeg_pipeline. */
+void media_bk_net_cast_video_alloc_gate(int allow);
+
 #endif

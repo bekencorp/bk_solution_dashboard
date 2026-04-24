@@ -19,7 +19,11 @@
 extern "C" {
 #endif
 
+#if CONFIG_ADK_ONBOARD_MIC_STREAM_V2
+#include <components/bk_audio/audio_streams/onboard_mic_stream_v2.h>
+#else
 #include <components/bk_audio/audio_streams/onboard_mic_stream.h>
+#endif
 #include <components/bk_audio/audio_streams/raw_stream.h>
 #if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_MSBC_ENCODER
 #include "components/bk_audio/audio_encoders/sbc_enc.h"
@@ -147,6 +151,44 @@ typedef struct
 /**
  * @brief Default onboard mic configuration
  */
+#if CONFIG_ADK_ONBOARD_MIC_STREAM_V2
+#define BLUE_AUDIO_RECORDER_DEFAULT_ONBOARD_MIC_CONFIG() {   \
+    .adc_cfg = {                                            \
+                   .chl_num = 1,                            \
+                   .sample_rate = 8000,                     \
+                   .adc_samp_edge = AUD_ADC_SAMP_EDGE_RISING, \
+                   .clk_src = AUD_CLK_APLL,                  \
+                   .chl_cfg = {                              \
+                       {                                     \
+                           .dig_gain = 0x1c000,              \
+                           .ana_gain = 0x07,                 \
+                           .adc_mode = AUD_ADC_MODE_DIFFEN,  \
+                           .bits = 16,                       \
+                       },                                    \
+                       {                                     \
+                           .dig_gain = 0x4000,               \
+                           .ana_gain = 0x07,                 \
+                           .adc_mode = AUD_ADC_MODE_DIFFEN,  \
+                           .bits = 16,                       \
+                       },                                    \
+                       {                                     \
+                           .dig_gain = 0x4000,               \
+                           .ana_gain = 0x07,                 \
+                           .adc_mode = AUD_ADC_MODE_DIFFEN,  \
+                           .bits = 16,                       \
+                       },                                    \
+                   },                                        \
+               },                                            \
+    .frame_size = 320,                                       \
+    .out_block_size = 320,                                   \
+    .out_block_num = 2,                                      \
+    .multi_out_port_num = 0,                                 \
+    .task_stack = ONBOARD_MIC_STREAM_TASK_STACK,             \
+    .task_core = ONBOARD_MIC_STREAM_TASK_CORE,               \
+    .task_prio = ONBOARD_MIC_STREAM_TASK_PRIO,               \
+    .ch_bitmap = (1 << AUD_ADC_CHL_0),                       \
+}
+#else
 #define BLUE_AUDIO_RECORDER_DEFAULT_ONBOARD_MIC_CONFIG() {   \
     .adc_cfg = {                                            \
                    .chl_num = 1,                            \
@@ -165,6 +207,7 @@ typedef struct
     .task_core = ONBOARD_MIC_STREAM_TASK_CORE,              \
     .task_prio = ONBOARD_MIC_STREAM_TASK_PRIO,              \
 }
+#endif
 
 #ifdef CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_UAC_MIC
 /**

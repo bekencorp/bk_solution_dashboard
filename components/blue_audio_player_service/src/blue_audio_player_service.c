@@ -19,9 +19,24 @@
 #include <components/bk_audio/audio_pipeline/audio_mem.h>
 #include <components/bk_audio/audio_pipeline/audio_thread.h>
 #include <components/bk_audio/audio_streams/raw_stream.h>
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+#include <components/bk_audio/audio_streams/onboard_speaker_stream_v2.h>
+#else
 #include <components/bk_audio/audio_streams/onboard_speaker_stream.h>
+#endif
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
+#if CONFIG_ADK_SBC_DECODER
 #include <components/bk_audio/audio_decoders/sbc_decoder.h>
+#endif
+#if CONFIG_SW_SBC_DECODER
+#include <sw_sbc_decoder.h>
+#endif
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+#include <sw_pcm_tap.h>
+#endif
+#if CONFIG_PIPELINE_DEBUG_USE_NULL_SINK
+#include <sw_null_sink.h>
+#endif
 #include <components/bk_audio/audio_decoders/aac_decoder.h>
 #include <components/bk_audio/audio_pipeline/audio_event_iface.h>
 #include <components/bk_audio/audio_pipeline/audio_error.h>
@@ -93,6 +108,9 @@ struct blue_audio_player
 #endif
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX
     audio_element_handle_t      mix_alg;            /*!< Mix algorithm handle */
+#endif
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+    audio_element_handle_t      tap_el;             /*!< Stage-3 debug: PCM tap between mix_alg and speaker */
 #endif
     audio_element_handle_t      speaker;            /*!< Speaker handle */
 
@@ -320,6 +338,17 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_player_handle_t player)
     }
 #endif
 
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+    if (player->tap_el)
+    {
+        if (BK_OK != audio_pipeline_unregister(player->pipeline, player->tap_el))
+        {
+            BK_LOGE(TAG, "%s, %d, Unregister pcm_tap failed\n", __func__, __LINE__);
+            return BK_FAIL;
+        }
+    }
+#endif
+
     if (player->speaker)
     {
         if (BK_OK != audio_pipeline_unregister(player->pipeline, player->speaker))
@@ -398,6 +427,18 @@ static bk_err_t blue_audio_pipeline_deinit(blue_audio_player_handle_t player)
     }
 #endif
 
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+    if (player->tap_el)
+    {
+        if (BK_OK != audio_element_deinit(player->tap_el))
+        {
+            BK_LOGE(TAG, "%s, %d, PCM tap deinit failed\n", __func__, __LINE__);
+            return BK_FAIL;
+        }
+        player->tap_el = NULL;
+    }
+#endif
+
     if (player->speaker)
     {
         if (BK_OK != audio_element_deinit(player->speaker))
@@ -461,7 +502,14 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         switch (config->decoder_type)
         {
             case BLUE_AUDIO_DECODER_TYPE_SBC:
+#if CONFIG_ADK_SBC_DECODER
                 player->decoder = sbc_decoder_init(&config->decoder_cfg.sbc_dec_cfg);
+#elif CONFIG_SW_SBC_DECODER
+                player->decoder = sw_sbc_decoder_init(&config->decoder_cfg.sbc_dec_cfg);
+#else
+                BK_LOGE(TAG, "%s, %d, SBC decoder not supported on this platform\n", __func__, __LINE__);
+                goto fail;
+#endif
                 break;
 
             case BLUE_AUDIO_DECODER_TYPE_AAC:
@@ -513,10 +561,39 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
     }
 #endif
 
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+    player->tap_el = sw_pcm_tap_init();
+    BLUE_AUDIO_PLAYER_CHECK_NULL(player->tap_el, goto fail);
+#endif
+
     // Initialize speaker based on type
+#if CONFIG_PIPELINE_DEBUG_USE_NULL_SINK
+    if (config->speaker_type == BLUE_AUDIO_SPEAKER_TYPE_ONBOARD) {
+        sw_null_sink_cfg_t ns_cfg = {
+            .buffer_len = (int)(config->speaker_cfg.ob_spk_cfg.frame_size[0] * config->speaker_cfg.ob_spk_cfg.chl_num),
+            .task_stack  = config->speaker_cfg.ob_spk_cfg.task_stack,
+            .task_prio   = config->speaker_cfg.ob_spk_cfg.task_prio,
+            .task_core   = config->speaker_cfg.ob_spk_cfg.task_core,
+        };
+        player->speaker = sw_null_sink_init(&ns_cfg);
+        BK_LOGI(TAG, "Pipeline debug: using null_sink instead of onboard_speaker\n");
+    } else
+#endif
     switch (config->speaker_type)
     {
         case BLUE_AUDIO_SPEAKER_TYPE_ONBOARD:
+            {
+                /*
+                 * Workaround: onboard_speaker_stream_init calls bk_aud_hardware_reset()
+                 * before bk_aud_dac_init(). If the audio driver was fully torn down by a
+                 * previous destroy cycle, the audio clock/power is off and the raw
+                 * register write in bk_aud_hardware_reset() causes a bus hang.
+                 * Pre-initializing the driver here ensures the clock and power domain
+                 * are active before any register access.
+                 */
+                extern bk_err_t bk_aud_driver_init(void);
+                bk_aud_driver_init();
+            }
             player->speaker = onboard_speaker_stream_init(&config->speaker_cfg.ob_spk_cfg);
             break;
 
@@ -579,6 +656,14 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
     }
 #endif
 
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+    if (BK_OK != audio_pipeline_register(player->pipeline, player->tap_el, "pcm_tap"))
+    {
+        BK_LOGE(TAG, "%s, %d, Register pcm_tap failed\n", __func__, __LINE__);
+        goto fail;
+    }
+#endif
+
     if (BK_OK != audio_pipeline_register(player->pipeline, player->speaker, "speaker"))
     {
         BK_LOGE(TAG, "%s, %d, Register speaker failed\n", __func__, __LINE__);
@@ -586,7 +671,7 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
     }
 
     // Link elements in pipeline based on decoder type, EQ enable, and mix enable
-    // Data flow: raw_strm -> [decoder] -> [eq_alg] -> [mix_alg] -> speaker
+    // Data flow: raw_strm -> [decoder] -> [eq_alg] -> [mix_alg] -> [pcm_tap] -> speaker
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
     if (player->eq_en && player->eq_alg)
     {
@@ -595,13 +680,23 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         {
             if (player->decoder)
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> decoder -> eq_alg -> mix_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "mix_alg", "pcm_tap", "speaker"}, 6);
+#else
                 // raw_strm -> decoder -> eq_alg -> mix_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "mix_alg", "speaker"}, 5);
+#endif
             }
             else
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> eq_alg -> mix_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "mix_alg", "pcm_tap", "speaker"}, 5);
+#else
                 // raw_strm -> eq_alg -> mix_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "mix_alg", "speaker"}, 4);
+#endif
             }
         }
         else
@@ -609,13 +704,23 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         {
             if (player->decoder)
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> decoder -> eq_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "pcm_tap", "speaker"}, 5);
+#else
                 // raw_strm -> decoder -> eq_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "eq_alg", "speaker"}, 4);
+#endif
             }
             else
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> eq_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "pcm_tap", "speaker"}, 4);
+#else
                 // raw_strm -> eq_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "eq_alg", "speaker"}, 3);
+#endif
             }
         }
     }
@@ -627,13 +732,23 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         {
             if (player->decoder)
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> decoder -> mix_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "mix_alg", "pcm_tap", "speaker"}, 5);
+#else
                 // raw_strm -> decoder -> mix_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "mix_alg", "speaker"}, 4);
+#endif
             }
             else
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> mix_alg -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "mix_alg", "pcm_tap", "speaker"}, 4);
+#else
                 // raw_strm -> mix_alg -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "mix_alg", "speaker"}, 3);
+#endif
             }
         }
         else
@@ -641,13 +756,23 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
         {
             if (player->decoder)
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> decoder -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "pcm_tap", "speaker"}, 4);
+#else
                 // raw_strm -> decoder -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "decoder", "speaker"}, 3);
+#endif
             }
             else
             {
+#if CONFIG_PIPELINE_DEBUG_PCM_TAP
+                // raw_strm -> pcm_tap -> speaker
+                ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "pcm_tap", "speaker"}, 3);
+#else
                 // raw_strm -> speaker
                 ret = audio_pipeline_link(player->pipeline, (const char *[]) {"raw_strm", "speaker"}, 2);
+#endif
             }
         }
     }
@@ -691,12 +816,12 @@ fail:
  *    - BK_OK: success
  *    - Others: failed
  */
-static bk_err_t blue_audio_listener_send_msg(beken_queue_t queue, listener_op_t op, void *param)
+static bk_err_t blue_audio_listener_send_msg(beken_queue_t *queue, listener_op_t op, void *param)
 {
     bk_err_t ret;
     listener_msg_t msg;
 
-    if (!queue)
+    if (!queue || !(*queue))
     {
         BK_LOGE(TAG, "%s, %d, NULL queue\n", __func__, __LINE__);
         return BK_FAIL;
@@ -704,8 +829,8 @@ static bk_err_t blue_audio_listener_send_msg(beken_queue_t queue, listener_op_t 
 
     msg.op = op;
     msg.param = param;
-    ret = rtos_push_to_queue(&queue, &msg, BEKEN_NO_WAIT);
-    if (kNoErr != ret)
+    ret = rtos_push_to_queue(queue, &msg, BEKEN_NO_WAIT);
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Send message failed, op: %d, ret: %d\n", __func__, __LINE__, op, ret);
         return BK_FAIL;
@@ -733,7 +858,7 @@ static void blue_audio_listener_task_main(beken_thread_arg_t param_data)
     {
         listener_msg_t msg;
         ret = rtos_pop_from_queue(&player->listener_msg_queue, &msg, wait_time);
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (msg.op)
             {
@@ -830,7 +955,11 @@ static void blue_audio_listener_task_main(beken_thread_arg_t param_data)
                     {
                         if (player->speaker_type == BLUE_AUDIO_SPEAKER_TYPE_ONBOARD)
                         {
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+                            onboard_speaker_stream_set_param(player->speaker, music_info.sample_rates, music_info.bits, music_info.channels, DEFAULT_DAC_SOURCE);
+#else
                             onboard_speaker_stream_set_param(player->speaker, music_info.sample_rates, music_info.bits, music_info.channels);
+#endif
                         }
                         else if (player->speaker_type == BLUE_AUDIO_SPEAKER_TYPE_UAC)
                         {
@@ -888,7 +1017,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_player_handle_t player, blue
     bk_err_t ret = BK_OK;
 
     ret = rtos_init_semaphore(&player->listener_sem, 1);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create semaphore failed, ret: %d\n", __func__, __LINE__, ret);
         return BK_FAIL;
@@ -898,7 +1027,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_player_handle_t player, blue
                         "player_listener_que",
                         sizeof(listener_msg_t),
                         5);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create queue failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -911,7 +1040,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_player_handle_t player, blue
                             config->task_stack,
                             (beken_thread_arg_t)player,
                             config->task_core);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Create listener task failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -919,7 +1048,7 @@ static bk_err_t blue_audio_listener_init(blue_audio_player_handle_t player, blue
 
     /* Wait for the listener task to initialize */
     ret = rtos_get_semaphore(&player->listener_sem, BEKEN_WAIT_FOREVER);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, Wait listener task init failed, ret: %d\n", __func__, __LINE__, ret);
         goto fail;
@@ -955,9 +1084,9 @@ static bk_err_t blue_audio_listener_deinit(blue_audio_player_handle_t player)
 
     if (player->listener_task)
     {
-        blue_audio_listener_send_msg(player->listener_msg_queue, LISTENER_EXIT, NULL);
+        blue_audio_listener_send_msg(&player->listener_msg_queue, LISTENER_EXIT, NULL);
         ret = rtos_get_semaphore(&player->listener_sem, BEKEN_WAIT_FOREVER);
-        if (kNoErr != ret)
+        if (BK_OK != ret)
         {
             BK_LOGE(TAG, "%s, %d, Wait listener task exit failed, ret: %d\n", __func__, __LINE__, ret);
         }
@@ -1080,7 +1209,7 @@ bk_err_t blue_audio_player_start(blue_audio_player_handle_t player)
     player->state = BLUE_AUDIO_PLAYER_STATE_PLAYING;
 
     // Start listener
-    ret = blue_audio_listener_send_msg(player->listener_msg_queue, LISTENER_START, NULL);
+    ret = blue_audio_listener_send_msg(&player->listener_msg_queue, LISTENER_START, NULL);
     if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, Start listener failed, ret: %d\n", __func__, __LINE__, ret);
@@ -1113,7 +1242,7 @@ bk_err_t blue_audio_player_stop(blue_audio_player_handle_t player)
     }
 
     // Stop listener
-    ret = blue_audio_listener_send_msg(player->listener_msg_queue, LISTENER_IDLE, NULL);
+    ret = blue_audio_listener_send_msg(&player->listener_msg_queue, LISTENER_IDLE, NULL);
     if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, Stop listener failed, ret: %d\n", __func__, __LINE__, ret);
@@ -1142,6 +1271,8 @@ bk_err_t blue_audio_player_stop(blue_audio_player_handle_t player)
     return BK_OK;
 }
 
+// static uint32_t s_raw_wr_cnt = 0;
+
 bk_err_t blue_audio_player_write_frame_data(blue_audio_player_handle_t player, char *buffer, uint32_t len)
 {
     int write_len = 0;
@@ -1160,6 +1291,13 @@ bk_err_t blue_audio_player_write_frame_data(blue_audio_player_handle_t player, c
     {
         // Pipeline is running, write data directly
         write_len = raw_stream_write(player->raw_strm, buffer, len);
+        // s_raw_wr_cnt++;
+        // if (s_raw_wr_cnt <= 5 || (s_raw_wr_cnt % 500) == 0) {
+        //     uint8_t *b = (uint8_t *)buffer;
+        //     BK_LOGI(TAG, "DBG RAW_WR #%u: len=%u wlen=%d b[0..3]={0x%02x,0x%02x,0x%02x,0x%02x}\n",
+        //             s_raw_wr_cnt, len, write_len,
+        //             b[0], len > 1 ? b[1] : 0, len > 2 ? b[2] : 0, len > 3 ? b[3] : 0);
+        // }
         if (write_len != (int)len)
         {
             BK_LOGE(TAG, "%s, %d, Write data failed, write_len: %d, len: %d\n", __func__, __LINE__, write_len, len);

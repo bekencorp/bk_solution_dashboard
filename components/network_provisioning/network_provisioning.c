@@ -17,6 +17,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "bk_network_provisioning.h"
+#if CONFIG_BK_BLE_PROVISIONING
+#include "ble_scheme/ble_provisioning.h"
+#endif
 #include <components/event.h>
 #include <components/netif.h>
 #include "bk_wifi.h"
@@ -53,6 +56,7 @@
 static void (*s_send)(uint16_t opcode, int status);
 static void (*s_send_data)(uint16_t opcode, int status, char *payload, uint16_t length);
 static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
+static bool s_casting_active = false;
 //static uint8_t s_reg_method;
 
 static void set_navigation_type(navigation_type_t type)
@@ -149,15 +153,18 @@ static uint8_t *demo_np_get_supported_mode(uint8_t os_code, uint8_t *len)
  * @param supported_mode: supported mode, 0: STA, 1: AP, 2: P2P
  * @return void
  */
-static void demo_np_upload_supported_mode(uint os_code)
+static void demo_np_upload_supported_mode(unsigned int os_code)
 {
     uint8_t *val = NULL;
     uint8_t len = 0;
     val = demo_np_get_supported_mode(os_code, &len);
-    if(s_send_data) s_send_data(BOARDING_OP_SYNC_PHONE_OS, 0, (char *)val, len);
-    os_printf("supported mode: %s\n", val);
-    if (val)
+    if (val) {
+        if(s_send_data) s_send_data(BOARDING_OP_SYNC_PHONE_OS, 0, (char *)val, len);
+        os_printf("supported mode: %s\n", val);
         os_free(val);
+    } else {
+        LOGE("demo_np_get_supported_mode failed\n");
+    }
 }
 
 static void demo_np_parse_wifi_info(char *wifi_info, char **ssid, char **pwd)
@@ -212,7 +219,7 @@ static void demo_np_parse_wifi_info(char *wifi_info, char **ssid, char **pwd)
     cJSON_Delete(root);
 }
 
-static int demo_np_wifi_ap_start(char *ssid, char *pwd)
+static bk_err_t demo_np_wifi_ap_start(char *ssid, char *pwd)
 {
     wifi_ap_config_t ap_config = {0};
 
@@ -230,11 +237,16 @@ static int demo_np_wifi_ap_start(char *ssid, char *pwd)
 //split packet to upload wifi scan result
 bool enable_ble_split_pkt = false;
 
-static int demo_np_wifi_sta_connect(char *ssid, char *pwd)
+static bk_err_t demo_np_wifi_sta_connect(char *ssid, char *pwd)
 {
     int ssid_len;
 
     wifi_sta_config_t sta_config = {0};
+
+    if (!ssid) {
+        LOGW("ssid is NULL\r\n");
+        return BK_FAIL;
+    }
 
     ssid_len = os_strlen(ssid);
 
@@ -244,12 +256,7 @@ static int demo_np_wifi_sta_connect(char *ssid, char *pwd)
         return BK_FAIL;
     }
 
-    if (ssid) {
-        os_strcpy(sta_config.ssid, ssid);
-    } else {
-        LOGW("ssid is NULL\r\n");
-        return BK_FAIL;
-    }
+    os_strcpy(sta_config.ssid, ssid);
     if (pwd) {
         os_strcpy(sta_config.password, pwd);
     } else {
@@ -267,7 +274,7 @@ static int demo_np_wifi_sta_connect(char *ssid, char *pwd)
 }
 
 #define BLE_SPLIT_PKT_LEN 400
-static int demo_np_wlan_scan_done_handler(void *arg, event_module_t event_module,
+static bk_err_t demo_np_wlan_scan_done_handler(void *arg, event_module_t event_module,
 								  int event_id, void *event_data)
 {
     wifi_scan_result_t scan_result = {0};
@@ -487,6 +494,8 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
+            s_casting_active = true;
+
             #if CONFIG_LCD_PANEL_USE_480X272
                 lvgl_app_enter_navigation();
             #else
@@ -509,6 +518,8 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
 
         case NAVIGATION_CONTROL_STOP:
         {
+            s_casting_active = false;
+
 #if CONFIG_BK_BLE_PROVISIONING
 #else
             wifi_boarding_demo_set_log_level(BOARDING_DEBUG_LEVEL_INFO);
@@ -524,13 +535,8 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
             #if CONFIG_LCD_PANEL_USE_480X272
                 lvgl_app_exit_navigation();
             #else
-                ret = lvgl_app_resume_display();
-                if (ret != BK_OK)
-                {
-                    LOGE("%s %d resume display failed (%d)\n", __func__, __LINE__, ret);
-                    if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
-                    return;
-                }
+                /* LVGL/DPU 恢复已在 av_server_jpeg_decode_manager_turn_off() 内完成，勿重复调用
+                 * （否则会二次 bk_display_open，DPU layer 配置失败并出现 DC underflow 闪屏） */
             #endif
 
             ret = media_navigation_transfer_cancel();
@@ -542,9 +548,9 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
         }
 
         default:
-            LOGE("%s %d unknown controller %u\n", __func__, __LINE__, nav_ctrl->controller);
-            if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_ERROR);
-            return;
+            /* controller=2 etc. may be sent by app as streaming/ready; ignore and ack OK */
+            LOGD("%s %d controller=%u (ignored)\n", __func__, __LINE__, nav_ctrl->controller);
+            break;
     }
 
     if(s_send) s_send(BOARDING_OP_NAVIGATION_CONTROL, EVT_STATUS_OK);
@@ -645,8 +651,10 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
                 os_strcpy(p2p_name, "bk_db_p2p_000000");
             }
 
+#if CONFIG_P2P
             bk_wifi_p2p_enable_with_intent(p2p_name, 15);
             bk_wifi_p2p_find();
+#endif
 
             // 发送成功状态码 0 给手机APP
             static const uint8_t success_status = 0;
@@ -760,7 +768,7 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
 //     erase_network_auto_reconnect_info();
 // }
 
-static int demo_netif_event_cb(void *arg, event_module_t event_module,
+static bk_err_t demo_netif_event_cb(void *arg, event_module_t event_module,
 					   int event_id, void *event_data)
 {
 	netif_event_got_ip4_t *got_ip;
@@ -783,7 +791,7 @@ static int demo_netif_event_cb(void *arg, event_module_t event_module,
 	return BK_OK;
 }
 
-static int demo_wifi_event_cb(void *arg, event_module_t event_module,
+static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
 					  int event_id, void *event_data)
 {
 	wifi_event_sta_disconnected_t *sta_disconnected;
@@ -842,9 +850,28 @@ static int demo_wifi_event_cb(void *arg, event_module_t event_module,
 // }
 
 
-int32_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use solution component)
+static void bk_sl_np_ble_disconnect_cb(void)
 {
-    int32_t ret = 0;
+    if (!s_casting_active)
+        return;
+
+    LOGW("BLE disconnected while casting active, stopping cast\n");
+    s_casting_active = false;
+
+    av_server_jpeg_decode_manager_turn_off();
+    media_navigation_transfer_cancel();
+#if CONFIG_LCD_PANEL_USE_480X272
+    lvgl_app_exit_navigation();
+#else
+    /* 同上：turn_off 内已 resume，避免重复 */
+#endif
+}
+
+bk_err_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use solution component)
+{
+    bk_err_t ret = BK_OK;
+
+    wifi_boarding_demo_reg_ble_disconnect_cb(bk_sl_np_ble_disconnect_cb);
 
     if(reg_method == 1)
     {
@@ -861,13 +888,14 @@ int32_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use 
         bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
         bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
         //cli_network_provisioning_init();
-        bk_network_provisioning_get_send_cb(&s_send, &s_send_data);
+        s_send = bk_ble_provisioning_event_notify;
+        s_send_data = bk_ble_provisioning_event_notify_with_data;
     }
 #endif
     else
     {
         LOGE("%s invalid reg method %d\n", __func__, reg_method);
-        return -1;
+        return BK_FAIL;
     }
 
 #if CONFIG_MEDIA_RECEIVE_DEMO

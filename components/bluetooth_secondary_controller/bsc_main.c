@@ -81,10 +81,10 @@ static int32_t bsc_uart_enable(uint8_t uart_id, uint8_t enable, uint32_t band)
             break;
 
         case UART_ID_1:
-            gpio_dev_unmap(GPIO_0);
-            gpio_dev_unmap(GPIO_1);
-            gpio_dev_map(GPIO_0, GPIO_DEV_UART1_TXD);
-            gpio_dev_map(GPIO_1, GPIO_DEV_UART1_RXD);
+            gpio_dev_unmap(GPIO_55);
+            gpio_dev_unmap(GPIO_54);
+            gpio_dev_map(GPIO_55, GPIO_DEV_UART1_TXD);
+            gpio_dev_map(GPIO_54, GPIO_DEV_UART1_RXD);
             break;
 
         case UART_ID_2:
@@ -456,15 +456,15 @@ static int32_t bsc_init(int32_t (*report)(uint8_t *data, uint32_t len))
             ret = -1;
             goto end;
         }
-
-        ret = bk_gpio_set_value(s_bsc_config.uart_config.rts_gpio, 0);
-
+        
+        ret = bk_gpio_set_output_low(s_bsc_config.uart_config.rts_gpio);
         if (ret)
         {
             LOGE("gpio %d rts set value err %d", s_bsc_config.uart_config.rts_gpio, ret);
             ret = -1;
             goto end;
         }
+
     }
 
     ret = bsc_power_ctrl(0);
@@ -623,64 +623,6 @@ static int32_t bsc_init(int32_t (*report)(uint8_t *data, uint32_t len))
 
     LOGI("TCI_READ_FRQ_OFFSET_FROM_FLASH 0x%x", *p);
 
-#if 0
-    //6
-    write_buffer_index = build_cmd(tmp_write_buffer, TCI_WRITE_FRQ_OFFSET_TO_FLASH, 1);
-    tmp_write_buffer[write_buffer_index - 1] = 1;
-    tmp_write_buffer[write_buffer_index] = 0x50; //frq offset value
-
-    write_buffer_index += 1;
-    bsc_send(tmp_write_buffer, write_buffer_index);
-    LOGI("wait TCI_WRITE_FRQ_OFFSET_TO_FLASH");
-    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_WRITE_FRQ_OFFSET_TO_FLASH);
-
-    if (ret)
-    {
-        LOGE("TCI_WRITE_FRQ_OFFSET_TO_FLASH rsp err %d", ret);
-        ret = -1;
-        goto end;
-    }
-#endif
-
-    //7
-    write_buffer_index = build_cmd(tmp_write_buffer, TCI_READ_POWER_FROM_FLASH, 1);
-    tmp_write_buffer[write_buffer_index] = 0;
-
-    write_buffer_index++;
-    bsc_send(tmp_write_buffer, write_buffer_index);
-    LOGI("wait TCI_READ_POWER_FROM_FLASH");
-    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_READ_POWER_FROM_FLASH);
-
-    if (ret)
-    {
-        LOGE("TCI_READ_POWER_FROM_FLASH rsp err %d", ret);
-        ret = -1;
-        goto end;
-    }
-
-    p = tmp_read_buffer + 7;
-
-    LOGI("TCI_READ_POWER_FROM_FLASH 0x%x", *p);
-
-#if 0
-    //8
-    write_buffer_index = build_cmd(tmp_write_buffer, TCI_WRITE_POWER_TO_FLASH, 2);
-    tmp_write_buffer[write_buffer_index] = 0;
-    tmp_write_buffer[write_buffer_index + 1] = 0xe; //power value
-
-    write_buffer_index += 2;
-    bsc_send(tmp_write_buffer, write_buffer_index);
-    LOGI("wait TCI_WRITE_POWER_TO_FLASH");
-    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_WRITE_POWER_TO_FLASH);
-
-    if (ret)
-    {
-        LOGE("TCI_WRITE_POWER_TO_FLASH rsp err %d", ret);
-        ret = -1;
-        goto end;
-    }
-#endif
-
     ret = bk_uart_disable_rx_interrupt(s_bsc_config.uart_id);
 
     if (ret)
@@ -755,15 +697,15 @@ static const bk_bluetooth_secondary_callback_t bsc_cb =
     .acl_handle_threshold_max = 0xe10,
 };
 
-int32_t bk_cpn_bsc_init(bsc_config_t *config)
+bk_err_t bk_cpn_bsc_init(bsc_config_t *config)
 {
     LOGI("");
     os_memcpy(&s_bsc_config, config, sizeof(*config));
     return bk_bluetooth_reg_secondary_controller((bk_bluetooth_secondary_callback_t *)&bsc_cb);
 }
 
-int32_t bk_cpn_bsc_deinit(void)
+bk_err_t bk_cpn_bsc_deinit(void)
 {
     LOGI("");
-    return 0;
+    return BK_OK;
 }

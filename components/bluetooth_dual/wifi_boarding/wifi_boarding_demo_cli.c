@@ -23,7 +23,7 @@ static void wboarding_demo_usage(void)
 #if CONFIG_BK_BLE_PROVISIONING
 __attribute__((weak)) void bk_ble_np_deinit(void)
 {
-    CLI_LOGW("%s can't run here !!!\n");
+    CLI_LOGW("%s can't run here !!!\n", __func__);
 }
 #endif
 
@@ -51,7 +51,7 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
         rtos_delay_milliseconds(100);
         bk_bluetooth_init();
-        extern int32_t bk_sl_np_init(uint8_t reg_method);
+        extern bk_err_t bk_sl_np_init(uint8_t reg_method);
         bk_sl_np_init(1);
 #endif
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
@@ -128,12 +128,29 @@ static int cli_hexstr2bin(const char *hex, uint8_t *buf, size_t len)
 extern void bk_boarding_operation_handle(uint16_t opcode, uint16_t length, uint8_t *data);
 static void cmd_wboarding_ota_demo(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
 {
+	if (argc < 4)
+	{
+		CLI_LOGI("Usage: ble_ota_test [opcode] [length] [data]\n");
+		return;
+	}
+
 	uint16_t opcode  = os_strtoul(argv[1], NULL, 10);
 	uint16_t length = os_strtoul(argv[2], NULL, 10);
+
+    if (length == 0)
+    {
+        CLI_LOGI("length must be > 0\n");
+        return;
+    }
 
     CLI_LOGI("opcode %d , length %d:\n",opcode , length);
 
     uint8_t* in_data = (uint8_t*)os_malloc(length*sizeof(uint8_t));
+    if (in_data == NULL)
+    {
+        CLI_LOGI("malloc %d bytes failed\n", length);
+        return;
+    }
 
     memset(in_data, 0, length);
     cli_hexstr2bin(argv[3], in_data, length);
@@ -165,11 +182,11 @@ static const struct cli_command s_ble_wboarding_commands[] =
 
 #endif
 
-int cli_ble_wboarding_demo_init(void)
+bk_err_t cli_ble_wboarding_demo_init(void)
 {
 #if WIFI_BOARDING_DEMO_ENABLE
     return cli_register_commands(s_ble_wboarding_commands, sizeof(s_ble_wboarding_commands) / sizeof(s_ble_wboarding_commands[0]));
 #else
-    return 0;
+    return BK_OK;
 #endif
 }

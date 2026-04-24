@@ -61,7 +61,7 @@ static bk_err_t blue_audio_player_send_msg(beken_queue_t *queue, blue_audio_play
     msg.op = op;
     msg.param = param;
     ret = rtos_push_to_queue(queue, &msg, BEKEN_NO_WAIT);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, blue_audio_player send message: %d fail, ret: %d\n", __func__, __LINE__, op, ret);
         return BK_FAIL;
@@ -137,7 +137,7 @@ static void blue_audio_player_main(beken_thread_arg_t param_data)
     {
         blue_audio_player_msg_t blue_audio_player_msg;
         ret = rtos_pop_from_queue(&blue_audio_player_msg_que, &blue_audio_player_msg, wait_time);
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (blue_audio_player_msg.op)
             {
@@ -263,7 +263,7 @@ static bk_err_t blue_audio_player_init(uint32_t frames_to_play)
                           "blue_audio_player_msg_que",
                           sizeof(blue_audio_player_msg_t),
                           5);
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, create blue audio player message queue fail\n", __func__, __LINE__);
         goto fail;

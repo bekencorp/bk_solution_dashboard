@@ -1257,7 +1257,7 @@ static int32_t dm_gatt_set_security_method_private(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set iocap err %d", ret);
         goto error;
@@ -1273,7 +1273,7 @@ static int32_t dm_gatt_set_security_method_private(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set authen err %d", ret);
         goto error;
@@ -1290,7 +1290,7 @@ static int32_t dm_gatt_set_security_method_private(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set init key err %d", ret);
         goto error;
@@ -1306,7 +1306,7 @@ static int32_t dm_gatt_set_security_method_private(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set rsp key err %d", ret);
         goto error;
@@ -1323,7 +1323,7 @@ static int32_t dm_gatt_set_security_method_private(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set local/remote key err %d", ret);
         goto error;
@@ -1574,7 +1574,7 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("wait set adv disable err %d", ret);
             return -1;
@@ -1591,7 +1591,7 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set scan disable err %d", ret);
         return -1;
@@ -1607,7 +1607,7 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait bond dev list op err %d", ret);
         return -1;
@@ -1651,7 +1651,7 @@ int dm_ble_gap_remove_bond(uint8_t *addr)
 
             ret = rtos_get_semaphore(&s_ble_connect_sem, SYNC_CMD_TIMEOUT_MS);
 
-            if (ret != kNoErr)
+            if (ret != BK_OK)
             {
                 gatt_loge("wait disconnect err %d", ret);
                 break;
@@ -1717,7 +1717,7 @@ static int32_t nest_func_disconnect_all1(dm_gatt_app_env_t *env, void *arg)
 
             ret = rtos_get_semaphore(&s_ble_connect_sem, SYNC_CMD_TIMEOUT_MS);
 
-            if (ret != kNoErr)
+            if (ret != BK_OK)
             {
                 gatt_loge("wait disconnect err %d", ret);
                 return -1;
@@ -1776,7 +1776,7 @@ int32_t dm_ble_gap_clean_bond(void)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("wait set adv disable err %d", ret);
             return -1;
@@ -1793,7 +1793,7 @@ int32_t dm_ble_gap_clean_bond(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set scan disable err %d", ret);
         return -1;
@@ -1809,7 +1809,7 @@ int32_t dm_ble_gap_clean_bond(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait bond dev list op err %d", ret);
         return -1;
@@ -1962,7 +1962,7 @@ int32_t dm_ble_gap_get_rpa(uint8_t *rpa)
     }
 }
 
-void dm_ble_gap_get_identity_addr(uint8_t *addr)
+__attribute__((weak)) void dm_ble_gap_get_identity_addr(uint8_t *addr)
 {
     uint8_t *identity_addr = addr;
     bk_get_mac((uint8_t *)identity_addr, MAC_TYPE_BLUETOOTH);
@@ -2041,7 +2041,7 @@ int dm_ble_gap_update_param(uint8_t *addr, uint16_t interval, uint16_t tout)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait update param err %d", ret);
         return -1;
@@ -2494,7 +2494,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set er err %d", ret);
         return -1;
@@ -2502,7 +2502,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_er_ir_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait er report err %d", ret);
         return -1;
@@ -2528,7 +2528,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set ir err %d", ret);
         return -1;
@@ -2536,7 +2536,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_er_ir_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait ir report err %d", ret);
         return -1;
@@ -2556,7 +2556,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("wait generate rpa err %d", ret);
             return -1;
@@ -2576,7 +2576,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait privacy err %d", ret);
         return -1;
@@ -2624,7 +2624,7 @@ int dm_gatt_main(cli_gatt_param_t *param)
 
             ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-            if (ret != kNoErr)
+            if (ret != BK_OK)
             {
                 gatt_loge("wait bond dev list op err %d", ret);
                 return -1;
@@ -2757,7 +2757,7 @@ int32_t dm_gatt_disable_all(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv disable err %d", ret);
         ret = -1;
@@ -2775,7 +2775,7 @@ int32_t dm_gatt_disable_all(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set scan disable err %d", ret);
         ret = -1;
@@ -2815,7 +2815,7 @@ int32_t dm_gatt_disable_all(void)
 
                 ret = rtos_get_semaphore(&s_ble_connect_sem, SYNC_CMD_TIMEOUT_MS);
 
-                if (ret != kNoErr)
+                if (ret != BK_OK)
                 {
                     gatt_loge("wait disconnect err %d", ret);
                     return -1;

@@ -9,10 +9,10 @@
 #include "cli.h"
 
 #include "media_devices.h"
+#include "media_network_transfer.h"
 #include "network_type.h"
 #include "network_transfer.h"
 #include "media_msg.h"
-#include "jpeg_decode_manager.h"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -38,20 +38,70 @@ bk_err_t media_send_msg(media_msg_t *msg)
 {
     bk_err_t ret = BK_OK;
 
-    if (media_info->queue)
+    if (media_info == NULL || media_info->queue == NULL)
     {
-        ret = rtos_push_to_queue(&media_info->queue, msg, BEKEN_NO_WAIT);
+        LOGE("%s, media_info or queue is NULL\n", __func__);
+        return BK_FAIL;
+    }
 
-        if (BK_OK != ret)
-        {
-            LOGE("%s failed\n", __func__);
-            return BK_FAIL;
-        }
+    ret = rtos_push_to_queue(&media_info->queue, msg, BEKEN_NO_WAIT);
 
-        return ret;
+    if (BK_OK != ret)
+    {
+        LOGE("%s failed\n", __func__);
+        return BK_FAIL;
     }
 
     return ret;
+}
+
+bk_err_t media_send_msg_wait(media_msg_t *msg)
+{
+    bk_err_t ret;
+
+    if (media_info == NULL || media_info->queue == NULL)
+    {
+        LOGE("%s, media_info or queue is NULL\n", __func__);
+        return BK_FAIL;
+    }
+
+    ret = rtos_push_to_queue(&media_info->queue, msg, BEKEN_WAIT_FOREVER);
+    if (BK_OK != ret)
+    {
+        LOGE("%s failed\n", __func__);
+        return BK_FAIL;
+    }
+
+    return BK_OK;
+}
+
+static void media_cast_lan_session_teardown(uint32_t reason)
+{
+    bk_err_t ret;
+
+    LOGI("%s reason=%u\n", __func__, (unsigned)reason);
+
+    media_bk_net_cast_video_alloc_gate(0);
+
+    ret = av_server_jpeg_decode_manager_turn_off();
+    if (ret != BK_OK)
+    {
+        LOGE("turn off jpeg_decode_manager failed\n");
+    }
+
+#if CONFIG_LCD_PANEL_USE_800X480
+    lvgl_app_exit_navigation();
+#endif
+    (void)reason;
+
+    if (media_info->service == MEDIA_SERVICE_LAN_UDP)
+    {
+        ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
+    }
+    else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
+    {
+        ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
+    }
 }
 
 static void media_message_handle(void)
@@ -63,7 +113,7 @@ static void media_message_handle(void)
     {
         ret = rtos_pop_from_queue(&media_info->queue, &msg, BEKEN_WAIT_FOREVER);
 
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             LOGD("######%s, event:%d\n", __func__, msg.event);
             switch (msg.event)
@@ -95,7 +145,7 @@ static void media_message_handle(void)
 
                 case MEDIA_EVT_REMOTE_DEVICE_CONNECTED:
                 {
-                    LOGD("MEDIA_EVT_REMOTE_DEVICE_CONNECTED\n");
+                    LOGI("MEDIA_EVT_REMOTE_DEVICE_CONNECTED: start jpeg decode + display path\n");
                     #if 0
                     ret = video_data_process_open(480, 272, IMAGE_MJPEG);
 
@@ -109,14 +159,12 @@ static void media_message_handle(void)
                     ret = av_server_jpeg_decode_manager_turn_on();
                     if (ret != BK_OK)
                     {
-                        LOGE("turn on jpeg_decode_manager failed\n");
+                        LOGE("turn on cast jpeg pipeline failed\n");
                         break;
                     }
 
                     #if CONFIG_LCD_PANEL_USE_800X480
                         lvgl_app_enter_navigation();
-                    #else
-                        lvgl_app_suspend_display();
                     #endif
 
                     if (media_info->service == MEDIA_SERVICE_LAN_UDP)
@@ -131,56 +179,10 @@ static void media_message_handle(void)
                 }
                 break;
 
-                case MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED:
+                case MEDIA_EVT_CAST_SESSION_TEARDOWN:
                 {
-                    LOGD("MEDIA_EVT_REMOTE_DEVICE_DISCONNECTED\n");
-
-                    if (media_info->service == MEDIA_SERVICE_LAN_UDP)
-                    {
-                        ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
-                    }
-                    else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
-                    {
-                        ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
-                    }
-
-                }
-                break;
-
-                case MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED:
-                {
-                    LOGD("MEDIA_EVT_IMAGE_TCP_SERVICE_DISCONNECTED\n");
-
-                    ret = av_server_jpeg_decode_manager_turn_off();
-					if (ret != BK_OK)
-					{
-						LOGE("turn off jpeg_decode_manager failed\n");
-					}
-
-                    #if CONFIG_LCD_PANEL_USE_800X480
-                        lvgl_app_exit_navigation();
-                    #else
-                        lvgl_app_resume_display();
-                    #endif
-
-					#if 0
-					ret = video_data_process_close();
-
-					if (ret != BK_OK)
-					{
-						LOGE("turn off camera failed\n");
-					}
-                    #endif
-
-                    if (media_info->service == MEDIA_SERVICE_LAN_UDP)
-                    {
-                        ntwk_sdp_start("media-udp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_UDP_VIDEO_PORT, NTWK_TRANS_UDP_AUDIO_PORT);
-                    }
-                    else if (media_info->service == MEDIA_SERVICE_LAN_TCP)
-                    {
-                        ntwk_sdp_start("media-tcp", NTWK_TRANS_CMD_PORT, NTWK_TRANS_TCP_VIDEO_PORT, NTWK_TRANS_TCP_AUDIO_PORT);
-                    }
-
+                    LOGD("MEDIA_EVT_CAST_SESSION_TEARDOWN param=%u\n", (unsigned)msg.param);
+                    media_cast_lan_session_teardown(msg.param);
                 }
                 break;
 
@@ -199,7 +201,7 @@ exit:
     /* delate msg queue */
     ret = rtos_deinit_queue(&media_info->queue);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         LOGE("delate message queue fail\n");
     }
@@ -256,20 +258,22 @@ void media_msg_init(void)
 
     if (ret != BK_OK)
     {
-        LOGE("%s, ceate media message queue failed\n");
+        LOGE("%s, create media message queue failed\n", __func__);
         goto error;
     }
 
     ret = rtos_create_thread(&media_info->thd,
-                             BEKEN_DEFAULT_WORKER_PRIORITY,
-                             "media_info->thd",
-                             (beken_thread_function_t)media_message_handle,
-                             1024 * 6,
-                             NULL);
+                                    BEKEN_DEFAULT_WORKER_PRIORITY,
+                                    "media_info->thd",
+                                    (beken_thread_function_t)media_message_handle,
+                                    1024 * 6,
+                                    NULL);
 
     if (ret != BK_OK)
     {
         LOGE("create media major thread fail\n");
+        rtos_deinit_queue(&media_info->queue);
+        media_info->queue = NULL;
         goto error;
     }
 

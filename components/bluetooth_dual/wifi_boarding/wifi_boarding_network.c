@@ -82,7 +82,7 @@ static void boarding_wifi_event_cb(void *new_evt)
     }
 }
 
-int boarding_wifi_sta_connect(char *ssid, char *key)
+bk_err_t boarding_wifi_sta_connect(char *ssid, char *key)
 {
     int len;
 
@@ -117,7 +117,7 @@ int boarding_wifi_sta_connect(char *ssid, char *key)
     return BK_OK;
 }
 
-int boarding_wifi_soft_ap_start(char *ssid, char *key, uint16_t channel)
+bk_err_t boarding_wifi_soft_ap_start(char *ssid, char *key, uint16_t channel)
 {
     wifi_ap_config_t ap_config = WIFI_DEFAULT_AP_CONFIG();
     netif_ip4_config_t ip4_config = {0};

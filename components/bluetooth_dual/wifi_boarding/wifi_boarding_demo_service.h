@@ -75,8 +75,8 @@ typedef struct
 } boarding_msg_t;
 
 bk_err_t boarding_send_msg(boarding_msg_t *msg);
-int32_t wifi_boarding_demo_service_main(void);
-int32_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len));
+bk_err_t wifi_boarding_demo_service_main(void);
+bk_err_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len));
 void bk_boarding_event_notify(uint16_t opcode, int status);
 void bk_boarding_event_notify_with_data(uint16_t opcode, int status, char *payload, uint16_t length);
 void ble_ota_start_timer(void);

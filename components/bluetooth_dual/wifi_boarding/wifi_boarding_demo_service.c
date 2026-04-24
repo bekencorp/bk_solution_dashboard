@@ -231,7 +231,7 @@ static void boarding_message_handle(void)
     {
         ret = rtos_pop_from_queue(&s_boarding_queue, &msg, BEKEN_WAIT_FOREVER);
 
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (msg.event)
             {
@@ -447,7 +447,7 @@ exit:
     /* delate msg queue */
     ret = rtos_deinit_queue(&s_boarding_queue);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         wboard_loge("delete message queue fail");
     }
@@ -464,13 +464,13 @@ exit:
     wboard_loge("delete task complete");
 }
 
-int32_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len))
+bk_err_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len))
 {
     s_cmd_cb = cb;
-    return 0;
+    return BK_OK;
 }
 
-int32_t wifi_boarding_demo_service_main(void)
+bk_err_t wifi_boarding_demo_service_main(void)
 {
     bk_err_t ret = BK_OK;
 
@@ -482,7 +482,7 @@ int32_t wifi_boarding_demo_service_main(void)
     if (ret != BK_OK)
     {
         wboard_loge("create boarding message queue failed");
-        return -1;
+        return BK_FAIL;
     }
 
     ret = rtos_create_thread(&s_boarding_thd,
@@ -495,7 +495,7 @@ int32_t wifi_boarding_demo_service_main(void)
     if (ret != BK_OK)
     {
         wboard_loge("create boarding major thread fail");
-        return -1;
+        return BK_FAIL;
     }
 
     if (bk_boarding_info == NULL)
@@ -506,7 +506,7 @@ int32_t wifi_boarding_demo_service_main(void)
         {
             wboard_loge("bk_boarding_info malloc failed\n");
 
-            return -1;
+            return BK_FAIL;
         }
 
         os_memset(bk_boarding_info, 0, sizeof(bk_boarding_info_t));

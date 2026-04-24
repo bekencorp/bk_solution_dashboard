@@ -1,11 +1,9 @@
 set(incs .)
 set(srcs "")
 
-if (TRUE) # CONFIG_BK_BLE_PROVISIONING)
-    list(APPEND srcs
-        network_provisioning.c
-    )
-endif()
+list(APPEND srcs
+    network_provisioning.c
+)
 
 armino_component_register(
     SRCS "${srcs}"

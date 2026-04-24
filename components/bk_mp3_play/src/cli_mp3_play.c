@@ -53,7 +53,7 @@ static bk_err_t mp3_play_send_msg(beken_queue_t *queue, mp3_play_op_t op, void *
     msg.op = op;
     msg.param = param;
     ret = rtos_push_to_queue(queue, &msg, BEKEN_NO_WAIT);
-    if (kNoErr != ret)
+    if (BK_OK != ret)
     {
         BK_LOGE(TAG, "%s, %d, mp3_play send message: %d fail, ret: %d\n", __func__, __LINE__, op, ret);
         return BK_FAIL;
@@ -142,7 +142,7 @@ static void mp3_play_main(beken_thread_arg_t param_data)
     {
         mp3_play_msg_t mp3_play_msg;
         ret = rtos_pop_from_queue(&mp3_play_msg_que, &mp3_play_msg, wait_time);
-        if (kNoErr == ret)
+        if (BK_OK == ret)
         {
             switch (mp3_play_msg.op)
             {
@@ -256,7 +256,7 @@ static bk_err_t mp3_play_init(void)
                           "mp3_play_msg_que",
                           sizeof(mp3_play_msg_t),
                           5);
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, ceate mp3 play message queue fail\n", __func__, __LINE__);
         goto fail;

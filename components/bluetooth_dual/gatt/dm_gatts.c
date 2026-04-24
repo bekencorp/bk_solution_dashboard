@@ -1444,7 +1444,7 @@ int32_t dm_gatts_enable_adv(uint8_t enable)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv enable err %d", ret);
         goto error;
@@ -1482,7 +1482,7 @@ int32_t dm_gatts_enable_service(uint32_t index, uint8_t enable)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait start/stop service err %d", ret);
         return -1;
@@ -1631,7 +1631,7 @@ int32_t dm_gatts_reg_db(bk_gatts_attr_db_t *list, uint32_t count, uint16_t *attr
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("rtos_get_semaphore err %d", ret);
             return -1;
@@ -1644,7 +1644,7 @@ int32_t dm_gatts_reg_db(bk_gatts_attr_db_t *list, uint32_t count, uint16_t *attr
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait start/stop service err %d", ret);
         return -1;
@@ -1672,7 +1672,7 @@ int32_t dm_gatts_unreg_db(bk_gatts_attr_db_t *list)
 
             ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-            if (ret != kNoErr)
+            if (ret != BK_OK)
             {
                 gatt_loge("wait start/stop service err %d", ret);
             }
@@ -1782,7 +1782,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore reg err %d", ret);
         return -1;
@@ -1814,7 +1814,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -1841,7 +1841,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -1886,7 +1886,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -1931,7 +1931,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -1976,7 +1976,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -2023,7 +2023,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -2062,7 +2062,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("rtos_get_semaphore err %d", ret);
             return -1;
@@ -2078,7 +2078,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("rtos_get_semaphore err %d", ret);
             return -1;
@@ -2089,7 +2089,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -2099,7 +2099,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore err %d", ret);
         return -1;
@@ -2118,7 +2118,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     dm_gatt_add_gap_callback(dm_ble_gap_cb);
 
-    snprintf((char *)(adv_name), sizeof(adv_name) - 1, "CENTRAL-%02X%02X%02X", identity_addr[2], identity_addr[1], identity_addr[0]);
+    snprintf((char *)(adv_name), sizeof(adv_name) - 1, "SCOOTER-%02X%02X%02X", identity_addr[2], identity_addr[1], identity_addr[0]);
 
     gatt_logi("adv name %s", adv_name);
 
@@ -2133,7 +2133,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 #if AUTO_ENABLE_ADV
     ret = dm_gatts_set_adv_param(s_dm_gatts_local_addr_is_public);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("set adv param err %d", ret);
         goto error;
@@ -2141,7 +2141,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv param err %d", ret);
         goto error;
@@ -2201,7 +2201,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
         ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             gatt_loge("wait set adv rand addr err %d", ret);
             goto error;
@@ -2262,7 +2262,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv data err %d", ret);
         goto error;
@@ -2280,7 +2280,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv data scan rsp err %d", ret);
         goto error;
@@ -2303,7 +2303,7 @@ int dm_gatts_main(cli_gatt_param_t *param)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("wait set adv enable err %d", ret);
         goto error;
@@ -2334,7 +2334,7 @@ int dm_gatts_deinit(void)
 
     ret = rtos_get_semaphore(&s_ble_sema, SYNC_CMD_TIMEOUT_MS);
 
-    if (ret != kNoErr)
+    if (ret != BK_OK)
     {
         gatt_loge("rtos_get_semaphore unreg err %d", ret);
     }

@@ -114,24 +114,6 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 
     尽量让母版不工作可以提高烧录成功率。
 
-
-5. 3515NS校准
-------------------------------------
-
-1. 3515NS需要发送命令校准，请参考
-
-    - `BK3515NS Bluetooth Module Guide.docx <https://gitlab.bekencorp.com/controller/bk3515ns/-/blob/main/BK3515NS%20Bluetooth%20Module%20Guide.docx>`_ 的 **频偏设置** 及 **功率设置** 章节
-    - `rf测试_hci交互.txt <https://gitlab.bekencorp.com/controller/bk3515ns/-/blob/main/rf%E6%B5%8B%E8%AF%95_hci%E4%BA%A4%E4%BA%92.txt>`_ 的 **classic步骤** 章节进行非信令测试
-
-2. 校准完成后，参考 ``rf测试_hci交互.txt`` 的进入dut模式后，可以进行信令测试
-
-3. 校准值可以通过3515飞线发送命令保存，也可以保存在主控cpu端，然后开启 ``components/bluetooth_secondary_controller/bsc_main.c`` 的 ``bsc_init`` 函数中的 ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` 和 ``TCI_WRITE_POWER_TO_FLASH`` 相关代码写入。
-
-.. note::
-
-    如果从主控端下发，可以通过 ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` 和 ``TCI_READ_POWER_FROM_FLASH`` 读取，和现有的比较，以避免每次开机写入
-
-
 本文档基于Armino SMP架构, 帮助用户开发应用;
 
 Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>`_

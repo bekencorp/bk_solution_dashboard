@@ -18,6 +18,7 @@
 #include "components/bluetooth/bk_dm_gap_bt.h"
 
 #include "blue_audio_player_service.h"
+#include <driver/aud_dac_types.h>
 
 #include "components/bluetooth/bk_dm_avrcp.h"
 #include "bluetooth_storage.h"
@@ -30,7 +31,43 @@
 
 #include "mpeg4_latm_dec.h"
 
+/* aud_dac.h requires CONFIG_AUD_DRIVER_V1/V2 in current SDK layout.
+ * This demo only uses these three DAC control APIs.
+ */
+bk_err_t bk_aud_dac_set_dig_gain(uint32_t value);
+bk_err_t bk_aud_dac_unmute(void);
+bk_err_t bk_aud_dac_mute(void);
+
 #define TAG "a2dp_sink"
+
+/* -----------------------------------------------------------------------
+ * 分阶段调试开关 — 修改 DUMP_MODE 的值后 clean+build
+ *
+ * DUMP_MODE = 0  正常播放（不dump）
+ * DUMP_MODE = 1  Stage-1：dump 原始 SBC 字节到 UART2，绕过 Pipeline
+ *                  PC 验证：ffmpeg -f sbc -i stage1.sbc stage1.wav
+ * DUMP_MODE = 2  Stage-2：就地 SBC→PCM 解码后 dump 32bit-packed PCM，绕过 Pipeline
+ *                  PC 验证：python3 log/pcm2wav.py stage2.pcm stage2.wav
+ * ----------------------------------------------------------------------- */
+#define DUMP_MODE  0
+
+#if (DUMP_MODE == 1) || (DUMP_MODE == 2)
+#include <driver/uart.h>
+#define DUMP_UART_ID   UART_ID_2
+#define DUMP_UART_BAUD 2000000U
+static uint8_t s_dump_uart_inited = 0;
+#endif
+
+#if (DUMP_MODE == 2)
+#include <sbc.h>
+static sbc_t            s_dump_sbc;
+static struct sbc_frame s_dump_frame;
+static int16_t          s_dump_pcml[SBC_MAX_SAMPLES];
+static int16_t          s_dump_pcmr[SBC_MAX_SAMPLES];
+static int32_t          s_dump_pcm_out[SBC_MAX_SAMPLES];
+static uint32_t         s_dump_frame_cnt = 0;
+#define DUMP_PCM_SKIP_FRAMES  50
+#endif
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -68,9 +105,37 @@
 #define A2DP_SPEAKER_EQ_ENABLE 0
 #endif
 
-#if CONFIG_AAC_DECODER
+#if CONFIG_ADK_AAC_DECODER
 #define A2DP_ACC_SINGLE_CHANNEL_MAX_FRAM_SIZE   768   //1024(samples)/48k/s(sample rate)*288k/s (max bitrate)/8
 #define A2DP_AAC_MAX_FRAME_NUMS                 5     //21ms/frame*5
+#define ADTS_HEADER_SIZE                        7
+
+static uint8_t adts_get_sr_index(uint32_t sample_rate)
+{
+    static const uint32_t sr_table[] = {
+        96000, 88200, 64000, 48000, 44100, 32000,
+        24000, 22050, 16000, 12000, 11025, 8000, 7350
+    };
+    for (uint8_t i = 0; i < sizeof(sr_table) / sizeof(sr_table[0]); i++) {
+        if (sample_rate == sr_table[i])
+            return i;
+    }
+    return 4;
+}
+
+static void adts_header_generate(uint8_t *header, uint32_t aac_len,
+                                  uint8_t channels, uint32_t sample_rate)
+{
+    uint8_t freq_idx = adts_get_sr_index(sample_rate);
+    uint32_t frame_len = aac_len + ADTS_HEADER_SIZE;
+    header[0] = 0xFF;
+    header[1] = 0xF1;
+    header[2] = (1 << 6) | (freq_idx << 2) | ((channels >> 2) & 0x1);
+    header[3] = ((channels & 0x3) << 6) | ((frame_len >> 11) & 0x3);
+    header[4] = (frame_len >> 3) & 0xFF;
+    header[5] = ((frame_len & 0x7) << 5) | 0x1F;
+    header[6] = 0xFC;
+}
 #endif
 
 #define AVRCP_PASSTHROUTH_CMD_TIMEOUT                     2000
@@ -115,8 +180,6 @@ static bk_a2dp_mcc_t bt_audio_a2dp_sink_codec = {0};
 
 static beken_queue_t bt_audio_sink_demo_msg_que = NULL;
 static beken_thread_t bt_audio_sink_demo_thread_handle = NULL;
-//#define CONFIG_BLUE_AUDIO_PLAYER_SERVICE 1
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
 #define PLATFORM_SPK_GAIN_MAX 0x3f // see onboard_mic_stream.h
 #define PLATFORM_SPK_GAIN_DEFAULT 0x2d // see onboard_mic_stream.h
 //static RingBufferNodeContext s_a2dp_frame_nodes;
@@ -124,7 +187,6 @@ static uint16_t frame_length = 0;
 static blue_audio_decoder_type_t decoder_type = BLUE_AUDIO_DECODER_TYPE_SBC;
 
 static blue_audio_player_handle_t gl_audio_player_handle = NULL;
-#endif
 
 static beken_semaphore_t s_audio_player_en_sema = NULL;
 static beken_semaphore_t s_a2dp_connect_sema = NULL;
@@ -150,14 +212,24 @@ static uint8_t s_mix_multi_channel = 1;
 
 static bk_err_t bk_bt_dac_set_gain(uint8_t avrcp_vol)
 {
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
     if(gl_audio_player_handle)
     {
-        uint8_t gain = 0;
+        uint32_t gain32;
 
-        gain = ((PLATFORM_SPK_GAIN_MAX + 1) * 1.0 / (AVRCP_GAIN_MAX + 1)) * avrcp_vol;
+        if (avrcp_vol == 0) {
+            gain32 = 0;
+        } else {
+            gain32 = (uint32_t)((uint64_t)0x07000000 * avrcp_vol / AVRCP_GAIN_MAX);
+        }
 
-        LOGI("%s set spk gain 0x%x\n", __func__, gain);
-        blue_audio_player_set_volume(gl_audio_player_handle, gain);
+        LOGI("%s set spk gain avrcp=%d -> dig=0x%x\n", __func__, avrcp_vol, gain32);
+        bk_aud_dac_set_dig_gain(gain32);
+        if (gain32 > 0) {
+            bk_aud_dac_unmute();
+        } else {
+            bk_aud_dac_mute();
+        }
     }
     else
     {
@@ -165,6 +237,10 @@ static bk_err_t bk_bt_dac_set_gain(uint8_t avrcp_vol)
     }
 
     return BK_OK;
+#else
+    (void)avrcp_vol;
+    return BK_OK;
+#endif
 }
 
 static void avrcp_connect_timer_hdl(void *param, unsigned int ulparam)
@@ -200,7 +276,7 @@ static bk_err_t one_spk_frame_played_cmpl_handler(unsigned int size)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
     }
@@ -224,7 +300,7 @@ static void bt_audio_sink_task_exit(void)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
     }
@@ -246,7 +322,7 @@ static int32_t bt_audio_sink_task_user_vote_spk_task(uint8_t enable)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
         return -1;
@@ -257,6 +333,12 @@ static int32_t bt_audio_sink_task_user_vote_spk_task(uint8_t enable)
 
 static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uint16_t frame_length, uint8_t open_vote)
 {
+#if !CONFIG_BLUE_AUDIO_PLAYER_SERVICE
+    (void)decoder_type;
+    (void)frame_length;
+    (void)open_vote;
+    return BK_OK;
+#else
     if(gl_audio_player_handle)
     {
         LOGW("%s audio player already open\n", __func__);
@@ -281,13 +363,34 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     if (decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC)
     {
         blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.chl_num = 1;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[0] = 44100;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[1] = 16000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[2] = 16000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dig_gain = 0x07000000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.ana_gain = 0x0A;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.work_mode = AUD_DAC_WORK_MODE_DIFFEN;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.bits = 16;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.clk_src = AUD_CLK_APLL;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 3528;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 320;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 320;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_A2DP_BIT;
+#endif
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 1;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
-        temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_SBC_MAX_FRAME_NUMS;
+        temp_audio_player_cfg.raw_strm_cfg.out_block_num = 200;
+        temp_audio_player_cfg.raw_strm_cfg.output_port_type = PORT_TYPE_RB;
+        temp_audio_player_cfg.decoder_cfg.sbc_dec_cfg.task_prio = 3;
+        temp_audio_player_cfg.mix_alg_cfg.task_prio = 3;
+        temp_audio_player_cfg.mix_alg_cfg.input_channel_num = 1;
+        temp_audio_player_cfg.mix_alg_cfg.out_block_size = 3528;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.task_prio = 2;
 #if A2DP_SPEAKER_EQ_ENABLE
         temp_audio_player_cfg.eq_en = true;
         eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
@@ -297,15 +400,36 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     }
     else if (decoder_type == BLUE_AUDIO_DECODER_TYPE_AAC)
     {
-#if CONFIG_AAC_DECODER
+#if CONFIG_ADK_AAC_DECODER
         blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_AAC_ONBOARD_SPK_CONFIG();
+#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.chl_num = 1;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[0] = 44100;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[1] = 16000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[2] = 16000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dig_gain = 0x07000000;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.ana_gain = 0x0A;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.work_mode = AUD_DAC_WORK_MODE_DIFFEN;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.bits = 16;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.clk_src = AUD_CLK_APLL;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 3528;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 320;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 320;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_A2DP_BIT;
+#endif
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 1;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
         temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
-        temp_audio_player_cfg.raw_strm_cfg.out_block_num = A2DP_AAC_MAX_FRAME_NUMS;
+        temp_audio_player_cfg.raw_strm_cfg.out_block_num = 30;
+        temp_audio_player_cfg.raw_strm_cfg.output_port_type = PORT_TYPE_RB;
+        temp_audio_player_cfg.decoder_cfg.aac_dec_cfg.task_prio = 3;
+        temp_audio_player_cfg.mix_alg_cfg.task_prio = 4;
+        temp_audio_player_cfg.mix_alg_cfg.input_channel_num = 2;
+        temp_audio_player_cfg.mix_alg_cfg.out_block_size = 3528;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.task_prio = 2;
 #if A2DP_SPEAKER_EQ_ENABLE
         temp_audio_player_cfg.eq_en = true;
         eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
@@ -320,11 +444,13 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         return BK_FAIL;
     }
 
+#if CONFIG_HFP_HF_DEMO
     extern int32_t wait_hfp_speaker_mic_task_end(void);
 
     LOGI("%s wait hfp task end\n", __func__);
     wait_hfp_speaker_mic_task_end();
     LOGI("%s hfp task end completed\n", __func__);
+#endif
 
     gl_audio_player_handle = blue_audio_player_create(&audio_player_cfg);
     if(!gl_audio_player_handle)
@@ -349,6 +475,7 @@ fail:
     blue_audio_player_destroy(gl_audio_player_handle);
     gl_audio_player_handle = NULL;
     return BK_FAIL;
+#endif
 }
 
 /**
@@ -357,7 +484,7 @@ fail:
  * @param len Length of the data.
  * @return Returns the effective length of the frame on success, and BK_FAIL on failure.
  */
-static bk_err_t bk_sbc_frame_length_parse(uint8_t *buf, uint16_t len)
+bk_err_t bk_sbc_frame_length_parse(uint8_t *buf, uint16_t len)
 {
     // Check input parameters
     if (buf == NULL || len < 3)
@@ -499,7 +626,7 @@ static void bt_audio_sink_demo_main(void *arg)
 
         err = rtos_pop_from_queue(&bt_audio_sink_demo_msg_que, &msg, BEKEN_WAIT_FOREVER);
 
-        if (kNoErr == err)
+        if (BK_OK == err)
         {
             switch (msg.type)
             {
@@ -536,7 +663,7 @@ static void bt_audio_sink_demo_main(void *arg)
                     decoder_type = BLUE_AUDIO_DECODER_TYPE_SBC;
                     LOGI("cm:%d, c:%d, s:%d, b:%d, bi:%d, frame_length:%d \n",chnl_mode, chnls, subbands,blocks, bitpool, frame_length);
                 }
-#if (CONFIG_AAC_DECODER)
+#if (CONFIG_ADK_AAC_DECODER)
                 else if(CODEC_AUDIO_AAC == p_codec_info->type)
                 {
                     uint8_t channle = p_codec_info->cie.aac_codec.channels;
@@ -547,6 +674,29 @@ static void bt_audio_sink_demo_main(void *arg)
                     decoder_type = BLUE_AUDIO_DECODER_TYPE_AAC;
                 }
 #endif
+#if (DUMP_MODE == 1) || (DUMP_MODE == 2)
+                /* Stage-1/2：初始化 UART2，不创建 audio player */
+                if (!s_dump_uart_inited) {
+                    uart_config_t uart_cfg = {0};
+                    uart_cfg.baud_rate = DUMP_UART_BAUD;
+                    uart_cfg.data_bits = UART_DATA_8_BITS;
+                    uart_cfg.parity    = UART_PARITY_NONE;
+                    uart_cfg.stop_bits = UART_STOP_BITS_1;
+                    uart_cfg.flow_ctrl = UART_FLOWCTRL_DISABLE;
+                    uart_cfg.src_clk   = UART_SCLK_XTAL_26M;
+                    bk_uart_init(DUMP_UART_ID, &uart_cfg);
+                    s_dump_uart_inited = 1;
+#if (DUMP_MODE == 2)
+                    sbc_reset(&s_dump_sbc);
+                    s_dump_frame_cnt = 0;
+                    LOGI("PCM dump UART%d @%u baud ready (Stage-2, decode+dump)\n",
+                         DUMP_UART_ID, DUMP_UART_BAUD);
+#else
+                    LOGI("SBC dump UART%d @%u baud ready (Stage-1)\n",
+                         DUMP_UART_ID, DUMP_UART_BAUD);
+#endif
+                }
+#else /* DUMP_MODE == 0 */
                 if (BK_OK != bt_audio_player_open(decoder_type, frame_length, spk_task_start_vote))
                 {
                     LOGE("%s bt_audio_player_open failed\n", __func__);
@@ -555,7 +705,8 @@ static void bt_audio_sink_demo_main(void *arg)
 #if SLOW_SEND_FRAME_WHEN_A2DP_ENABLE
                 slow_send_status = 0;
 #endif
-#endif
+#endif /* DUMP_MODE */
+#endif /* CONFIG_BLUE_AUDIO_PLAYER_SERVICE */
                 psram_free(msg.data);
             }
             break;
@@ -579,12 +730,14 @@ static void bt_audio_sink_demo_main(void *arg)
                 {
                     spk_task_start_vote &= ~(1 << BT_AUDIO_SPK_TASK_START_VOTE_USER);
                     /* destroy blue_audio_player */
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
                     if(gl_audio_player_handle)
                     {
                         blue_audio_player_stop(gl_audio_player_handle);
                         blue_audio_player_destroy(gl_audio_player_handle);
                         gl_audio_player_handle = NULL;
                     }
+#endif
                 }
                 /* set sync semaphore */
                 if(s_audio_player_en_sema)
@@ -596,6 +749,73 @@ static void bt_audio_sink_demo_main(void *arg)
 
             case BT_AUDIO_D2DP_DATA_IND_MSG:
             {
+#if (DUMP_MODE == 1)
+                /* Stage-1：dump 原始 SBC 字节到 UART2 */
+                if (s_dump_uart_inited
+                    && CODEC_AUDIO_SBC == bt_audio_a2dp_sink_codec.type
+                    && msg.len > 1) {
+                    bk_uart_write_bytes(DUMP_UART_ID,
+                                        (const uint8_t *)msg.data + 1,
+                                        msg.len - 1);
+                }
+                psram_free(msg.data);
+                break;
+#elif (DUMP_MODE == 2)
+                /* Stage-2：就地解码 SBC→PCM，dump 32bit-packed 到 UART2，不走 pipeline */
+                if (s_dump_uart_inited
+                    && CODEC_AUDIO_SBC == bt_audio_a2dp_sink_codec.type
+                    && msg.len > 1) {
+                    const uint8_t *sbc_data = (const uint8_t *)msg.data + 1;
+                    uint32_t sbc_remain = msg.len - 1;
+                    while (sbc_remain >= SBC_HEADER_SIZE) {
+                        if (sbc_data[0] != 0x9C && sbc_data[0] != 0xAD) {
+                            sbc_data++;
+                            sbc_remain--;
+                            continue;
+                        }
+                        if (sbc_probe(sbc_data, &s_dump_frame) < 0) {
+                            sbc_data++;
+                            sbc_remain--;
+                            continue;
+                        }
+                        unsigned fsize = sbc_get_frame_size(&s_dump_frame);
+                        if (fsize == 0 || sbc_remain < fsize)
+                            break;
+                        int ret = sbc_decode(&s_dump_sbc,
+                                             sbc_data, sbc_remain, &s_dump_frame,
+                                             s_dump_pcml, 1, s_dump_pcmr, 1);
+                        if (ret < 0) {
+                            sbc_data++;
+                            sbc_remain--;
+                            continue;
+                        }
+                        sbc_data   += fsize;
+                        sbc_remain -= fsize;
+                        s_dump_frame_cnt++;
+                        if (s_dump_frame_cnt <= DUMP_PCM_SKIP_FRAMES)
+                            continue;
+                        int nch = (s_dump_frame.mode == SBC_MODE_MONO) ? 1 : 2;
+                        int pcm_len = s_dump_frame.nblocks * s_dump_frame.nsubbands;
+                        if (nch == 2) {
+                            for (int i = 0; i < pcm_len; i++) {
+                                int16_t mono = (int16_t)(((int32_t)s_dump_pcml[i] + (int32_t)s_dump_pcmr[i]) >> 1);
+                                uint16_t u = (uint16_t)mono;
+                                s_dump_pcm_out[i] = ((int32_t)u << 16) | u;
+                            }
+                        } else {
+                            for (int i = 0; i < pcm_len; i++) {
+                                uint16_t u = (uint16_t)s_dump_pcml[i];
+                                s_dump_pcm_out[i] = ((int32_t)u << 16) | u;
+                            }
+                        }
+                        bk_uart_write_bytes(DUMP_UART_ID,
+                                            (const uint8_t *)s_dump_pcm_out,
+                                            pcm_len * 4);
+                    }
+                }
+                psram_free(msg.data);
+                break;
+#endif /* DUMP_MODE */
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
 
 #if SLOW_SEND_FRAME_WHEN_A2DP_ENABLE
@@ -625,27 +845,35 @@ static void bt_audio_sink_demo_main(void *arg)
                 }
 #endif
                 uint8 *fb = (uint8_t *)msg.data;
+                // static uint32_t s_sbc_pkt_cnt = 0;
                 if(gl_audio_player_handle)
                 {
                     if (CODEC_AUDIO_SBC == bt_audio_a2dp_sink_codec.type)
                     {
                         uint8_t payload_header = *fb++;
                         uint8_t frame_num = payload_header & 0xF;
+                        uint32_t payload_len = msg.len - 1;
+
+                        // s_sbc_pkt_cnt++;
+                        // if (s_sbc_pkt_cnt <= 5 || (s_sbc_pkt_cnt % 500) == 0) {
+                        //     LOGI("DBG SBC_IN #%u: hdr=0x%02x fn=%u plen=%u fb[0..3]={0x%02x,0x%02x,0x%02x,0x%02x}\n",
+                        //          s_sbc_pkt_cnt, payload_header, frame_num, payload_len,
+                        //          fb[0], fb[1], payload_len > 2 ? fb[2] : 0, payload_len > 3 ? fb[3] : 0);
+                        // }
 
                         /* frame length change, bitpool change */
-                        if(msg.len - 1 != org_frame_len * frame_num)
+                        if(payload_len != org_frame_len * frame_num)
                         {
-                            uint8_t detect_frame_num = 0;
-                            uint32_t i = 0;
+                            LOGD("%s frame num not match, payload_header 0x%x, payload_len: %d, frame_num:%d %d %d\n",
+                                __func__, payload_header, payload_len, frame_num, frame_length, org_frame_len);
 
-                            LOGD("%s frame num not match, payload_header 0x%x, payload_len: %d, frame_num:%d %d %d\n", __func__, payload_header, msg.len - 1, frame_num, frame_length, org_frame_len);
-
-                            for (uint32_t i = 0; i < msg.len - 1;)
+                            for (uint32_t i = 0; i < payload_len;)
                             {
-                                int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb, msg.len - 1);
+                                int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb + i, payload_len - i);
                                 if(tmp_frame_len > 0)
                                 {
-                                    if (blue_audio_player_get_free_frame_num(gl_audio_player_handle))
+                                    uint32_t free_len = blue_audio_player_get_free_frame_num(gl_audio_player_handle);
+                                    if (free_len >= (uint32_t)tmp_frame_len)
                                     {
                                         blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)(fb + i), tmp_frame_len);
                                     }
@@ -666,24 +894,19 @@ static void bt_audio_sink_demo_main(void *arg)
                         }
                         else
                         {
-                            for(uint8_t i = 0; i < frame_num; i++)
+                            uint32_t free_len = blue_audio_player_get_free_frame_num(gl_audio_player_handle);
+                            if (free_len >= payload_len)
                             {
-                                if (blue_audio_player_get_free_frame_num(gl_audio_player_handle))
-                                {
-                                    uint16_t tmp_len = (msg.len - 1) / frame_num;
-                                    blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb, tmp_len);
-                                    fb += tmp_len;
-                                }
-                                else
-                                {
-                                    LOGW("%s blue_audio_player frame nodes buffer(sbc) is full \n", __func__);
-                                    //psram_free(msg.data);
-                                    break;
-                                }
+                                // Fast path: write all SBC frames in this AVDTP packet once.
+                                blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb, payload_len);
+                            }
+                            else
+                            {
+                                LOGW("%s blue_audio_player frame nodes buffer(sbc) is full \n", __func__);
                             }
                         }
                     }
-#if CONFIG_AAC_DECODER
+#if CONFIG_ADK_AAC_DECODER
                     else if(CODEC_AUDIO_AAC == bt_audio_a2dp_sink_codec.type)
                     {
                         // LOGI("-> %d \n", msg.len);
@@ -716,7 +939,17 @@ static void bt_audio_sink_demo_main(void *arg)
                                     LOGE("====%s len not match, total %d, type1 offset %d len %d, type2 offset %d len %d\n", __func__, msg.len, output - fb, inbuf - fb, output_len, inlen);
                                 }
 
-                                blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)inbuf, inlen);
+                                uint32_t need_len = inlen + ADTS_HEADER_SIZE;
+                                uint32_t free_len = blue_audio_player_get_free_frame_num(gl_audio_player_handle);
+                                if (free_len >= need_len)
+                                {
+                                    uint8_t *adts_start = inbuf - ADTS_HEADER_SIZE;
+                                    adts_header_generate(adts_start, inlen,
+                                        bt_audio_a2dp_sink_codec.cie.aac_codec.channels,
+                                        bt_audio_a2dp_sink_codec.cie.aac_codec.sample_rate);
+                                    blue_audio_player_write_frame_data(gl_audio_player_handle,
+                                        (char *)adts_start, need_len);
+                                }
                             }
                             else
                             {
@@ -820,7 +1053,7 @@ static int bt_audio_sink_demo_task_init(void)
                               sizeof(bt_audio_sink_demo_msg_t),
                               BT_AUDIO_SINK_DEMO_MSG_COUNT);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             LOGE("bt_audio sink demo msg queue failed \r\n");
             return BK_FAIL;
@@ -833,7 +1066,7 @@ static int bt_audio_sink_demo_task_init(void)
                                  4096,
                                  (beken_thread_arg_t)0);
 
-        if (ret != kNoErr)
+        if (ret != BK_OK)
         {
             LOGE("bt_audio sink demo task fail \r\n");
             rtos_deinit_queue(&bt_audio_sink_demo_msg_que);
@@ -841,7 +1074,7 @@ static int bt_audio_sink_demo_task_init(void)
             bt_audio_sink_demo_thread_handle = NULL;
         }
 
-        return kNoErr;
+        return BK_OK;
     }
     else
     {
@@ -920,9 +1153,9 @@ static void bt_audio_sink_media_data_ind(const uint8_t *data, uint16_t data_len)
     demo_msg.type = BT_AUDIO_D2DP_DATA_IND_MSG;
     demo_msg.len = data_len;
 
-    rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
+    rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, 2);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
 
@@ -950,7 +1183,7 @@ static void bt_audio_a2dp_sink_suspend_ind(void)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
     }
@@ -982,7 +1215,7 @@ static void bt_audio_a2dp_sink_start_ind(bk_a2dp_mcc_t *codec)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
     }
@@ -1622,7 +1855,7 @@ static void bt_wifi_state_updated(void)
 
     rc = rtos_push_to_queue(&bt_audio_sink_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
 
-    if (kNoErr != rc)
+    if (BK_OK != rc)
     {
         LOGE("%s, send queue failed\r\n", __func__);
     }
@@ -1722,7 +1955,7 @@ int a2dp_sink_demo_init(uint8_t aac_supported)
 
     if (aac_supported)
     {
-#if (!CONFIG_AAC_DECODER)
+#if (!CONFIG_ADK_AAC_DECODER)
         LOGI("%s AAC is not supported!\n", __func__);
         return -1;
 #endif
@@ -1809,42 +2042,6 @@ int a2dp_sink_demo_init(uint8_t aac_supported)
         LOGE("%s bk_bt_a2dp_register_callback err %d\n", __func__, ret);
         return -1;
     }
-
-#if A2DP_SET_SDP_FEATURE
-    {
-        uint16_t feat = 0;
-        uint16_t allow = 0;
-
-        bk_bt_avrcp_ct_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_ALLOWED, &allow);
-        bk_bt_avrcp_ct_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_CURRENT_ENABLE, &feat);
-        LOGI("%s current ct enable 0x%x\n", __func__, feat);
-        //headset doesn't need cat 2 as ct
-        feat &= ~(BK_AVRCP_SDP_FEATURE_CT_CAT_2 | BK_AVRCP_SDP_FEATURE_CT_CAT_3 | BK_AVRCP_SDP_FEATURE_CT_CAT_4
-                        | BK_AVRCP_SDP_FEATURE_CT_SUPPORT_BROWSING | BK_AVRCP_SDP_FEATURE_CT_SUPPORT_CA_GIP | BK_AVRCP_SDP_FEATURE_CT_SUPPORT_CA_GI | BK_AVRCP_SDP_FEATURE_CT_SUPPORT_CA_GLT);
-        feat &= allow;
-        bk_bt_avrcp_ct_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_SET, &feat);
-        feat = 0;
-        allow = 0;
-        bk_bt_avrcp_ct_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_CURRENT_ENABLE, &feat);
-        LOGI("%s current ct enable 0x%x\n", __func__, feat);
-        feat = 0;
-
-        bk_bt_avrcp_tg_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_ALLOWED, &allow);
-        bk_bt_avrcp_tg_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_CURRENT_ENABLE, &feat);
-        LOGI("%s current tg enable 0x%x\n", __func__, feat);
-        feat &= ~(BK_AVRCP_SDP_FEATURE_TG_CAT_1 | BK_AVRCP_SDP_FEATURE_TG_CAT_3 | BK_AVRCP_SDP_FEATURE_TG_CAT_4
-                        //| BK_AVRCP_SDP_FEATURE_TG_CAT_2 //As headset, if you need disable abs vol as tg, disable tg category 2 here.
-                        | BK_AVRCP_SDP_FEATURE_TG_PLAYER_APP_SET | BK_AVRCP_SDP_FEATURE_TG_GROUP_NAV | BK_AVRCP_SDP_FEATURE_TG_SUPPORT_BROWSING | BK_AVRCP_SDP_FEATURE_TG_SUPPORT_MULT_MEDIA_PA
-                        | BK_AVRCP_SDP_FEATURE_TG_SUPPORT_CA);
-        feat &= allow;
-        bk_bt_avrcp_tg_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_SET, &feat);
-        feat = 0;
-        allow = 0;
-        bk_bt_avrcp_tg_sdp_feature_operation(BK_AVRCP_SDP_FEATURE_API_METHOD_GET_CURRENT_ENABLE, &feat);
-        LOGI("%s current tg enable 0x%x\n", __func__, feat);
-        feat = 0;
-    }
-#endif
 
     ret = bk_bt_a2dp_sink_init(aac_supported);
 
