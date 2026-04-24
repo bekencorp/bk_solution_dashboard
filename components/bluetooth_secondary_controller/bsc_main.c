@@ -623,6 +623,64 @@ static int32_t bsc_init(int32_t (*report)(uint8_t *data, uint32_t len))
 
     LOGI("TCI_READ_FRQ_OFFSET_FROM_FLASH 0x%x", *p);
 
+#if 0
+    //6
+    write_buffer_index = build_cmd(tmp_write_buffer, TCI_WRITE_FRQ_OFFSET_TO_FLASH, 1);
+    tmp_write_buffer[write_buffer_index - 1] = 1;
+    tmp_write_buffer[write_buffer_index] = 0x50; //frq offset value
+
+    write_buffer_index += 1;
+    bsc_send(tmp_write_buffer, write_buffer_index);
+    LOGI("wait TCI_WRITE_FRQ_OFFSET_TO_FLASH");
+    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_WRITE_FRQ_OFFSET_TO_FLASH);
+
+    if (ret)
+    {
+        LOGE("TCI_WRITE_FRQ_OFFSET_TO_FLASH rsp err %d", ret);
+        ret = -1;
+        goto end;
+    }
+#endif
+
+    //7
+    write_buffer_index = build_cmd(tmp_write_buffer, TCI_READ_POWER_FROM_FLASH, 1);
+    tmp_write_buffer[write_buffer_index] = 0;
+
+    write_buffer_index++;
+    bsc_send(tmp_write_buffer, write_buffer_index);
+    LOGI("wait TCI_READ_POWER_FROM_FLASH");
+    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_READ_POWER_FROM_FLASH);
+
+    if (ret)
+    {
+        LOGE("TCI_READ_POWER_FROM_FLASH rsp err %d", ret);
+        ret = -1;
+        goto end;
+    }
+
+    p = tmp_read_buffer + 7;
+
+    LOGI("TCI_READ_POWER_FROM_FLASH 0x%x", *p);
+
+#if 0
+    //8
+    write_buffer_index = build_cmd(tmp_write_buffer, TCI_WRITE_POWER_TO_FLASH, 2);
+    tmp_write_buffer[write_buffer_index] = 0;
+    tmp_write_buffer[write_buffer_index + 1] = 0xe; //power value
+
+    write_buffer_index += 2;
+    bsc_send(tmp_write_buffer, write_buffer_index);
+    LOGI("wait TCI_WRITE_POWER_TO_FLASH");
+    ret = read_compl_evt_parse(tmp_read_buffer, sizeof(tmp_read_buffer), TCI_WRITE_POWER_TO_FLASH);
+
+    if (ret)
+    {
+        LOGE("TCI_WRITE_POWER_TO_FLASH rsp err %d", ret);
+        ret = -1;
+        goto end;
+    }
+#endif
+
     ret = bk_uart_disable_rx_interrupt(s_bsc_config.uart_id);
 
     if (ret)

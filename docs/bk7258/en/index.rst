@@ -117,6 +117,31 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 
     It will increase download successfully rate when mother board doesn't work.
 
+5. 3515NS Calibration
+------------------------------------
+
+1. The 3515NS must be calibrated by sending commands. Please refer to:
+
+    - The **frequency offset** and **power** settings chapters in `BK3515NS Bluetooth Module Guide.docx <https://gitlab.bekencorp.com/controller/bk3515ns/-/blob/main/BK3515NS%20Bluetooth%20Module%20Guide.docx>`_
+    - The **Classic procedure** section in `rf测试_hci交互.txt <https://gitlab.bekencorp.com/controller/bk3515ns/-/blob/main/rf%E6%B5%8B%E8%AF%95_hci%E4%BA%A4%E4%BA%92.txt>`_ for **non-signaling** testing
+
+2. After calibration is complete, follow the **enter DUT mode** steps in ``rf测试_hci交互.txt``; **signaling** tests can then be performed.
+
+3. Calibration values can be saved by **sending commands to the 3515 over fly wires**, or they can be stored on the **host (main) CPU**. In the latter case, enable the ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` and ``TCI_WRITE_POWER_TO_FLASH`` related code in the ``bsc_init`` function in ``components/bluetooth_secondary_controller/bsc_main.c`` to perform the write.
+
+.. note::
+
+    If values are provisioned from the host, you can read them back via ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` and ``TCI_READ_POWER_FROM_FLASH``, compare with the current values, and **avoid writing on every boot** when they already match.
+
+
+本文档基于Armino SMP架构, 帮助用户开发应用;
+
+Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+
+应用处理器AP配置和使用, 请参考 `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+
+通信处理器CP配置和使用, 请参考 `Armino CP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/cp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+
 This document is based on the Armino SMP architecture to help users develop applications.
 
 For the Armino SMP architecture, please refer to `Armino SMP Architecture <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
