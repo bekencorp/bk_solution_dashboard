@@ -25,6 +25,6 @@ endif()
 armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
-    PRIV_REQUIRES bk_common include multimedia bk_network_transfer bk_vfs lvgl cast_pipeline bk_peripheral bk_network_provisioning display_ui
+    PRIV_REQUIRES bk_common include  bk_network_transfer bk_vfs lvgl cast_pipeline bk_peripheral bk_network_provisioning display_ui
 )
 

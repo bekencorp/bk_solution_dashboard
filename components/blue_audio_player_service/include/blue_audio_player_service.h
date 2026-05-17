@@ -26,7 +26,7 @@ extern "C" {
 #endif
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
 #include <components/bk_audio/audio_streams/raw_stream.h>
-#include <components/bk_audio/audio_decoders/sbc_decoder.h>
+#include <components/bk_audio/audio_decoders/sbc_dec.h>
 #include <components/bk_audio/audio_decoders/aac_decoder.h>
 #include <components/bk_audio/audio_pipeline/audio_types.h>
 #include <components/bk_audio/audio_algorithms/mix_algorithm.h>

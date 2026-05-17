@@ -352,7 +352,7 @@ bk_err_t boot_avi_play(void)
 
     LOGI("found %s (%lu bytes)\n", BOOT_AVI_PATH, (unsigned long)fno.fsize);
 
-    avi = AVI_open_input_file(BOOT_AVI_PATH, 1);
+    avi = AVI_open_input_file(BOOT_AVI_PATH, 1, AVI_MEM_SRAM);
     if (!avi) {
         LOGE("AVI_open_input_file failed\n");
         return BK_OK;
@@ -437,7 +437,7 @@ bk_err_t boot_avi_play(void)
         uint8_t *push_ptr;
         uint32_t push_len;
 
-        if (AVI_set_video_position(avi, i, &frame_len) != 0) {
+        if (AVI_set_video_read_index(avi, i, &frame_len) != 0) {
             consecutive_fail++;
             if (consecutive_fail >= MAX_CONSECUTIVE_FAILURES)
                 break;
@@ -453,7 +453,13 @@ bk_err_t boot_avi_play(void)
 
         uint8_t *raw = jpeg_buf + MJPEG_DHT_SIZE;
         uint32_t raw_capacity = jpeg_buf_capacity - MJPEG_DHT_SIZE;
-        AVI_read_frame(avi, (char *)raw, frame_len);
+        long bytes_read = AVI_read_next_video_frame(avi, (char *)raw, frame_len);
+        if (bytes_read != frame_len) {
+            consecutive_fail++;
+            if (consecutive_fail >= MAX_CONSECUTIVE_FAILURES)
+                break;
+            continue;
+        }
 
         int qt1_added = jpeg_inject_qt1_if_missing(raw, (uint32_t)frame_len, raw_capacity);
         frame_len += qt1_added;

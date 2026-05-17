@@ -1,9 +1,6 @@
 #pragma once
 
 #include <components/bk_display.h>
-#include <components/bk_display_dpu_ctlr.h>
-#include <components/bk_display_bus.h>
-#include <components/bk_lcd_panel.h>
 
 typedef struct
 {

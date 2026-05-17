@@ -449,8 +449,6 @@ void av_server_devices_deinit(void)
 {
     if (db_device_info)
     {
-        rtos_stop_timer(&db_device_info->debug_timer);
-        rtos_deinit_timer(&db_device_info->debug_timer);
         os_free(db_device_info);
         db_device_info = NULL;
     }

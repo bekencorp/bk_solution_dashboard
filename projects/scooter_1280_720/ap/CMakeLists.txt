@@ -10,7 +10,7 @@ set(srcs
     ${BEKEN_GENERATOR_SOURCES}
     )
 
-set(priv_req  bk_init bk_common media_service multimedia bk_cli bk_display bk_peripheral avdk_utils lvgl
+set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral avdk_utils lvgl
               bk_network_provisioning easy_flash
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui

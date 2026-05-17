@@ -16,7 +16,7 @@
 #define _SW_SBC_DECODER_H_
 
 #include <components/bk_audio/audio_pipeline/audio_element.h>
-#include <components/bk_audio/audio_decoders/sbc_decoder.h>
+#include <components/bk_audio/audio_decoders/sbc_dec.h>
 
 #ifdef __cplusplus
 extern "C" {

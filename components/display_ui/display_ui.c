@@ -1,27 +1,24 @@
 #include "display_ui.h"
-
+#include <avdk_check.h>
 #include <os/os.h>
 #include <os/mem.h>
 #include <components/log.h>
 #include <components/bk_frame_buffer.h>
 #include <components/bk_display.h>
-#include <components/bk_display_dpu_ctlr.h>
-#include <components/bk_display_bus.h>
-#include <components/bk_lcd_panel.h>
 #if CONFIG_LCD_HX8399C_MIPI_1080x1920
-#include <lcd/lcd_hx8399c_mipi_1080x1920.h>
+#include <lcd/lcd_mipi_hx8399c_1080x1920.h>
 #endif
 #if CONFIG_LCD_HX8394F_MIPI_720x1280
-#include <lcd/lcd_hx8394f_mipi_720x1280.h>
+#include <lcd/lcd_mipi_hx8394f_720x1280.h>
 #endif
 #if CONFIG_LCD_GC9702_MIPI_720x1280
-#include <lcd/lcd_gc9702_mipi_720x1280.h>
+#include <lcd/lcd_mipi_gc9702720x1280.h>
 #endif
 #if CONFIG_LCD_FL7703NP_MIPI_720x1280
-#include <lcd/lcd_fl7703np_mipi_720x1280.h>
+#include <lcd/lcd_mipi_fl7703np_720x1280.h>
 #endif
 #if CONFIG_LCD_LT8912B_MIPI_BRIDGE
-#include <lcd/lcd_lt8912b_mipi_bridge.h>
+#include <lcd/lcd_mipi_lt8912b_bridge.h>
 #endif
 #include <common/avdk_pixel_types.h>
 #include <driver/gpio.h>
@@ -105,10 +102,7 @@ static bk_err_t display_hw_init_internal(void)
     };
     const bk_lcd_panel_dev_config_t panel_dev_config = {
         .reset_pin = GPIO_60,
-        .rgb_ele_order = COLOR_RGB_ELEMENT_ORDER_RGB,
-        .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
-        .bits_per_pixel = 16,
-        .flags.reset_active_level = 0,
+        .reset_active_level = false,
     };
 
     g_disp_ctx = os_malloc(sizeof(display_ctx_t));
@@ -118,21 +112,16 @@ static bk_err_t display_hw_init_internal(void)
     }
     os_memset(g_disp_ctx, 0, sizeof(display_ctx_t));
     AVDK_GOTO_ON_ERROR(bk_display_dsi_bus_new(&g_disp_ctx->dis_bus_handle, NULL), err, TAG, "display dsi bus new err\n");
-    AVDK_GOTO_ON_ERROR(bk_display_bus_enable(g_disp_ctx->dis_bus_handle), err, TAG, "display bus enable err\n");
-    {
-        const bk_display_dsi_panel_t *panel = scooter_get_mipi_panel();
-        if (panel == NULL) {
-            LOGE("No MIPI panel selected in Kconfig (enable one LCD_* under DSI)\n");
-            ret = BK_FAIL;
-            goto err;
-        }
-        AVDK_GOTO_ON_ERROR(bk_lcd_mipi_panel_new(g_disp_ctx->dis_bus_handle, &panel_dev_config, panel, &g_disp_ctx->panel_handle),
-                           err, TAG, "create panel err\n");
+    const bk_display_dsi_panel_t *panel = scooter_get_mipi_panel();
+    if (panel == NULL) {
+        LOGE("No MIPI panel selected in Kconfig (enable one LCD_* under DSI)\n");
+        goto err;
     }
-
+    AVDK_GOTO_ON_ERROR(bk_lcd_mipi_panel_new(g_disp_ctx->dis_bus_handle, &panel_dev_config, panel, &g_disp_ctx->panel_handle),
+                        err, TAG, "create panel err\n");
     bk_lcd_panel_reset(g_disp_ctx->panel_handle);
     bk_lcd_panel_init(g_disp_ctx->panel_handle);
-    bk_lcd_panel_get_disp_timing(g_disp_ctx->panel_handle, &dpu_config.timing);
+    dpu_config.timing = panel->timing;
 
     AVDK_GOTO_ON_ERROR(bk_display_dpu_ctlr_new(&g_disp_ctx->dpu_ctlr_handle, &dpu_config), err, TAG, "display dpu ctlr new err\n");
     AVDK_GOTO_ON_ERROR(bk_display_init(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display init err\n");
@@ -158,7 +147,6 @@ err:
             g_disp_ctx->panel_handle = NULL;
         }
         if (g_disp_ctx->dis_bus_handle) {
-            bk_display_bus_disable(g_disp_ctx->dis_bus_handle);
             bk_display_bus_delete(g_disp_ctx->dis_bus_handle);
             g_disp_ctx->dis_bus_handle = NULL;
         }

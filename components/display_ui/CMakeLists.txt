@@ -11,5 +11,5 @@ set(srcs
 armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
-    PRIV_REQUIRES bk_common multimedia bk_display bk_peripheral bk_frame_buffer bk_gpu lvgl avdk_utils cast_pipeline
+    PRIV_REQUIRES bk_common  bk_display bk_peripheral bk_frame_buffer bk_gpu lvgl avdk_utils cast_pipeline
 )

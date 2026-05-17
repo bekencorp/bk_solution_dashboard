@@ -26,7 +26,7 @@
 #endif
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
 #if CONFIG_ADK_SBC_DECODER
-#include <components/bk_audio/audio_decoders/sbc_decoder.h>
+#include <components/bk_audio/audio_decoders/sbc_dec.h>
 #endif
 #if CONFIG_SW_SBC_DECODER
 #include <sw_sbc_decoder.h>

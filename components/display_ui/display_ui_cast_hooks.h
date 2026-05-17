@@ -1,7 +1,6 @@
 #pragma once
 
 #include <components/bk_display.h>
-#include <components/bk_display_dpu_ctlr.h>
 
 void display_ui_register_cast_hooks_once(void);
 
