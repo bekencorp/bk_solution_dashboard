@@ -10,6 +10,8 @@ typedef struct
 
 bk_err_t media_bk_network_transfer_init(char *service_name, void *param);
 bk_err_t media_bk_network_transfer_deinit(char *service_name);
+/* Stop ctrl/video/audio network channels if transfer was initialized */
+void media_bk_network_transfer_stop_if_started(void);
 void get_last_debug_info(media_data_process_debug_info_t *info);
 
 #endif

@@ -224,6 +224,14 @@ bk_err_t media_network_transfer_stop(void)
     return BK_OK;
 }
 
+void media_bk_network_transfer_stop_if_started(void)
+{
+    if (s_media_video_cfg == NULL) {
+        return;
+    }
+    (void)media_network_transfer_stop();
+}
+
 bk_err_t media_bk_network_transfer_init(char *service_name, void *param)
 {
     LOGI("%s start\r\n", __func__);

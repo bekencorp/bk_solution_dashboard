@@ -5,6 +5,11 @@
 #if CONFIG_BK_NETWORK_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
+#if CONFIG_P2P
+#include <modules/wifi.h>
+#include <os/os.h>
+#include "media_network_transfer.h"
+#endif
 
 #define TAG "key_service"
 
@@ -17,6 +22,19 @@
 static void config_network(void)
 {
     LOGI("USER_CONFIG_NETWORK\r\n");
+#if CONFIG_P2P
+    /* stop network transfer first */
+    media_bk_network_transfer_stop_if_started();
+    rtos_delay_milliseconds(100);
+    /* Tear down P2P Connection before reboot */
+    if (bk_wifi_is_p2p_enabled()) {
+        (void)bk_wifi_p2p_stop_find();
+        if (bk_wifi_p2p_disable() != BK_OK) {
+            LOGW("bk_wifi_p2p_disable failed, peer may disconnect slowly\r\n");
+        }
+        rtos_delay_milliseconds(250);
+    }
+#endif
 #if CONFIG_BK_NETWORK_PROVISIONING
     erase_network_auto_reconnect_info();
     bk_reboot();
