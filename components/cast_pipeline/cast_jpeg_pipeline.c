@@ -116,15 +116,16 @@ static avdk_err_t cast_flush_noop_cb(void *frame)
 
 /*
  * GPU flex path allocates a *second* full output buffer before calling
- * frame_display(); two ~2MB blocks do not fit the small psram_malloc heap
+ * frame_done(); two ~2MB blocks do not fit the small psram_malloc heap
  * alongside FLEXA ring + JPEG copy + stacks — malloc fails and the SDK
- * skips frame_display entirely (no DPU flush, frozen standby UI).
+ * skips the frame_done delivery entirely (no DPU flush, frozen standby UI).
  * Use the video mem slab (same pools as LVGL frame buffers).
  *
  * Session-scoped pool: fixed buffers for the whole cast session.
- * Three slots: GPU flex allocates the working buffer at thread start, then each
- * frame_done does malloc(new) before frame_display(old) (bk_gpu_ctlr_default.c);
- * a third slot covers transient overlap + slow return of buffers to the pool.
+ * Three slots: GPU flex allocates the working buffer at thread start, then on
+ * every frame the SDK does frame_malloc(new) before frame_done(old)
+ * (bk_gpu_ctlr_default.c); a third slot covers transient overlap + slow
+ * return of buffers to the pool.
  *
  * s_cast_gpu_pool_active must be 1 *before* jpeg_stream_pipeline_create(): inside
  * create, bk_gpu_open invokes malloc_cb for flex->dpu_frame_buffers; if active

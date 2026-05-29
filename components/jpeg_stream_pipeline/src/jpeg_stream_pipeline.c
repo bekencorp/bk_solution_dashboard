@@ -220,15 +220,17 @@
 		 psram_free(((void **)ptr)[-1]);
  }
  
- /* ------------------------------------------------------------------ */
- /* GPU frame_display internal forwarding                               */
- /* ------------------------------------------------------------------ */
- static void jsp_gpu_frame_display(void *frame, uint32_t frame_size, void *args)
- {
+/* ------------------------------------------------------------------ */
+/* GPU frame_done internal forwarding                                  */
+/* Forwards the just-produced GPU output frame to the pipeline's       */
+/* high-level frame_display_cb consumer.                               */
+/* ------------------------------------------------------------------ */
+static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
+{
 	 struct jpeg_stream_pipeline_ctx *ctx = (struct jpeg_stream_pipeline_ctx *)args;
 	 if (ctx != NULL && ctx->cfg.frame_display_cb != NULL)
 		 ctx->cfg.frame_display_cb(frame, frame_size, ctx->cfg.user_data);
- }
+}
  
  /* ------------------------------------------------------------------ */
  /* JPEG frame done callback                                            */
@@ -401,14 +403,12 @@
 		 gpu_cfg.flexa_buff_cnt = ctx->cfg.flexa_buff_cnt;
 		 gpu_cfg.src_buffer     = ctx->ring_buf;
  
-		 gpu_cfg.malloc             = ctx->cfg.malloc_cb;
-		 gpu_cfg.free               = NULL;
-		 gpu_cfg.frame_display      = jsp_gpu_frame_display;
-		 gpu_cfg.frame_display_args = ctx;
+		 gpu_cfg.frame_malloc         = ctx->cfg.malloc_cb;
+		 gpu_cfg.frame_free           = NULL;
 		 gpu_cfg.flexa_line_done      = NULL;
 		 gpu_cfg.flexa_line_done_args = NULL;
-		 gpu_cfg.frame_done           = NULL;
-		 gpu_cfg.frame_done_args      = NULL;
+		 gpu_cfg.frame_done           = jsp_gpu_frame_done;
+		 gpu_cfg.frame_done_args      = ctx;
  
 		 ret = bk_gpu_ctlr_new(&ctx->gpu_handle, &gpu_cfg);
 		 if (ret != AVDK_ERR_OK)
