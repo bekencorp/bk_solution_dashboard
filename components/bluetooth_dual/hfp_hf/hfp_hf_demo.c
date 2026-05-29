@@ -36,6 +36,7 @@
 #endif
 
 #include "bluetooth_storage.h"
+#include "a2dp_sink_demo.h"
 
 #define TAG "hfp_client"
 
@@ -494,10 +495,8 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
     }
 #endif
 
-    extern int32_t wait_a2dp_speaker_task_end(void);
-
     LOGI("%s wait a2dp task end\n", __func__);
-    wait_a2dp_speaker_task_end();
+    a2dp_sink_demo_wait_player_end();
     LOGI("%s a2dp task end completed\n", __func__);
 
 #if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
@@ -1483,8 +1482,8 @@ static void mic_task(void *arg)
     int32_t ret = 0;
 
     LOGI("%s wait a2dp task end\n", __func__);
-    extern int32_t wait_a2dp_speaker_task_end(void);
-    wait_a2dp_speaker_task_end();
+
+    a2dp_sink_demo_wait_player_end();
 
 #if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
 

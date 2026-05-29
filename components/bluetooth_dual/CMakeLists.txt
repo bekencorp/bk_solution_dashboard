@@ -52,6 +52,7 @@ if (CONFIG_BT)
         list(APPEND incs a2dp_sink)
         list(APPEND srcs
             a2dp_sink/a2dp_sink_demo.c
+            a2dp_sink/a2dp_sink_audio.c
         )
         if (CONFIG_HFP_HF_DEMO)
             list(APPEND srcs
@@ -80,7 +81,7 @@ armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
     PRIV_REQUIRES bk_common include blue_audio_player_service blue_audio_recorder_service sbc_encoder 
-                  bluetooth_secondary_controller lwip_intf_v2_1 ota sw_sbc_decoder bk_bluetooth
+                  bluetooth_secondary_controller lwip_intf_v2_1 ota sw_sbc_decoder bk_bluetooth audio_play
 )
 
 get_filename_component(config_component_name ${CMAKE_CURRENT_LIST_DIR} NAME)
