@@ -35,6 +35,7 @@
  #include <os/mem.h>
  #include <string.h>
  #include <components/log.h>
+ #include <common/avdk_pixel_types.h>
  #include <components/bk_decode/bk_jpeg_decode_ctlr.h>
  #include <components/bk_decode/bk_jpeg_decode_types.h>
  #include <components/bk_gpu_ctlr.h>
@@ -330,10 +331,9 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
  
 	 /* ---- Step 1: FLEXA ring buffer ---- */
 	 uint16_t aligned_w = (config->src_width + 15U) & ~15U;
-	 ctx->ring_size = (uint32_t)aligned_w
-					  * ctx->cfg.flexa_lines
-					  * 3U / 2U
-					  * ctx->cfg.flexa_buff_cnt;
+	 ctx->ring_size = bk_image_size_get(aligned_w,
+										(uint16_t)(ctx->cfg.flexa_lines * ctx->cfg.flexa_buff_cnt),
+										BK_PIXEL_FORMAT_NV12);
  
 	 ctx->ring_buf = (uint8_t *)jsp_psram_aligned_alloc(JSP_RING_ALIGNMENT,
 													   ctx->ring_size,
