@@ -14,7 +14,7 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bk_network_provisioning easy_flash
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
-              jpeg_stream_pipeline fatfs)
+              jpeg_stream_pipeline fatfs bk_bluetooth)
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")
 

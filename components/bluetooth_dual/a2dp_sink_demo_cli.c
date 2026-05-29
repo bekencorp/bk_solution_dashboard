@@ -254,7 +254,7 @@ static void cmd_headset_demo(char *pcWriteBuffer, int xWriteBufferLen, int argc,
     }
     else if (os_strcmp(argv[1], "pair_mode") == 0)
     {
-        bk_bt_enter_pairing_mode();
+        bk_bt_enter_pairing_mode(1);
     }
     else if (os_strcmp(argv[1], "set_delay_value") == 0)
     {

@@ -37,6 +37,7 @@
 #include "display_ui.h"
 #include "boot_avi_play.h"
 #include "sdkconfig.h"
+#include "headset_user_config.h"
 
 #define TAG "scooter_1280_720"
 
@@ -123,16 +124,67 @@ static bk_err_t app_bsc_init(void)
 }
 #endif
 
-/* ==================== BLE Provisioning ==================== */
+void bt_sync_base_mac_from_cp(void)
+{
+    extern bk_err_t bk_ap_get_mac(uint8_t *mac, mac_type_t type);
+    extern bk_err_t bk_set_base_mac(const uint8_t *mac);
 
+    /*
+     * Force mac_init() to run first so s_mac_inited becomes true.
+     * Otherwise bk_set_base_mac() below would be overwritten by a
+     * later bk_get_mac() call that triggers mac_init() lazily.
+     */
+    uint8_t dummy[6], base_mac[6] = {0};
+    bk_get_mac(dummy, MAC_TYPE_BASE);
+
+    if (bk_ap_get_mac(base_mac, MAC_TYPE_BASE) == BK_OK) {
+        bk_set_base_mac(base_mac);
+        LOGI("synced base mac from CP: %02x:%02x:%02x:%02x:%02x:%02x\n",
+             base_mac[0], base_mac[1], base_mac[2],
+             base_mac[3], base_mac[4], base_mac[5]);
+    } else {
+        LOGW("failed to sync base mac from CP\n");
+    }
+}
+
+/* ==================== BLE Provisioning ==================== */
 static void ap_bt_app_init(void)
 {
 #if CONFIG_BT
-    bt_manager_init();
+    uint8_t bt_mac[6] = {0};
+	char local_name[30] = {0};
+	bk_err_t err = bk_bluetooth_get_address(bt_mac);
+	if (err == BK_OK)
+	{
+		snprintf(local_name,
+				 sizeof(local_name),
+				 "%s_%02x%02x%02x",
+				 LOCAL_NAME,
+				 bt_mac[2],
+				 bt_mac[1],
+				 bt_mac[0]);
+	}
+	else
+	{
+		snprintf(local_name, sizeof(local_name), "%s", LOCAL_NAME);
+	}
+
+	bt_manager_cfg_t bt_manager_cfg =
+	{
+		.local_name = local_name,
+		.device_class = COD_SOUNDBAR,
+		.page_scan_interval = PAGE_SCAN_INTV,
+		.page_scan_window = PAGE_SCAN_WIN,
+		.page_timeout = CONFIG_PAGE_TIMEOUT,
+		.reconnect_interval_ms = CONFIG_RECONN_INTERVAL,
+		.max_reconnect_count = CONFIG_MAX_RECONN_COUNT,
+		.io_capability = BK_BT_IO_CAP_NONE,
+	};
+    bt_manager_init(&bt_manager_cfg);
 
 #if CONFIG_A2DP_SINK_DEMO
-    extern int a2dp_sink_demo_init(uint8_t aac_supported);
-    a2dp_sink_demo_init(0);
+    int a2dp_sink_demo_init(uint8_t aac_supported, uint8_t auto_accept_conn);
+    a2dp_sink_demo_init(0, 1);
 #endif
 
 #if CONFIG_HFP_HF_DEMO
@@ -140,6 +192,8 @@ static void ap_bt_app_init(void)
     hfp_hf_demo_init(0);
 #endif
 
+    extern int cli_headset_demo_init(void);
+    cli_headset_demo_init();
 #endif
 
 #if CONFIG_BLE
