@@ -8,6 +8,10 @@ typedef struct
     bk_display_ctlr_handle_t dpu_ctlr_handle;
     bk_display_bus_handle_t dis_bus_handle;
     bk_avdk_lcd_panel_handle_t panel_handle;
+    /** Bound MIPI panel descriptor (timing, name, ...). Set alongside
+     *  @c panel_handle so external consumers can read panel metadata
+     *  without going through the opaque panel handle. */
+    const bk_display_dsi_panel_t *panel_desc;
 } display_ctx_t;
 
 /*

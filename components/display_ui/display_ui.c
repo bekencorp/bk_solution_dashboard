@@ -100,7 +100,7 @@ static bk_err_t display_hw_init_internal(void)
         .video.decompress = false,
         .video.format = BK_PIXEL_FORMAT_RGB565,
     };
-    const bk_lcd_panel_dev_config_t panel_dev_config = {
+    const bk_lcd_panel_config_t panel_config = {
         .reset_pin = GPIO_60,
         .reset_active_level = false,
     };
@@ -117,13 +117,13 @@ static bk_err_t display_hw_init_internal(void)
         LOGE("No MIPI panel selected in Kconfig (enable one LCD_* under DSI)\n");
         goto err;
     }
-    AVDK_GOTO_ON_ERROR(bk_lcd_mipi_panel_new(g_disp_ctx->dis_bus_handle, &panel_dev_config, panel, &g_disp_ctx->panel_handle),
+    AVDK_GOTO_ON_ERROR(bk_lcd_mipi_panel_new(g_disp_ctx->dis_bus_handle, &panel_config, panel, &g_disp_ctx->panel_handle),
                         err, TAG, "create panel err\n");
+    g_disp_ctx->panel_desc = panel;
     bk_lcd_panel_reset(g_disp_ctx->panel_handle);
     bk_lcd_panel_init(g_disp_ctx->panel_handle);
-    dpu_config.timing = panel->timing;
 
-    AVDK_GOTO_ON_ERROR(bk_display_dpu_ctlr_new(&g_disp_ctx->dpu_ctlr_handle, &dpu_config), err, TAG, "display dpu ctlr new err\n");
+    AVDK_GOTO_ON_ERROR(bk_display_dpu_ctlr_new(&g_disp_ctx->dpu_ctlr_handle, g_disp_ctx->panel_handle, &dpu_config), err, TAG, "display dpu ctlr new err\n");
     AVDK_GOTO_ON_ERROR(bk_display_init(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display init err\n");
     AVDK_GOTO_ON_ERROR(bk_display_open(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display open err\n");  
     gpio_dev_unmap(GPIO_7);

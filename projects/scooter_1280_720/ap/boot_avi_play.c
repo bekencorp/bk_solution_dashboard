@@ -18,6 +18,7 @@
 #include "jpeg_stream_pipeline.h"
 
 #include "display_ui_cast_hooks.h"
+#include "display_ui_cast_context.h"
 
 #define TAG "boot_avi"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -401,8 +402,16 @@ bk_err_t boot_avi_play(void)
     total_frames = AVI_video_frames(avi);
     avi_w = avi->width;
     avi_h = avi->height;
-    dpu_w = display_ui_get_dpu_config()->timing.h_size;
-    dpu_h = display_ui_get_dpu_config()->timing.v_size;
+    {
+        display_ctx_t *ctx = display_ui_get_ctx();
+        if (ctx != NULL && ctx->panel_desc != NULL) {
+            dpu_w = ctx->panel_desc->timing.h_size;
+            dpu_h = ctx->panel_desc->timing.v_size;
+        } else {
+            dpu_w = 0;
+            dpu_h = 0;
+        }
+    }
 
     LOGI("avi %dx%d @ %.1f fps, %ld frames, dpu %ux%u\n",
          avi_w, avi_h, avi->fps, total_frames, dpu_w, dpu_h);

@@ -4,10 +4,6 @@
 #include <common/bk_err.h>
 #include <getopt.h>
 
-#if CONFIG_LCD
-#include <driver/lcd.h>
-#endif
-
 #include "media_devices.h"
 
 #include "media_network_transfer.h"
@@ -17,9 +13,7 @@
 #include "lv_vendor.h"
 
 #include "components/bk_display.h"
-#if CONFIG_LCD
-#include "lcd_panel_devices.h"
-#endif
+#include "display_ui_cast_hooks.h"
 #include "driver/gpio.h"
 #include "gpio_driver.h"
 
@@ -54,9 +48,6 @@ typedef struct
     beken_timer_t debug_timer;
 } db_device_info_t;
 
-#if CONFIG_LCD
-static const lcd_device_t *lcd_device = &lcd_device_st7282;
-#endif
 db_device_info_t *db_device_info = NULL;
 
 // static aud_intf_drv_setup_t aud_intf_drv_setup = DEFAULT_AUD_INTF_DRV_SETUP_CONFIG();
@@ -134,29 +125,21 @@ static avdk_err_t lcd_backlight_close(uint8_t bl_io)
     
 bk_err_t av_server_display_turn_on(void *param, uint16_t rotate)
 {
-    bk_err_t ret = BK_FAIL;
-    bk_display_rgb_ctlr_config_t lcd_display_config = {0};
+    (void)param;
+    (void)rotate;
 
-    lcd_display_config.lcd_device = lcd_device;
-    lcd_display_config.clk_pin = GPIO_0;
-    lcd_display_config.cs_pin = GPIO_12;
-    lcd_display_config.sda_pin = GPIO_1;
-    lcd_display_config.rst_pin = GPIO_6;
-    ret = bk_display_rgb_new(&db_device_info->lcd_display_handle, &lcd_display_config);
+    if (db_device_info == NULL) {
+        LOGE("%s: db_device_info is NULL\n", __func__);
+        return BK_FAIL;
+    }
 
-    if (ret != BK_OK)
-    {
-        LOGE("%s, bk_display_rgb_new failed\n", __func__);
-        return ret;
+    db_device_info->lcd_display_handle = display_ui_get_dpu_handle();
+    if (db_device_info->lcd_display_handle == NULL) {
+        LOGE("%s: display not ready (display_ui must init first)\n", __func__);
+        return BK_FAIL;
     }
 
     lcd_backlight_open(GPIO_7);
-    ret = bk_display_open(db_device_info->lcd_display_handle);
-    if (ret != BK_OK)
-    {
-        LOGE("%s, bk_display_open failed\n", __func__);
-        return ret;
-    }
     return BK_OK;
 }
 
@@ -363,8 +346,6 @@ void av_server_audio_data_callback(uint8_t *data, uint32_t length)
 }
 
 #endif
-
-#include "display_ui_cast_hooks.h"
 
 /*
  * Stale-pipeline watchdog: when lcd_use_module == DECODER but no frames have
