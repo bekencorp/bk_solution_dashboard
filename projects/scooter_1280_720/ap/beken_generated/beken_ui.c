@@ -57,7 +57,7 @@ static void speed_anim_timer_cb(lv_timer_t *timer)
         s_speed_value = 0;
         s_speed_direction = 1;
     }
-    lv_async_call(speed_anim_apply_cb, NULL);
+    speed_anim_apply_cb(NULL);
 }
 
 /* ---------- Left turn signal: green/grey blink ---------- */
@@ -87,7 +87,7 @@ static void left_light_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
     s_left_light_on = !s_left_light_on;
-    lv_async_call(left_light_blink_apply_cb, NULL);
+    left_light_blink_apply_cb(NULL);
 }
 
 /**
@@ -118,11 +118,11 @@ void beken_ui_init(void)
     lv_screen_load(bk_lv_tool_ui.Page_1);
 
     /* Speed gauge animation: 0->100->0 in ~10 s */
-    lv_async_call(speed_anim_apply_cb, NULL);
+    speed_anim_apply_cb(NULL);
     s_speed_anim_timer = lv_timer_create(speed_anim_timer_cb, SPEED_ANIM_PERIOD_MS, NULL);
 
     /* Left turn signal: alternate green/grey images */
-    lv_async_call(left_light_blink_apply_cb, NULL);
+    left_light_blink_apply_cb(NULL);
     s_left_light_timer = lv_timer_create(left_light_timer_cb, LEFT_LIGHT_BLINK_PERIOD_MS, NULL);
 }
 
