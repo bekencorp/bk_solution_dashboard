@@ -28,6 +28,7 @@
 #define BOOT_AVI_JPEG_BUF_SIZE  (64 * 1024)
 #define MAX_CONSECUTIVE_FAILURES 5
 #define DQT1_SEGMENT_SIZE       69  /* FF DB 00 43 01 + 64 quant values */
+#define BOOT_DISPLAY_FLUSH_WAIT_MS 500
 
 #if CONFIG_FATFS
 
@@ -216,7 +217,9 @@ static int jpeg_inject_qt1_if_missing(uint8_t *buf, uint32_t len, uint32_t capac
 }
 
 static beken_semaphore_t s_frame_consumed_sem = NULL;
+static beken_semaphore_t s_display_flush_sem = NULL;
 static volatile uint32_t s_frames_displayed = 0;
+static volatile uint32_t s_display_flush_pending = 0;
 
 static void *boot_gpu_malloc_cb(uint32_t size)
 {
@@ -228,24 +231,61 @@ static void *boot_gpu_malloc_cb(uint32_t size)
     return p;
 }
 
-static avdk_err_t boot_flush_noop_cb(void *frame)
+static avdk_err_t boot_flush_done_cb(void *frame)
 {
-    (void)frame;
+    if (frame)
+        bk_frame_buffer_free(frame);
+
+    if (s_display_flush_pending > 0)
+        s_display_flush_pending--;
+
+    if (s_display_flush_sem)
+        rtos_set_semaphore(&s_display_flush_sem);
+
     return AVDK_ERR_OK;
 }
 
 static void boot_frame_display_cb(void *frame, uint32_t frame_size, void *user_data)
 {
     bk_display_ctlr_handle_t disp = (bk_display_ctlr_handle_t)user_data;
+    avdk_err_t flush_ret;
 
     (void)frame_size;
-    if (disp && frame)
-        bk_display_flush(disp, frame, boot_flush_noop_cb);
-
-    if (frame)
+    if (disp && frame) {
+        s_display_flush_pending++;
+        flush_ret = bk_display_flush(disp, frame, boot_flush_done_cb);
+        if (flush_ret != AVDK_ERR_OK) {
+            LOGE("display flush failed: %d\n", (int)flush_ret);
+            if (s_display_flush_pending > 0)
+                s_display_flush_pending--;
+            bk_frame_buffer_free(frame);
+            if (s_display_flush_sem)
+                rtos_set_semaphore(&s_display_flush_sem);
+        }
+    } else if (frame) {
         bk_frame_buffer_free(frame);
+    }
 
     s_frames_displayed++;
+}
+
+static void boot_wait_display_flush_done(void)
+{
+    while (s_display_flush_pending > 0) {
+        uint32_t pending = s_display_flush_pending;
+        bk_err_t ret;
+
+        if (!s_display_flush_sem) {
+            rtos_delay_milliseconds(BOOT_DISPLAY_FLUSH_WAIT_MS);
+            break;
+        }
+
+        ret = rtos_get_semaphore(&s_display_flush_sem, BOOT_DISPLAY_FLUSH_WAIT_MS);
+        if (ret != BK_OK) {
+            LOGW("wait display flush timeout, pending=%u\n", (unsigned)pending);
+            break;
+        }
+    }
 }
 
 static void boot_frame_consumed_cb(const uint8_t *jpeg_stream, int status,
@@ -392,6 +432,12 @@ bk_err_t boot_avi_play(void)
         return BK_OK;
     }
 
+    s_display_flush_pending = 0;
+    if (rtos_init_semaphore_ex(&s_display_flush_sem, 1, 0) != BK_OK) {
+        LOGE("display flush sem init failed\n");
+        goto cleanup;
+    }
+
     dpu_switch_to_argb8888_decompress();
 
     /*
@@ -512,7 +558,14 @@ cleanup:
         s_frame_consumed_sem = NULL;
     }
 
+    boot_wait_display_flush_done();
+
     dpu_restore_rgb565();
+
+    if (s_display_flush_sem && s_display_flush_pending == 0) {
+        rtos_deinit_semaphore(&s_display_flush_sem);
+        s_display_flush_sem = NULL;
+    }
 
     if (avi)
         AVI_close(avi);
