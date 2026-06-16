@@ -85,6 +85,10 @@ static int32_t bsc_uart_enable(uint8_t uart_id, uint8_t enable, uint32_t band)
             gpio_dev_unmap(GPIO_54);
             gpio_dev_map(GPIO_55, GPIO_DEV_UART1_TXD);
             gpio_dev_map(GPIO_54, GPIO_DEV_UART1_RXD);
+            // gpio_dev_map resets the pin register and never applies pull,
+            // so the RX line would float low and flood with 0x00. Force pull-up.
+            bk_gpio_pull_up(GPIO_54);
+            bk_gpio_pull_up(GPIO_55);
             break;
 
         case UART_ID_2:
