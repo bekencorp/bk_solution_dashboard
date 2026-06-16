@@ -69,6 +69,12 @@ navigation_type_t get_navigation_type(void)
     return navigation_type;
 }
 
+/* Whether BLE-side navigation (casting) is currently active. */
+bool bk_sl_np_is_navigating(void)
+{
+    return s_casting_active;
+}
+
 static uint8_t *demo_np_get_supported_mode(uint8_t os_code, uint8_t *len)
 {
     cJSON *root = NULL;
@@ -450,20 +456,25 @@ static void handle_transfer_file_data_msg(uint8_t *data_ptr, uint16_t length)
 
     uint16_t data_length = (length > header_size) ? (length - header_size) : 0;
 
-    ret = media_navigation_transfer_push(transfer->packet_num, transfer->data, data_length);
+    bool frame_done = false;
+
+    ret = media_navigation_transfer_push(transfer->packet_num, transfer->data, data_length, &frame_done);
     if (ret != BK_OK)
     {
+        /* Includes overflow / invalid packet number / length or CRC mismatch. */
         LOGE("%s %d push failed (%d)\n", __func__, __LINE__, ret);
         if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_ERROR);
         return;
     }
 
-    if (!media_navigation_transfer_is_active())
+    /* Ack only once per frame: mid-frame packets are not acked to cut BLE
+     * round-trips. The engine reports frame_done when the last packet has been
+     * assembled, CRC-checked and pushed to the decode pipeline. */
+    if (frame_done)
     {
-        LOGV("%s %d transfer complete\n", __func__, __LINE__);
+        LOGV("%s %d frame complete\n", __func__, __LINE__);
+        if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);
     }
-
-    if(s_send) s_send(BOARDING_OP_TRANSFER_FILE_DATA, EVT_STATUS_OK);
 }
 
 static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)

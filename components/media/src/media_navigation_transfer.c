@@ -192,8 +192,13 @@ bool media_navigation_transfer_is_active(void)
     return s_nav_ctx.active;
 }
 
-bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data, uint16_t data_length)
+bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data, uint16_t data_length, bool *frame_done)
 {
+    if (frame_done)
+    {
+        *frame_done = false;
+    }
+
     if (!s_nav_ctx.active)
     {
         LOGE("push: transfer not active\n");
@@ -266,6 +271,12 @@ bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data
 
         s_nav_ctx.frame = NULL;
         reset_context();
+
+        if (frame_done)
+        {
+            *frame_done = true;
+        }
+
         return BK_OK;
     }
 

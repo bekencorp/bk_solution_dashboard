@@ -37,7 +37,13 @@ typedef struct
 
 bk_err_t media_navigation_transfer_begin(const media_navigation_transfer_cfg_t *cfg);
 bk_err_t media_navigation_transfer_cancel(void);
-bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data, uint16_t data_length);
+
+/* Push one packet of the current frame.
+ * frame_done (optional, may be NULL): set to true when this packet completes the
+ * whole frame (assembled, CRC-checked and pushed to the decode pipeline); false
+ * for mid-frame packets. On error the return value is non-BK_OK and frame_done
+ * is set to false. */
+bk_err_t media_navigation_transfer_push(uint16_t packet_num, const uint8_t *data, uint16_t data_length, bool *frame_done);
 bool media_navigation_transfer_is_active(void);
 
 #ifdef __cplusplus

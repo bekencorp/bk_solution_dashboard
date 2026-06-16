@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <common/bk_err.h>
 
 typedef enum
@@ -9,7 +10,7 @@ typedef enum
     BOARDING_OP_GET_SCAN_RESULTS = 32,
     BOARDING_OP_CONFIG_WIFI_STA = 33,
     BOARDING_OP_CONFIG_WIFI_P2P = 34,
-    BOARDING_OP_TRANSFER_FILE_CONTROL = 50,
+    BOARDING_OP_TRANSFER_FILE_CONTROL = 50, //0x32
     BOARDING_OP_TRANSFER_FILE_DATA = 51,
     BOARDING_OP_NAVIGATION_CONTROL = 52,
     BOARDING_OP_NAVIGATION_TYPE_CONTROL = 53,
@@ -104,3 +105,6 @@ typedef struct
 
 bk_err_t bk_sl_np_init(uint8_t reg_method);
 navigation_type_t get_navigation_type(void);
+
+/* Whether BLE-side navigation (casting) is currently active. */
+bool bk_sl_np_is_navigating(void);
