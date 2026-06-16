@@ -30,7 +30,8 @@ bk_lv_ui_t bk_lv_tool_ui = {0};
 
 /* ---------- Speed gauge demo: 0->100->0 over ~10s ---------- */
 #define SPEED_NEEDLE_LENGTH    250
-#define SPEED_ANIM_PERIOD_MS   50   /* 50 ms * 200 steps ~= 10 s */
+#define SPEED_ANIM_PERIOD_MS   50
+#define SPEED_ANIM_STEP        8
 static int32_t s_speed_value = 0;
 static int32_t s_speed_direction = 1;
 static lv_timer_t *s_speed_anim_timer = NULL;
@@ -49,7 +50,7 @@ static void speed_anim_apply_cb(void *user_data)
 static void speed_anim_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
-    s_speed_value += s_speed_direction;
+    s_speed_value += s_speed_direction * SPEED_ANIM_STEP;
     if (s_speed_value >= 100) {
         s_speed_value = 100;
         s_speed_direction = -1;
