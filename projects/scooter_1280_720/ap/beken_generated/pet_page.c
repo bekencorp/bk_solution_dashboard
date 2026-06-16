@@ -1,7 +1,13 @@
 #include "beken_ui.h"
 #include <os/os.h>
+#include <os/mem.h>
 #include <components/log.h>
 #include <stdbool.h>
+
+#if CONFIG_FATFS
+#include "ff.h"
+#include "diskio.h"
+#endif
 
 #define TAG "pet_page"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -9,7 +15,70 @@
 
 #if LV_USE_GIF
 
+#define PET_GIF_COUNT 2
+
 static bool s_on_pet_page = false;
+
+#if CONFIG_FATFS
+static FATFS *s_pet_fs = NULL;
+
+static bool pet_sdcard_ensure_mounted(void)
+{
+    FILINFO fno;
+    char drive[8];
+    char root[8];
+    FRESULT fr;
+
+    lv_snprintf(drive, sizeof(drive), "%d:", DISK_NUMBER_SDIO_SD);
+    lv_snprintf(root, sizeof(root), "%s/", drive);
+
+    fr = f_stat(root, &fno);
+    if (fr == FR_OK)
+        return true;
+
+    if (!s_pet_fs) {
+        s_pet_fs = os_malloc(sizeof(FATFS));
+        if (!s_pet_fs) {
+            LOGW("FATFS alloc failed\n");
+            return false;
+        }
+    }
+
+    fr = f_mount(s_pet_fs, drive, 1);
+    if (fr != FR_OK) {
+        LOGW("f_mount failed: fr=%d drive=%s\n", fr, drive);
+        return false;
+    }
+
+    LOGI("SD card mounted\n");
+    return true;
+}
+
+static bool pet_select_gif_path(char *lv_path, size_t lv_path_size,
+                                char *fat_path, size_t fat_path_size)
+{
+    FILINFO fno;
+    int start = lv_rand(1, PET_GIF_COUNT);
+
+    for (int i = 0; i < PET_GIF_COUNT; i++) {
+        int idx = ((start - 1 + i) % PET_GIF_COUNT) + 1;
+        FRESULT fr;
+
+        lv_snprintf(fat_path, fat_path_size, "%d:/pet_%d.gif",
+                    DISK_NUMBER_SDIO_SD, idx);
+        fr = f_stat(fat_path, &fno);
+        if (fr == FR_OK && !(fno.fattrib & AM_DIR)) {
+            lv_snprintf(lv_path, lv_path_size, "%c:%s",
+                        LV_FS_FATFS_LETTER, fat_path);
+            return true;
+        }
+
+        LOGW("pet GIF not available: fr=%d path=%s\n", fr, fat_path);
+    }
+
+    return false;
+}
+#endif
 
 void init_page_pet(bk_lv_ui_t *ui)
 {
@@ -26,15 +95,28 @@ void init_page_pet(bk_lv_ui_t *ui)
     lv_obj_center(ui->page_pet_gif);
     lv_obj_set_style_bg_opa(ui->page_pet_gif, LV_OPA_TRANSP, 0);
 
-    int idx = lv_rand(1, 2);
+#if CONFIG_FATFS
     char path[32];
-    lv_snprintf(path, sizeof(path), "S:1:/pet_%d.gif", idx);
+    char fat_path[32];
+
+    if (!pet_sdcard_ensure_mounted()) {
+        LOGW("SD card not available, skip pet GIF\n");
+        return;
+    }
+
+    if (!pet_select_gif_path(path, sizeof(path), fat_path, sizeof(fat_path))) {
+        LOGW("no pet GIF found, expected %d:/pet_1.gif or %d:/pet_2.gif\n",
+             DISK_NUMBER_SDIO_SD, DISK_NUMBER_SDIO_SD);
+        return;
+    }
+
     LOGI("loading %s\n", path);
 
     lv_fs_file_t test_f;
     lv_fs_res_t res = lv_fs_open(&test_f, path, LV_FS_MODE_RD);
     if (res != LV_FS_RES_OK) {
         LOGW("lv_fs_open failed: res=%d path=%s\n", res, path);
+        return;
     } else {
         uint8_t hdr[10];
         uint32_t br = 0;
@@ -68,6 +150,9 @@ void init_page_pet(bk_lv_ui_t *ui)
             lv_gif_restart(ui->page_pet_gif);
         }
     }
+#else
+    LOGW("FatFS support disabled, skip pet GIF\n");
+#endif
 }
 
 void destroy_page_pet(bk_lv_ui_t *ui)
