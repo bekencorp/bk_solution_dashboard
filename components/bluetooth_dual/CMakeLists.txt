@@ -22,21 +22,18 @@ set(incs .)
 set(srcs "")
 
 if (CONFIG_BLE)
+    # NOTE: bluetooth_dual/{gatt,hogpd} have been migrated to the main SMP SDK at
+    #   ap/components/bk_bluetooth/bt_dm/ble/{gatt,hogpd}/.
+    # wifi_boarding remains here as the dashboard-specific BLE provisioning
+    # profile; it consumes the public dm_* APIs via PRIV_REQUIRES bk_bluetooth
+    # (see armino_component_register below). Headers such as "dm_gatts.h" are
+    # exposed by smp via INCLUDE_DIRS bt_dm/ble/gatt.
     list(APPEND incs
-        gatt
         wifi_boarding
         ble_ota
     )
 
     list(APPEND srcs
-        gatt/dm_gatt.c
-        gatt/dm_gattc.c
-        gatt/dm_gatts.c
-        gatt/dm_gatt_cli.c
-        gatt/dm_gatt_connection.c
-        gatt/dm_gap_utils.c
-        hogpd/hogpd_demo.c
-        hogpd/hogpd_demo_cli.c
         wifi_boarding/wifi_boarding_demo.c
         wifi_boarding/wifi_boarding_demo_service.c
         wifi_boarding/wifi_boarding_demo_cli.c

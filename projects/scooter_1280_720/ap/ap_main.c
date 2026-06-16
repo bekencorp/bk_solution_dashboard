@@ -10,8 +10,8 @@
 #include "tp_sensor_devices.h"
 
 #include "components/bluetooth/bk_dm_bluetooth.h"
-#include "gatt/dm_gatt.h"
-#include "gatt/dm_gatts.h"
+#include "dm_gatt.h"
+#include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
 #if CONFIG_BK_BLE_PROVISIONING
 #include "bk_network_provisioning.h"

@@ -166,6 +166,8 @@ static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t ga
         }
 
         app_env_tmp->status = 1;
+
+        ble_ota_stop_timer();
     }
     break;
 
@@ -204,6 +206,8 @@ static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t ga
                 app_env_tmp->server_sem = NULL;
             }
         }
+
+        ble_ota_start_timer();
     }
     break;
 
