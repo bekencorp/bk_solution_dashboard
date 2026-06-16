@@ -75,6 +75,8 @@ static uint32_t     s_cast_frame_display_seq;
 static uint32_t     s_pipeline_start_ms;
 /* Incremented when cast_gpu_malloc_cb fails (e.g. bk_gpu_open extra allocs); checked after jpeg_stream_pipeline_create. */
 static volatile uint32_t s_cast_gpu_malloc_fail_count;
+static beken_semaphore_t s_cast_flush_sem;
+static volatile uint32_t s_cast_flush_signal_seq;
 
 static beken_mutex_t s_cast_ops_mutex;
 static int           s_cast_ops_mutex_inited;
@@ -108,10 +110,41 @@ static void cast_release_fb(frame_buffer_t *fb)
 		LOGE("[cast] fb rel no cb %p\n", fb);
 }
 
-static avdk_err_t cast_flush_noop_cb(void *frame)
+static int cast_flush_sem_init(void)
+{
+	if (s_cast_flush_sem)
+		return 1;
+	if (rtos_init_semaphore_ex(&s_cast_flush_sem, 1, 0) == BK_OK)
+		return 1;
+	LOGE("[cast] flush sem init failed\n");
+	return 0;
+}
+
+static avdk_err_t cast_flush_signal_cb(void *frame)
 {
 	(void)frame;
+	s_cast_flush_signal_seq++;
+	if (s_cast_flush_sem)
+		rtos_set_semaphore(&s_cast_flush_sem);
 	return AVDK_ERR_OK;
+}
+
+bk_err_t cast_jpeg_pipeline_wait_display_flush(uint32_t timeout_ms)
+{
+	uint32_t start_seq;
+	bk_err_t ret;
+
+	if (!cast_flush_sem_init())
+		return BK_FAIL;
+
+	start_seq = s_cast_flush_signal_seq;
+	do {
+		ret = rtos_get_semaphore(&s_cast_flush_sem, timeout_ms);
+		if (s_cast_flush_signal_seq != start_seq)
+			return BK_OK;
+	} while (ret == BK_OK);
+
+	return ret;
 }
 
 /*
@@ -274,7 +307,7 @@ static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_d
 		s_cast_dpu_apply_on_first_frame = 0;
 	}
 	if (disp && frame)
-		flush_e = bk_display_flush(disp, frame, cast_flush_noop_cb);
+		flush_e = bk_display_flush(disp, frame, cast_flush_signal_cb);
 	else
 		LOGW("[cast] fd%u !disp %p %p\n", (unsigned)n, disp, frame);
 
@@ -409,6 +442,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	s_disp = disp;
 	s_cast_dpu_apply_on_first_frame = 0;
 	s_cast_frame_display_seq        = 0;
+	cast_flush_sem_init();
 	/* Product hook (e.g. release boot GPU buffer); LVGL stop may be deferred to first frame. */
 	LOGI("[cast] 1 cast-prep (hook before pipeline create)\n");
 	s_cast_hooks.pre_start();

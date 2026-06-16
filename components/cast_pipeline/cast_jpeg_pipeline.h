@@ -73,6 +73,13 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp);
 /** Stop pipeline, destroy, restore LVGL/DPU for UI. */
 bk_err_t cast_jpeg_pipeline_turn_off(void);
 
+/**
+ * Wait for a DPU flush interrupt observed by the cast display callback.
+ * Used during teardown to avoid switching DPU format while a cast frame is
+ * still pending in the DPU update slot.
+ */
+bk_err_t cast_jpeg_pipeline_wait_display_flush(uint32_t timeout_ms);
+
 bk_err_t cast_jpeg_pipeline_suspend(void);
 bk_err_t cast_jpeg_pipeline_resume(void);
 

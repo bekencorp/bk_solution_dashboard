@@ -136,6 +136,8 @@ bk_err_t lvgl_app_resume_display(void)
     s_lvgl_stopped_for_cast = 0;
 
     if (s_dpu_switched_to_cast && display_ui_get_ctx() && display_ui_get_ctx()->dpu_ctlr_handle) {
+        avdk_err_t fr;
+
         s_dpu_switched_to_cast = 0;
         /*
          * Apply LVGL layer (RGB565, decompress off) before flushing the LVGL FB so
@@ -143,17 +145,34 @@ bk_err_t lvgl_app_resume_display(void)
          * Flush then repoints DPU at valid LVGL memory (cast pool freed only after
          * post_stop in cast_jpeg_pipeline_turn_off).
          */
-        bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
+        fr = bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
             &(bk_display_pixel_format_config_t) {
                 .format = display_ui_get_dpu_config()->video.format,
                 .decompress = display_ui_get_dpu_config()->video.decompress,
             });
+        if (fr != AVDK_ERR_OK) {
+            bk_err_t wait_ret = cast_jpeg_pipeline_wait_display_flush(1000);
+            LOGW("[cast] restore LVGL pixel format retry after flush wait, r=%d wait=%d\n",
+                 (int)fr, (int)wait_ret);
+            fr = bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
+                &(bk_display_pixel_format_config_t) {
+                    .format = display_ui_get_dpu_config()->video.format,
+                    .decompress = display_ui_get_dpu_config()->video.decompress,
+                });
+        }
+        if (fr != AVDK_ERR_OK) {
+            LOGE("[cast] restore LVGL pixel format failed, r=%d\n", (int)fr);
+            return BK_FAIL;
+        }
         LOGI("DPU layer config + open restored for LVGL\n");
-        // if (display_ui_get_lvgl_fb(0)) {
-        //     bk_display_flush(display_ui_get_ctx()->dpu_ctlr_handle,
-        //                      display_ui_get_lvgl_fb(0), cast_bank_steer_noop_cb);
-        //     rtos_delay_milliseconds(30);
-        // }
+        if (display_ui_get_lvgl_fb(0)) {
+            fr = bk_display_flush(display_ui_get_ctx()->dpu_ctlr_handle,
+                                  display_ui_get_lvgl_fb(0), cast_bank_steer_noop_cb);
+            LOGI("[cast] restore flush lvgl fb[0] %p r=%d\n",
+                 (void *)display_ui_get_lvgl_fb(0), (int)fr);
+        } else {
+            LOGW("[cast] restore skip flush: lvgl fb[0] is NULL\n");
+        }
     } else if (!s_dpu_switched_to_cast) {
         LOGI("DPU was not switched to cast mode; skip restore\n");
     }
