@@ -274,6 +274,15 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
 #else
         LOGW("np_erase unsupported, enable CONFIG_BK_BLE_PROVISIONING\n");
 #endif
+    }else if((argc >= 2) && (os_strcmp(argv[1], "np_start_advertise") == 0))
+    {
+#if CONFIG_BK_BLE_PROVISIONING
+        LOGI("start advertise\n");
+        extern int wifi_boarding_adv_stop(void);
+        wifi_boarding_adv_stop();
+        extern int wifi_boarding_adv_start(void);
+        wifi_boarding_adv_start();
+#endif
     }
 }
 
