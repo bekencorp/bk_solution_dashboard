@@ -8,35 +8,10 @@
 
 #include "hfp_hf_demo.h"
 
-#include "components/bluetooth/bk_dm_bluetooth_types.h"
-#include "components/bluetooth/bk_dm_bt_types.h"
-#include "components/bluetooth/bk_dm_bt.h"
-#include <driver/sbc_types.h>
-#include <driver/sbc.h>
-#include "components/bluetooth/bk_ble_types.h"
-#include "modules/sbc_encoder.h"
-#include "components/bluetooth/bk_dm_gap_bt.h"
 #include "components/bluetooth/bk_dm_hfp.h"
 
-
-#include <driver/aud_dac_types.h>
-#include "ring_buffer_particle.h"
-#include "bk_gpio.h"
-#include "bt_manager.h"
-#include <modules/pm.h>
-#include <driver/pwr_clk.h>
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-    #include "blue_audio_player_service.h"
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-    #include "components/bk_audio/audio_encoders/sbc_enc.h"
-    #include "blue_audio_recorder_service.h"
-#endif
-
-#include "bluetooth_storage.h"
-#include "a2dp_sink_demo.h"
+#include "hfp_hf_audio.h"
+#include "bk_hfp_hf_service.h"
 
 #define TAG "hfp_client"
 
@@ -44,53 +19,19 @@
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
-#define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
-#define BT_AUDIO_HF_DEMO_MSG_COUNT          (30)
-#define SCO_MSBC_SAMPLES_PER_FRAME      120
-#define SCO_CVSD_SAMPLES_PER_FRAME      60
+#define BT_AUDIO_HF_DEMO_MSG_COUNT       (30)
 
-#define LOCAL_NAME "soundbar"
-
-#define HF_LOCAL_SPEAKER_WAIT_TIME 2000
-
-#define CHECK_NULL(ptr) do {\
-        if (ptr == NULL) {\
-            LOGI("CHECK_NULL fail \n");\
-            return;\
-        }\
-    } while(0)
-
-
-#define HF_MIC_THREAD_PRI       BEKEN_DEFAULT_WORKER_PRIORITY-1
-#define HF_SPEAKER_THREAD_PRI   BEKEN_DEFAULT_WORKER_PRIORITY-1
-#define HF_LOCAL_ROLLBACK_TEST        0
-#define HF_REMOTE_ROLLBACK_TEST       0
 #define HF_AT_TEST 0
 #define HF_AT_ENABLE_CMEE 1
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_EQ
-    #define HF_MIC_EQ_ENABLE 0
-#endif
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_EQ
-    #define HF_SPEAKER_EQ_ENABLE 0
-#endif
 
 enum
 {
-    BT_AUDIO_MSG_NULL,
-    BT_AUDIO_VOICE_START_MSG,
-    BT_AUDIO_VOICE_STOP_MSG,
-    BT_AUDIO_VOICE_IND_MSG,
-    BT_AUDIO_VOICE_USER_START_MSG,
-    BT_AUDIO_VOICE_TASK_EXIT_MSG,
-};
-
-enum
-{
-    BT_AUDIO_SPK_TASK_START_VOTE_START = 0,
-    BT_AUDIO_SPK_TASK_START_VOTE_HFP = BT_AUDIO_SPK_TASK_START_VOTE_START,
-    BT_AUDIO_SPK_TASK_START_VOTE_USER,
-    BT_AUDIO_SPK_TASK_START_VOTE_END,
+    BT_AUDIO_MSG_NULL = 0,
+    BT_AUDIO_VOICE_START_MSG = 1,
+    BT_AUDIO_VOICE_STOP_MSG  = 2,
+    BT_AUDIO_VOICE_IND_MSG   = 3,
+    BT_AUDIO_EXIT_MSG        = 4,
 };
 
 typedef struct
@@ -100,12 +41,6 @@ typedef struct
     char *data;
 } bt_audio_hf_demo_msg_t;
 
-typedef struct
-{
-    uint8_t mic_vol;
-    uint8_t spk_vol;
-} hfp_ctx_t;
-
 enum
 {
     HFP_STATUS_IDLE,
@@ -113,6 +48,7 @@ enum
     HFP_STATUS_WAIT_VGS,
     HFP_STATUS_WAIT_VGM,
     HFP_STATUS_WAIT_CGMI,
+
     HFP_STATUS_WAIT_CUSTOM,
     HFP_STATUS_WAIT_QUERY_CURRENT_OP,
     HFP_STATUS_WAIT_RETRIEVE_SUB_INFO,
@@ -130,939 +66,354 @@ enum
     HFP_STATUS_WAIT_DONE,
 };
 
-#define MSBC_EXPECT_FRAME_LEN (4 + ((4 * 8 * 1) >> 3) + ((15 * 26 + 7) >> 3))
-
 static uint8_t bt_audio_hfp_hf_codec = CODEC_VOICE_CVSD;
 static uint8_t hfp_peer_addr [ 6 ] = {0};
-static uint8_t hfp_profile_peer_addr [ 6 ] = {0};
 
 static uint8_t s_hfp_status_mach = HFP_STATUS_IDLE;
+static uint8_t s_hfp_hf_is_iphone = 0;
 
-static sbcdecodercontext_t bt_audio_hf_sbc_decoder;
-static SbcEncoderContext bt_audio_hf_sbc_encoder;
 static beken_queue_t bt_audio_hf_demo_msg_que = NULL;
 static beken_thread_t bt_audio_hf_demo_thread_handle = NULL;
-static beken_semaphore_t s_audio_player_en_sema = NULL;
-static beken_semaphore_t s_connect_sema = NULL;
-static uint8_t s_hf_spk_user_vote = 1;
-
-static uint8_t hf_mic_sco_data [ 1024 ] = {0};
-static uint16_t hf_mic_data_count = 2;
-
-volatile uint8_t hf_auido_start = 0;
-
-static beken_thread_t hf_mic_thread_handle = NULL;
-static beken_semaphore_t hf_speaker_sema = NULL;
-static uint8_t s_hfp_hf_is_inited = 0;
-static uint8_t s_hfp_hf_is_iphone = 0;
-static uint8_t s_connect_status;
-static uint8_t s_bt_manager_index = 0xff;
-static beken_semaphore_t hf_mic_speaker_exit_sema = NULL;
-#if HF_LOCAL_ROLLBACK_TEST
-    static uint16_t mic_read_size = 0;
-#endif
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-    static uint16_t frame_length = 0;
-    static blue_audio_decoder_type_t decoder_type = BLUE_AUDIO_DECODER_TYPE_PCM;
-    static blue_audio_player_handle_t gl_audio_player_handle = NULL;
-    #define PLATFORM_SPK_GAIN_MAX 0x3f // see onboard_mic_stream.h
-    #define PLATFORM_SPK_GAIN_DEFAULT 0x2d // see onboard_mic_stream.h
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-    static blue_audio_recorder_handle_t s_bar_handle;
-#endif
-
-#define PLATFORM_MIC_GAIN_MAX 0x2d // see onboard_mic_stream.h
-#define PLATFORM_MIC_GAIN_DEFAULT 0x2d // see onboard_mic_stream.h
-
-#define HFP_GAIN_MAX 15 //see hfp protocol
-
-static hfp_ctx_t s_hfp_ctx;
-
-static void mic_task(void *arg);
-static int mic_task_init();
 
 int bt_audio_hf_demo_task_init(void);
 
-bk_err_t bk_aud_dac_set_dig_gain(uint32_t value);
-bk_err_t bk_aud_dac_unmute(void);
-bk_err_t bk_aud_dac_mute(void);
-
-static bk_err_t bk_bt_dac_set_gain(uint8_t *hfp_mic_vol, uint8_t *hfp_spk_vol)
-{
-    if (gl_audio_player_handle)
-    {
-        if (hfp_spk_vol)
-        {
-            uint32_t gain32;
-
-            if (*hfp_spk_vol == 0)
-            {
-                gain32 = 0;
-            }
-            else
-            {
-                gain32 = (uint32_t)((uint64_t)0x07000000 * *hfp_spk_vol / HFP_GAIN_MAX);
-            }
-
-            LOGI("%s set spk gain hfp=%d -> dig=0x%x\n", __func__, *hfp_spk_vol, gain32);
-            bk_aud_dac_set_dig_gain(gain32);
-
-            if (gain32 > 0)
-            {
-                bk_aud_dac_unmute();
-            }
-            else
-            {
-                bk_aud_dac_mute();
-            }
-        }
-
-        if (hfp_mic_vol)
-        {
-            uint8_t mic_gain = ((PLATFORM_MIC_GAIN_MAX + 1) * 1.0 / (HFP_GAIN_MAX + 1)) * *hfp_mic_vol;
-            LOGI("%s set mic gain 0x%x\n", __func__, mic_gain);
-        }
-    }
-    else
-    {
-        LOGE("%s audio play not enable\n", __func__);
-    }
-
-    return BK_OK;
-}
-
-static void bt_audio_hfp_client_voice_data_ind(const uint8_t *data, uint16_t data_len)
+static void hf_post_simple_msg(uint8_t type)
 {
     bt_audio_hf_demo_msg_t demo_msg;
     int rc = -1;
 
     os_memset(&demo_msg, 0x0, sizeof(bt_audio_hf_demo_msg_t));
-
     if (bt_audio_hf_demo_msg_que == NULL)
-    {
         return;
+
+    demo_msg.type = type;
+    demo_msg.len = 0;
+
+    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
+    if (kNoErr != rc)
+    {
+        LOGI("%s, send queue failed\r\n", __func__);
     }
+}
 
-    demo_msg.data = (char *) psram_malloc(data_len);
+static void hf_post_voice_data(const uint8_t *data, uint16_t data_len)
+{
+    bt_audio_hf_demo_msg_t demo_msg;
+    int rc = -1;
 
+    os_memset(&demo_msg, 0x0, sizeof(bt_audio_hf_demo_msg_t));
+    if (bt_audio_hf_demo_msg_que == NULL)
+        return;
+
+    demo_msg.data = (char *) os_malloc(data_len);
     if (demo_msg.data == NULL)
     {
         LOGI("%s, malloc failed\r\n", __func__);
         return;
     }
 
-#if HFP_RESET_AUDIO_DATA_WHEN_ERR
-    uint8_t *raw_data = ((uint8_t *)data) - 3;
-    uint8_t flag = ((raw_data[1] >> 4) & 0b1111);
-
-    if (flag != 0)
-    {
-        LOGI("%s esco flag %d codec %d !!!\n", __func__, flag, bt_audio_hfp_hf_codec);
-    }
-
-    if (CODEC_VOICE_CVSD == bt_audio_hfp_hf_codec && flag)
-    {
-        os_memset(demo_msg.data, 0, data_len);
-    }
-    else
-#endif
-    {
-        os_memcpy(demo_msg.data, data, data_len);
-    }
-
+    os_memcpy(demo_msg.data, data, data_len);
     demo_msg.type = BT_AUDIO_VOICE_IND_MSG;
     demo_msg.len = data_len;
 
     rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
-
-    if (BK_OK != rc)
+    if (kNoErr != rc)
     {
         LOGI("%s, send queue failed\r\n", __func__);
-
         if (demo_msg.data)
         {
-            psram_free(demo_msg.data);
+            os_free(demo_msg.data);
         }
     }
 }
 
-static void bt_audio_hf_sco_connected(void)
+/*
+ * Demo AT command walk-through, driven by AT response events. This is sample
+ * behaviour (it queries vendor / dials test numbers), so it stays in the project
+ * rather than in the reusable HFP service.
+ */
+static void hfp_demo_run_at_state_machine(const bk_hfp_hf_at_response_info_t *at)
 {
-    bt_audio_hf_demo_msg_t demo_msg;
-    int rc = -1;
-
-    os_memset(&demo_msg, 0x0, sizeof(bt_audio_hf_demo_msg_t));
-
-    if (bt_audio_hf_demo_msg_que == NULL)
-    {
-        return;
-    }
-
-    demo_msg.type = BT_AUDIO_VOICE_START_MSG;
-    demo_msg.len = 0;
-
-    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
-
-    if (BK_OK != rc)
-    {
-        LOGI("%s, send queue failed\r\n", __func__);
-    }
-}
-
-static void bt_audio_hf_sco_disconnected(void)
-{
-    bt_audio_hf_demo_msg_t demo_msg;
-    int rc = -1;
-
-    os_memset(&demo_msg, 0x0, sizeof(bt_audio_hf_demo_msg_t));
-
-    if (bt_audio_hf_demo_msg_que == NULL)
-    {
-        return;
-    }
-
-    demo_msg.type = BT_AUDIO_VOICE_STOP_MSG;
-    demo_msg.len = 0;
-
-    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
-
-    if (BK_OK != rc)
-    {
-        LOGI("%s, send queue failed\r\n", __func__);
-    }
-}
-
-static int32_t bt_audio_hf_user_vote_spk_task(uint8_t enable)
-{
-    bt_audio_hf_demo_msg_t demo_msg = {0};
-    int rc = -1;
-
-    if (bt_audio_hf_demo_msg_que == NULL)
-    {
-        return -1;
-    }
-
-    demo_msg.type = BT_AUDIO_VOICE_USER_START_MSG;
-    demo_msg.len = 0;
-    demo_msg.data = (typeof(demo_msg.data))(uint32_t)enable;
-
-    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
-
-    if (BK_OK != rc)
-    {
-        LOGE("%s, send queue failed\r\n", __func__);
-        return -1;
-    }
-
-    return 0;
-}
-
-static void bt_audio_task_exit(void)
-{
-    bt_audio_hf_demo_msg_t demo_msg;
-    int rc = -1;
-
-    os_memset(&demo_msg, 0x0, sizeof(bt_audio_hf_demo_msg_t));
-
-    if (bt_audio_hf_demo_msg_que == NULL)
-    {
-        return;
-    }
-
-    demo_msg.type = BT_AUDIO_VOICE_TASK_EXIT_MSG;
-    demo_msg.len = 0;
-
-    rc = rtos_push_to_queue(&bt_audio_hf_demo_msg_que, &demo_msg, BEKEN_NO_WAIT);
-
-    if (BK_OK != rc)
-    {
-        LOGI("%s, send queue failed\r\n", __func__);
-    }
-}
-
-
-static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uint16_t frame_length, uint8_t open_vote)
-{
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-    if (gl_audio_player_handle)
-    {
-        LOGW("%s audio player already open\n", __func__);
-        return BK_OK;
-    }
-
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-
-    if (s_bar_handle)
-    {
-        LOGE("%s recorder already create !!!\n", __func__);
-        return -1;
-    }
-
-#endif
-
-    LOGI("%s start %d %d %d\n", __func__, decoder_type, frame_length, open_vote);
-    /* check whether the audio player service need create */
-    uint8_t vote = 0;
-
-    for (uint32_t i = BT_AUDIO_SPK_TASK_START_VOTE_START; i < BT_AUDIO_SPK_TASK_START_VOTE_END; ++i)
-    {
-        vote |= (1 << i);
-    }
-
-    if (vote != open_vote)
-    {
-        LOGW("%s vote not full, can't start audio player service 0x%x\n", __func__, open_vote);
-        return BK_OK;
-    }
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-    blue_audio_player_cfg_t audio_player_cfg = {0};
-
-    if (decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC)
-    {
-        //for msbc
-        blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
-#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.chl_num = 1;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[0] = 16000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[1] = 16000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[2] = 16000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dig_gain = 0x07000000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.ana_gain = 0x0A;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.work_mode = AUD_DAC_WORK_MODE_DIFFEN;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.bits = 16;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.clk_src = AUD_CLK_APLL;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_CALL_BIT;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.main_dac_source = AUD_DAC_SOURCE_CALL;
-#endif
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 1;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
-        temp_audio_player_cfg.raw_strm_cfg.out_block_size = frame_length;
-        temp_audio_player_cfg.raw_strm_cfg.out_block_num = 1;
-        temp_audio_player_cfg.mix_en = false;
-#if HF_SPEAKER_EQ_ENABLE
-        temp_audio_player_cfg.eq_en = true;
-        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
-        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
-#endif
-        audio_player_cfg = temp_audio_player_cfg;
-    }
-    else if (decoder_type == BLUE_AUDIO_DECODER_TYPE_PCM)
-    {
-        blue_audio_player_cfg_t temp_audio_player_cfg = DEFAULT_BLUE_AUDIO_PLAYER_PCM_ONBOARD_SPK_CONFIG();
-#if CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.chl_num = 1;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[0] = 8000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[1] = 8000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate[2] = 8000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dig_gain = 0x07000000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.ana_gain = 0x0A;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.work_mode = AUD_DAC_WORK_MODE_DIFFEN;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.bits = 16;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.clk_src = AUD_CLK_APLL;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_CALL_BIT;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.main_dac_source = AUD_DAC_SOURCE_CALL;
-#else
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate = 8000;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size = 640;
-#endif
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_level = 1;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_on_delay = 10;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_off_delay = 0;
-        temp_audio_player_cfg.raw_strm_cfg.output_port_type = PORT_TYPE_RB;
-        temp_audio_player_cfg.mix_en = false;
-#if HF_SPEAKER_EQ_ENABLE
-        temp_audio_player_cfg.eq_en = true;
-        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_PLAYER_EQ_CONFIG();
-        temp_audio_player_cfg.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
-#endif
-        audio_player_cfg = temp_audio_player_cfg;
-    }
-    else
-    {
-        LOGE("blue_audio_player_open: invalid decoder type %d\n", decoder_type);
-        return BK_FAIL;
-    }
-
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-    blue_audio_recorder_cfg_t bar_config = {0};
-
-    switch (decoder_type)
-    {
-    case BLUE_AUDIO_DECODER_TYPE_SBC:
-    {
-        blue_audio_recorder_cfg_t tmp_config = DEFAULT_BLUE_AUDIO_RECORDER_SBC_ONBOARD_MIC_CONFIG();
-#if CONFIG_ADK_ONBOARD_MIC_STREAM_V2
-        tmp_config.mic_cfg.ob_mic_cfg.ch_bitmap = (1 << AUD_ADC_CHL_0);
-        tmp_config.mic_cfg.ob_mic_cfg.adc_cfg.chl_num = 1;
-        tmp_config.mic_cfg.ob_mic_cfg.adc_cfg.sample_rate = 16000;
-#endif
-#if HF_MIC_EQ_ENABLE
-        tmp_config.eq_en = true;
-        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG();
-        tmp_config.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
-#endif
-        bar_config = tmp_config;
-    }
-    break;
-
-    case BLUE_AUDIO_DECODER_TYPE_PCM:
-    {
-        blue_audio_recorder_cfg_t tmp_config = DEFAULT_BLUE_AUDIO_RECORDER_PCM_ONBOARD_MIC_CONFIG();
-#if CONFIG_ADK_ONBOARD_MIC_STREAM_V2
-        tmp_config.mic_cfg.ob_mic_cfg.ch_bitmap = (1 << AUD_ADC_CHL_0);
-        tmp_config.mic_cfg.ob_mic_cfg.adc_cfg.chl_num = 1;
-#endif
-#if HF_MIC_EQ_ENABLE
-        tmp_config.eq_en = true;
-        eq_algorithm_cfg_t tmp_eq_cfg = DEFAULT_BLUE_AUDIO_RECORDER_EQ_CONFIG();
-        tmp_config.eq_cfg.eq_alg_cfg = tmp_eq_cfg;
-#endif
-        bar_config = tmp_config;
-    }
-    break;
-
-    default:
-        LOGE("%s invalid decoder type %d\n", __func__, decoder_type);
-        return -1;
-        break;
-    }
-
-#endif
-
-    LOGI("%s wait a2dp task end\n", __func__);
-    a2dp_sink_demo_wait_player_end();
-    LOGI("%s a2dp task end completed\n", __func__);
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-    gl_audio_player_handle = blue_audio_player_create(&audio_player_cfg);
-
-    if (!gl_audio_player_handle)
-    {
-        LOGE("blue_audio_player_create fail \n");
-        return BK_FAIL;
-    }
-
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-    s_bar_handle = blue_audio_recorder_create(&bar_config);
-
-    if (!s_bar_handle)
-    {
-        LOGE("%s blue_audio_recorder_create err\n", __func__);
-        return -1;
-    }
-
-#endif
-
-    bk_bt_dac_set_gain(&s_hfp_ctx.mic_vol, &s_hfp_ctx.spk_vol);
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-    if (BK_OK != blue_audio_player_start(gl_audio_player_handle))
-    {
-        LOGE("blue_audio_player_start fail \n");
-        goto fail;
-    }
-
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-
-    if (blue_audio_recorder_start(s_bar_handle))
-    {
-        LOGE("%s blue_audio_recorder_start err\n", __func__);
-        goto fail;
-    }
-
-#endif
-
-    LOGI("%s end ok\n", __func__);
-
-    return BK_OK;
-
-fail:
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-    blue_audio_player_destroy(gl_audio_player_handle);
-    gl_audio_player_handle = NULL;
-#endif
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-    blue_audio_recorder_destroy(s_bar_handle);
-    s_bar_handle = NULL;
-#endif
-
-    LOGI("%s end fail\n", __func__);
-    return BK_FAIL;
-}
-
-static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_cb_param_t *param)
-{
-    LOGI("%s event: %d, addr:%02x:%02x:%02x:%02x:%02x:%02x\r\n", __func__, event, param->remote_bda[0], param->remote_bda[1],
-         param->remote_bda[2], param->remote_bda[3],
-         param->remote_bda[4], param->remote_bda[5]);
-
-    switch (event)
-    {
-    case BK_HF_CLIENT_AUDIO_STATE_EVT:
-    {
-        LOGI("HFP client audio state: %d\r\n", param->audio_state.state);
-
-        if (BK_HF_CLIENT_AUDIO_STATE_DISCONNECTED == param->audio_state.state)
-        {
-            bt_audio_hf_sco_disconnected();
-        }
-        else if (BK_HF_CLIENT_AUDIO_STATE_CONNECTED == param->audio_state.state)
-        {
-            bt_audio_hfp_hf_codec = param->audio_state.codec_type;
-            os_memcpy(hfp_peer_addr, param->remote_bda, 6);
-            LOGI("sco connected to %02x:%02x:%02x:%02x:%02x:%02x, codec type %d\n", hfp_peer_addr [ 5 ], hfp_peer_addr [ 4 ], hfp_peer_addr [ 3 ],
-                 hfp_peer_addr [ 2 ], hfp_peer_addr [ 1 ], hfp_peer_addr [ 0 ], bt_audio_hfp_hf_codec);
-
-            bt_audio_hf_sco_connected();
-        }
-
-    }
-    break;
-
-    case BK_HF_CLIENT_CONNECTION_STATE_EVT:
-    {
-        if (param->conn_state.state == BK_HF_CLIENT_CONNECTION_STATE_SLC_CONNECTED)
-        {
-            LOGI("HFP service level connected, ag_feature:0x%x, ag_chld_feature:0x%x \n", param->conn_state.peer_feat, param->conn_state.chld_feat);
-            LOGI("HFP client connect to peer address: %02x:%02x:%02x:%02x:%02x:%02x \n", param->remote_bda [ 0 ], param->remote_bda [ 1 ],
-                 param->remote_bda [ 2 ], param->remote_bda [ 3 ],
-                 param->remote_bda [ 4 ], param->remote_bda [ 5 ]);
-            os_memcpy(hfp_profile_peer_addr, param->remote_bda, sizeof(param->remote_bda));
-            s_hfp_status_mach = HFP_STATUS_WAIT_QUERY_CALL;
-            bk_bt_hf_client_query_current_calls(param->remote_bda);
-            s_connect_status = 1;
-        }
-        else if (param->conn_state.state == BK_HF_CLIENT_CONNECTION_STATE_DISCONNECTED)
-        {
-            LOGI("HFP disconnected \n");
-            LOGI("HFP disconnect peer address: %02x:%02x:%02x:%02x:%02x:%02x \n", param->remote_bda [ 0 ], param->remote_bda [ 1 ],
-                 param->remote_bda [ 2 ], param->remote_bda [ 3 ],
-                 param->remote_bda [ 4 ], param->remote_bda [ 5 ]);
-            os_memset(hfp_profile_peer_addr, 0, sizeof(hfp_profile_peer_addr));
-            s_connect_status = 0;
-
-            if (s_connect_sema)
-            {
-                rtos_set_semaphore(&s_connect_sema);
-            }
-        }
-    }
-    break;
-
-    case BK_HF_CLIENT_BVRA_EVT:
-    {
-        LOGI("+BRVA: HPF voice recognition activation status: %d \n", param->bvra.value);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_CALL_EVT:
-    {
-        LOGI("+CIND: HFP call staus:%d \n", param->call.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_CALL_SETUP_EVT:
-    {
-        LOGI("+CIND: HFP call_setup status:%d \n", param->call_setup.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_CALL_HELD_EVT:
-    {
-        LOGI("+CIND: HFP call_hold status:%d \n", param->call_held.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_SERVICE_AVAILABILITY_EVT:
-    {
-        LOGI("+CIND: HFP service availability ind: %d\n", param->service_availability.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_SIGNAL_STRENGTH_EVT:
-    {
-        LOGI("+CIND: HFP signal strength ind: %d\n", param->signal_strength.value);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_ROAMING_STATUS_EVT:
-    {
-        LOGI("+CIND: HFP roming status:%d \n", param->roaming.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CIND_BATTERY_LEVEL_EVT:
-    {
-        LOGI("+CIND: HFP battery ind:%d \n", param->battery_level.value);
-    }
-    break;
-
-    case BK_HF_CLIENT_COPS_CURRENT_OPERATOR_EVT:
-    {
-        LOGI("+COPS: HFP network operator name:%s \n", param->cops.name);
-    }
-    break;
-
-    case BK_HF_CLIENT_BTRH_EVT:
-    {
-        LOGI("+BTRH: HFP Hold status: %d \n", param->btrh.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_CLIP_EVT:
-    {
-        LOGI("+CLIP: HFP calling line number: %s, name:%s \n", param->clip.number, param->clip.name);
-    }
-    break;
-    break;
-
-    case BK_HF_CLIENT_CCWA_EVT:
-    {
-        LOGI("+CCWA: HFP calling waiting number:%s, name: %s\n", param->ccwa.number, param->ccwa.name);
-    }
-    break;
-
-    case BK_HF_CLIENT_CLCC_EVT:
-    {
-        LOGI("+CLCC: HFP calls result dir:%d, idx:%d, mpty:%d, number:%s, status:%d \n", param->clcc.dir, param->clcc.idx, param->clcc.mpty, param->clcc.number, param->clcc.status);
-    }
-    break;
-
-    case BK_HF_CLIENT_VOLUME_CONTROL_EVT:
-    {
-        if (param->volume_control.type == BK_HF_VOLUME_CONTROL_TARGET_SPK)
-        {
-            LOGI("+VGS: HPF Speaker gain: %d \n", param->volume_control.volume);
-            s_hfp_ctx.spk_vol = param->volume_control.volume;
-            bluetooth_storage_save_hfp_volume(hfp_peer_addr, 1, s_hfp_ctx.spk_vol);
-            bk_bt_dac_set_gain(NULL, &s_hfp_ctx.spk_vol);
-        }
-        else if (param->volume_control.type == BK_HF_VOLUME_CONTROL_TARGET_MIC)
-        {
-            LOGI("+VGM: HPF Microphone gain: %d \n", param->volume_control.volume);
-            s_hfp_ctx.mic_vol = param->volume_control.volume;
-            bluetooth_storage_save_hfp_volume(hfp_peer_addr, 0, s_hfp_ctx.mic_vol);
-            bk_bt_dac_set_gain(&s_hfp_ctx.mic_vol, NULL);
-        }
-    }
-    break;
-
-    case BK_HF_CLIENT_AT_RESPONSE_EVT:
-    {
-        if (0)//param->at_response.code == BK_HF_AT_RESPONSE_CODE_CME)
-        {
-            LOGI("+CME ERROR: HFP AG error code: %d \n", param->at_response.cme);
-        }
-        else
-        {
-            if (param->at_response.code == BK_HF_AT_RESPONSE_CODE_OK)
-            {
-                LOGI("BK_HF_CLIENT_AT_RESPONSE_EVT ok, asso_cmd %d, status %d\n", param->at_response.asso_cmd, s_hfp_status_mach);
-            }
-            else if (param->at_response.code == BK_HF_AT_RESPONSE_CODE_CME)
-            {
-                LOGI("BK_HF_CLIENT_AT_RESPONSE_EVT cme err, cme code 0x%x, asso_cmd %d, status %d\n", param->at_response.cme, param->at_response.asso_cmd, s_hfp_status_mach);
-            }
-            else
-            {
-                LOGI("BK_HF_CLIENT_AT_RESPONSE_EVT normal err 0x%x, asso_cmd %d, status %d\n", param->at_response.code, param->at_response.asso_cmd, s_hfp_status_mach);
-            }
-
+    (void)at;
 #if !HF_AT_TEST
+    switch(s_hfp_status_mach)
+    {
+    case HFP_STATUS_WAIT_QUERY_CALL:
+        s_hfp_status_mach = HFP_STATUS_WAIT_VGS;
+        bk_hfp_hf_volume_update(BK_HF_VOLUME_CONTROL_TARGET_SPK, 7);
+        break;
 
-            switch (s_hfp_status_mach)
-            {
-            case HFP_STATUS_WAIT_QUERY_CALL:
-                s_hfp_status_mach = HFP_STATUS_WAIT_VGS;
-                bk_bt_hf_client_volume_update(hfp_profile_peer_addr, BK_HF_VOLUME_CONTROL_TARGET_SPK, 7);
-                break;
+    case HFP_STATUS_WAIT_VGS:
+        s_hfp_status_mach = HFP_STATUS_WAIT_VGM;
+        bk_hfp_hf_volume_update(BK_HF_VOLUME_CONTROL_TARGET_MIC, 7);
+        break;
 
-            case HFP_STATUS_WAIT_VGS:
-                s_hfp_status_mach = HFP_STATUS_WAIT_VGM;
-                bk_bt_hf_client_volume_update(hfp_profile_peer_addr, BK_HF_VOLUME_CONTROL_TARGET_MIC, 7);
-                break;
+    case HFP_STATUS_WAIT_VGM:
+        s_hfp_status_mach = HFP_STATUS_WAIT_CGMI;
+        bk_hfp_hf_send_custom_cmd("AT+CGMI?");
+        break;
 
-            case HFP_STATUS_WAIT_VGM:
-                s_hfp_status_mach = HFP_STATUS_WAIT_CGMI;//HFP_STATUS_WAIT_DONE;
-                const char *at_cgmi = "AT+CGMI?";
-                hfp_demo_cust_cmd((uint8_t *)at_cgmi);
-                break;
+    case HFP_STATUS_WAIT_CGMI:
+        s_hfp_status_mach = HFP_STATUS_WAIT_DONE;
+        LOGI("%s end op\n", __func__);
+        break;
 
-            case HFP_STATUS_WAIT_CGMI:
-                s_hfp_status_mach = HFP_STATUS_WAIT_DONE;
-                LOGI("%s end op\n", __func__);
-                break;
-            }
-
+    }
 #else
-
-            switch (param->at_response.asso_cmd)
-            {
-            case BK_HF_AT_CMD_CLCC:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_QUERY_CALL)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_VGS;
-                    bk_bt_hf_client_volume_update(hfp_profile_peer_addr, BK_HF_VOLUME_CONTROL_TARGET_SPK, 7);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_VGS:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_VGS)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_VGM;
-                    bk_bt_hf_client_volume_update(hfp_profile_peer_addr, BK_HF_VOLUME_CONTROL_TARGET_MIC, 7);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_VGM:
-
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_VGM)
-                {
-#if HF_AT_ENABLE_CMEE
-                    s_hfp_status_mach = HFP_STATUS_WAIT_CUSTOM;
-                    bk_bt_hf_client_send_custom_cmd(hfp_profile_peer_addr, "AT+CMEE=1");
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_CUSTOM:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_CUSTOM)
-                {
-#endif
-                    s_hfp_status_mach = HFP_STATUS_WAIT_QUERY_CURRENT_OP;
-                    bk_bt_hf_client_query_current_operator_name(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_COPS:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_QUERY_CURRENT_OP)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_RETRIEVE_SUB_INFO;
-                    bk_bt_hf_client_retrieve_subscriber_info(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_CNUM:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_RETRIEVE_SUB_INFO)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_SEND_VTS;
-                    bk_bt_hf_client_send_dtmf(hfp_profile_peer_addr, "1");
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_VTS:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_SEND_VTS)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_REQ_LAST_TAG_NUM;
-                    bk_bt_hf_client_request_last_voice_tag_number(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_BINP:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_REQ_LAST_TAG_NUM)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_NREC;
-                    bk_bt_hf_client_send_nrec(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_NREC:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_NREC)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_VR_ENABLE;
-                    bk_bt_hf_client_start_voice_recognition(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_BVRA:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_VR_ENABLE)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_VR_DISBLE;
-                    bk_bt_hf_client_stop_voice_recognition(hfp_profile_peer_addr);
-                }
-                else if (s_hfp_status_mach == HFP_STATUS_WAIT_VR_DISBLE)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_DIAL;
-                    bk_bt_hf_client_dial(hfp_profile_peer_addr, "112");
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_OUTCALL:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_DIAL)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_HUP;
-                    bk_bt_hf_client_reject_call(hfp_profile_peer_addr);
-                }
-                else if (s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_MEM)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_MEM_HUP;
-                    bk_bt_hf_client_reject_call(hfp_profile_peer_addr);
-                }
-                else if (s_hfp_status_mach == HFP_STATUS_WAIT_REDAIL)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_REDAIL_HUP;
-                    bk_bt_hf_client_reject_call(hfp_profile_peer_addr);
-                }
-
-                break;
-
-            case BK_HF_AT_CMD_CHUP:
-                if (s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_HUP)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_MEM;
-                    bk_bt_hf_client_dial_memory(hfp_profile_peer_addr, 1);
-                }
-                else if (s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_MEM_HUP)
-                {
-                    s_hfp_status_mach = HFP_STATUS_WAIT_REDAIL;
-                    bk_bt_hf_client_redial(hfp_profile_peer_addr);
-                }
-                else if (s_hfp_status_mach == HFP_STATUS_WAIT_REDAIL_HUP)
-                {
-                    LOGI("%s end op\n", __func__);
-                    s_hfp_status_mach = HFP_STATUS_WAIT_DONE;
-                }
-
-                break;
-
-            default:
-                break;
-            }
-
-#endif
-        }
-    }
-    break;
-
-    case BK_HF_CLIENT_CNUM_EVT:
+    switch(at->asso_cmd)
     {
-        LOGI("+CNUM: HFP subscriber number info, type:%d, number:%s \n", param->cnum.type, param->cnum.number);
-    }
-    break;
-
-    case BK_HF_CLIENT_BSIR_EVT:
-    {
-        LOGI("+BSIR: HFP In-band Ring tone staus: %d\n", param->bsir.state);
-    }
-    break;
-
-    case BK_HF_CLIENT_BINP_EVT:
-    {
-        LOGI("+BINP: HFP last voice tag record: %s \n", param->binp.number);
-    }
-    break;
-
-    case BK_HF_CLIENT_RING_IND_EVT:
-    {
-        LOGI("RING HPF incoming call ind evt\n");
-    }
-    break;
-
-    case BK_HF_CLIENT_UNKNOWN_DATA_IND_EVT:
-    {
-        LOGI("unknown data received (len %d)\n", param->unknown_data.data_len);
-        const char *CGMI_IPHONE = "Apple Inc";
-
-        if (os_strstr(param->unknown_data.data, CGMI_IPHONE))
+    case BK_HF_AT_CMD_CLCC:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_QUERY_CALL)
         {
-            s_hfp_hf_is_iphone = 1;
-            LOGI("iphone device\r\n");
+            s_hfp_status_mach = HFP_STATUS_WAIT_VGS;
+            bk_hfp_hf_volume_update(BK_HF_VOLUME_CONTROL_TARGET_SPK, 7);
         }
-    }
-    break;
+        break;
+
+    case BK_HF_AT_CMD_VGS:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_VGS)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_VGM;
+            bk_hfp_hf_volume_update(BK_HF_VOLUME_CONTROL_TARGET_MIC, 7);
+        }
+        break;
+
+    case BK_HF_AT_CMD_VGM:
+
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_VGM)
+        {
+#if HF_AT_ENABLE_CMEE
+            s_hfp_status_mach = HFP_STATUS_WAIT_CUSTOM;
+            bk_hfp_hf_send_custom_cmd("AT+CMEE=1");
+        }
+        break;
+
+    case BK_HF_AT_CMD_CUSTOM:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_CUSTOM)
+        {
+#endif
+            s_hfp_status_mach = HFP_STATUS_WAIT_QUERY_CURRENT_OP;
+            bk_hfp_hf_query_current_operator_name();
+        }
+        break;
+
+    case BK_HF_AT_CMD_COPS:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_QUERY_CURRENT_OP)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_RETRIEVE_SUB_INFO;
+            bk_hfp_hf_retrieve_subscriber_info();
+        }
+        break;
+
+    case BK_HF_AT_CMD_CNUM:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_RETRIEVE_SUB_INFO)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_SEND_VTS;
+            bk_hfp_hf_send_dtmf("1");
+        }
+        break;
+
+    case BK_HF_AT_CMD_VTS:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_SEND_VTS)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_REQ_LAST_TAG_NUM;
+            bk_hfp_hf_request_last_voice_tag_number();
+        }
+        break;
+
+    case BK_HF_AT_CMD_BINP:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_REQ_LAST_TAG_NUM)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_NREC;
+            bk_hfp_hf_send_nrec();
+        }
+        break;
+
+    case BK_HF_AT_CMD_NREC:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_NREC)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_VR_ENABLE;
+            bk_hfp_hf_start_voice_recognition();
+        }
+        break;
+
+    case BK_HF_AT_CMD_BVRA:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_VR_ENABLE)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_VR_DISBLE;
+            bk_hfp_hf_stop_voice_recognition();
+        }
+        else if(s_hfp_status_mach == HFP_STATUS_WAIT_VR_DISBLE)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_DIAL;
+            bk_hfp_hf_dial("112");
+        }
+        break;
+
+    case BK_HF_AT_CMD_OUTCALL:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_DIAL)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_HUP;
+            bk_hfp_hf_reject_call();
+        }
+        else if(s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_MEM)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_MEM_HUP;
+            bk_hfp_hf_reject_call();
+        }
+        else if(s_hfp_status_mach == HFP_STATUS_WAIT_REDAIL)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_REDAIL_HUP;
+            bk_hfp_hf_reject_call();
+        }
+        break;
+
+    case BK_HF_AT_CMD_CHUP:
+        if(s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_HUP)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_DIAL_MEM;
+            bk_hfp_hf_dial_memory(1);
+        }
+        else if(s_hfp_status_mach == HFP_STATUS_WAIT_DIAL_MEM_HUP)
+        {
+            s_hfp_status_mach = HFP_STATUS_WAIT_REDAIL;
+            bk_hfp_hf_redial();
+        }
+        else if(s_hfp_status_mach == HFP_STATUS_WAIT_REDAIL_HUP)
+        {
+            LOGI("%s end op\n", __func__);
+            s_hfp_status_mach = HFP_STATUS_WAIT_DONE;
+        }
+        break;
 
     default:
-        LOGW("Invalid HFP client event: %d\r\n", event);
         break;
+    }
+#endif
+}
+
+static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
+{
+    (void)user_data;
+
+    switch (evt)
+    {
+        case BK_HFP_HF_EVT_CONNECTED:
+            s_hfp_status_mach = HFP_STATUS_WAIT_QUERY_CALL;
+            bk_hfp_hf_query_current_calls();
+            break;
+
+        case BK_HFP_HF_EVT_DISCONNECTED:
+            s_hfp_status_mach = HFP_STATUS_IDLE;
+            break;
+
+        case BK_HFP_HF_EVT_AUDIO_CONNECTED:
+        {
+            bk_hfp_hf_audio_info_t *info = (bk_hfp_hf_audio_info_t *)arg;
+
+            bt_audio_hfp_hf_codec = info->codec;
+            os_memcpy(hfp_peer_addr, info->remote_bda, sizeof(hfp_peer_addr));
+            hf_post_simple_msg(BT_AUDIO_VOICE_START_MSG);
+            break;
+        }
+
+        case BK_HFP_HF_EVT_AUDIO_DISCONNECTED:
+            hf_post_simple_msg(BT_AUDIO_VOICE_STOP_MSG);
+            break;
+
+        case BK_HFP_HF_EVT_VOICE_DATA:
+        {
+            bk_hfp_hf_voice_data_t *voice = (bk_hfp_hf_voice_data_t *)arg;
+
+            hf_post_voice_data(voice->data, voice->len);
+            break;
+        }
+
+        case BK_HFP_HF_EVT_VOLUME_CHANGED:
+        {
+            bk_hfp_hf_volume_info_t *vol = (bk_hfp_hf_volume_info_t *)arg;
+
+            if (vol->type == BK_HF_VOLUME_CONTROL_TARGET_SPK)
+            {
+                hfp_hf_audio_set_gain(vol->volume);
+            }
+            break;
+        }
+
+        case BK_HFP_HF_EVT_AT_RESPONSE:
+            hfp_demo_run_at_state_machine((const bk_hfp_hf_at_response_info_t *)arg);
+            break;
+
+        case BK_HFP_HF_EVT_UNKNOWN_DATA:
+        {
+            bk_hfp_hf_unknown_data_info_t *unknown = (bk_hfp_hf_unknown_data_info_t *)arg;
+
+            if (unknown->data && os_strstr(unknown->data, "Apple Inc"))
+            {
+                s_hfp_hf_is_iphone = 1;
+                LOGI("iphone device\r\n");
+            }
+            break;
+        }
+
+        case BK_HFP_HF_EVT_RING:
+        default:
+            break;
     }
 }
 
 void hfp_demo_vr(uint8_t enable)
 {
-    if (enable)
+    if(enable)
     {
-        bk_bt_hf_client_start_voice_recognition(hfp_profile_peer_addr);
+        bk_hfp_hf_start_voice_recognition();
     }
     else
     {
-        bk_bt_hf_client_stop_voice_recognition(hfp_profile_peer_addr);
+        bk_hfp_hf_stop_voice_recognition();
     }
 }
 
 void hfp_demo_dial(uint8_t enable, uint8_t *num)
 {
-    if (enable)
+    if(enable)
     {
-        bk_bt_hf_client_dial(hfp_profile_peer_addr, (const char *)num);
+        bk_hfp_hf_dial((const char *)num);
     }
     else
     {
-        bk_bt_hf_client_reject_call(hfp_profile_peer_addr);
+        bk_hfp_hf_reject_call();
     }
 }
 
 void hfp_demo_answer(uint8_t accept)
 {
-    if (accept)
+    if(accept)
     {
-        bk_bt_hf_client_answer_call(hfp_profile_peer_addr);
+        bk_hfp_hf_answer_call();
     }
     else
     {
-        bk_bt_hf_client_reject_call(hfp_profile_peer_addr);
+        bk_hfp_hf_reject_call();
     }
 }
 
 void hfp_demo_cust_cmd(uint8_t *cmd)
 {
     LOGI("%s len %d\n", __func__, strlen((char *)cmd));
-    bk_bt_hf_client_send_custom_cmd(hfp_profile_peer_addr, (const char *)cmd);
+    bk_hfp_hf_send_custom_cmd((const char *)cmd);
 }
 
 int32_t hfp_demo_chld_cmd(uint8_t op)
 {
     LOGI("%s %d\n", __func__, op);
-    return bk_bt_hf_client_send_chld_cmd(hfp_profile_peer_addr, op);
+    return bk_hfp_hf_send_chld_cmd(op);
 }
 
 int32_t hfp_demo_btrh_cmd(uint8_t op)
 {
     LOGI("%s %d\n", __func__, op);
-    return bk_bt_hf_client_send_btrh_cmd(hfp_profile_peer_addr, op);
+    return bk_hfp_hf_send_btrh_cmd(op);
 }
 
 uint8_t hfp_hf_check_is_iphone(void)
@@ -1070,364 +421,57 @@ uint8_t hfp_hf_check_is_iphone(void)
     return s_hfp_hf_is_iphone;
 }
 
-static bk_err_t bk_sbc_frame_length_parse(uint8_t *buf, uint16_t len)
+/* The independent speaker enable/vote feature is not used on this platform with
+ * the audio_play backend; kept as a no-op to preserve the public interface. */
+void bk_bt_app_hfp_audio_spk_enable(uint8_t enable)
 {
-    // Check input parameters
-    if (buf == NULL || len < 3)
-    {
-        LOGE("Invalid input parameters\n");
-        return BK_FAIL;
-    }
-
-    uint8_t syncword = buf[0];
-    uint8_t channel_mode = 0;
-    uint8_t blocks = 0;
-    uint8_t subbands = 0;
-    uint8_t bitpool = 0;
-    uint8_t num_channels = 1;
-    int32_t calculated_frame_len = 0;
-
-    // Determine whether it is an SBC frame or an mSBC frame
-    if (syncword == 0x9C)    // SBC frame sync word
-    {
-        // Parse SBC frame header information
-        channel_mode = (buf[1] >> 2) & 0x03;
-        blocks = (((buf[1] >> 4) & 0x03) + 1) << 2; // 4, 8, 12, 16
-        subbands = ((buf[1] & 0x01) + 1) << 2; // 4 or 8
-        bitpool = buf[2];
-
-        // Determine the number of channels based on the channel mode
-        num_channels = (channel_mode == 0) ? 1 : 2; // 0 indicates MONO mode
-    }
-    else if (syncword == 0xAD)    // mSBC frame sync word (according to common definition)
-    {
-        // mSBC usually has a fixed configuration
-        blocks = 15;
-        subbands = 8;
-        bitpool = 26;
-        num_channels = 1;
-        channel_mode = 0; // MONO mode
-
-        // For some extended mSBC formats, they may contain additional configuration information
-        if (buf[1] != 0 || buf[2] != 0)
-        {
-            channel_mode = (buf[1] >> 2) & 0x03;
-            subbands = ((buf[1] & 0x01) + 1) << 2;
-            bitpool = buf[2];
-            num_channels = (channel_mode == 0) ? 1 : 2;
-            LOGW("%s spec msbc 0x%02x%02x !!!\n", __func__, buf[1], buf[2]);
-        }
-    }
-    else
-    {
-        // Not a valid SBC or mSBC frame header
-        LOGE("Invalid syncword: 0x%x\n", syncword);
-        return BK_FAIL;
-    }
-
-    // Check if the bitpool is out of range
-    if (((channel_mode == 0 || channel_mode == 1) && (bitpool > (subbands << 4))) ||
-            ((channel_mode == 2 || channel_mode == 3) && (bitpool > (subbands << 5))))
-    {
-        LOGE("Bitpool out of bounds: %d\n", bitpool);
-        return BK_FAIL;
-    }
-
-    // Calculate the frame length
-    calculated_frame_len = 4 + ((4 * subbands * num_channels) >> 3);
-
-    if (channel_mode == 0 || channel_mode == 1)    // MONO or DUAL_CHANNEL
-    {
-        calculated_frame_len += ((blocks * num_channels * bitpool) + 7) >> 3;
-    }
-    else    // STEREO or JOINT_STEREO
-    {
-        if (channel_mode == 3)    // JOINT_STEREO
-        {
-            calculated_frame_len += (subbands + blocks * bitpool + 7) >> 3;
-        }
-        else    // STEREO
-        {
-            calculated_frame_len += (blocks * bitpool + 7) >> 3;
-        }
-    }
-
-    // Check if the calculated frame length exceeds the input data length
-    if (calculated_frame_len > len)
-    {
-        LOGE("Frame length %d exceeds buffer length %d\n", calculated_frame_len, len);
-        return BK_FAIL;
-    }
-
-    // Return the calculated frame length
-    return calculated_frame_len;
+    LOGI("%s %d (no-op)\n", __func__, enable);
 }
-static void bt_audio_hf_demo_main(void *arg)
+
+void bt_audio_hf_demo_main(void *arg)
 {
-    uint8_t recon_addr[6] = {0};
-    uint32_t spk_task_start_vote = (s_hf_spk_user_vote << BT_AUDIO_SPK_TASK_START_VOTE_USER);
-    LOGI("%s spk_task_start_vote 0x%x\n", __func__, spk_task_start_vote);
+    int running = 1;
 
-    if ((bluetooth_storage_get_newest_linkkey_info(recon_addr, NULL)) < 0)
-    {
-        LOGI("%s can't find linkkey info\n", __func__);
-    }
-    else
-    {
-        LOGI("%s find addr\n", __func__);
-
-        if (bluetooth_storage_find_hfp_volume_by_addr(recon_addr, &s_hfp_ctx.mic_vol, &s_hfp_ctx.spk_vol) < 0)
-        {
-
-            s_hfp_ctx.mic_vol = 1.0 * PLATFORM_MIC_GAIN_DEFAULT / PLATFORM_MIC_GAIN_MAX * HFP_GAIN_MAX;
-            s_hfp_ctx.spk_vol = 1.0 * PLATFORM_SPK_GAIN_DEFAULT / PLATFORM_SPK_GAIN_MAX * HFP_GAIN_MAX;
-        }
-
-        if (s_hfp_ctx.mic_vol == 0)
-        {
-            s_hfp_ctx.mic_vol = 1.0 * PLATFORM_MIC_GAIN_DEFAULT / PLATFORM_MIC_GAIN_MAX * HFP_GAIN_MAX;
-        }
-
-        if (s_hfp_ctx.spk_vol == 0)
-        {
-            s_hfp_ctx.spk_vol = 1.0 * PLATFORM_SPK_GAIN_DEFAULT / PLATFORM_SPK_GAIN_MAX * HFP_GAIN_MAX;
-        }
-
-        LOGI("initial volume %d %d %02x:%02x:%02x:%02x:%02x:%02x\n",
-             s_hfp_ctx.mic_vol,
-             s_hfp_ctx.spk_vol,
-             recon_addr[5],
-             recon_addr[4],
-             recon_addr[3],
-             recon_addr[2],
-             recon_addr[1],
-             recon_addr[0]
-            );
-    }
-
-    while (1)
+    while (running)
     {
         bk_err_t err;
         bt_audio_hf_demo_msg_t msg;
 
         err = rtos_pop_from_queue(&bt_audio_hf_demo_msg_que, &msg, BEKEN_WAIT_FOREVER);
-
-        if (BK_OK == err)
+        if (kNoErr == err)
         {
             switch (msg.type)
             {
-            case BT_AUDIO_VOICE_START_MSG:
-            {
-                LOGI("BT_AUDIO_VOICE_START_MSG \r\n");
-
-                spk_task_start_vote |= (1 << BT_AUDIO_SPK_TASK_START_VOTE_HFP);
-
-                if (CODEC_VOICE_MSBC == bt_audio_hfp_hf_codec)
+                case BT_AUDIO_VOICE_START_MSG:
                 {
-                    decoder_type = BLUE_AUDIO_DECODER_TYPE_SBC;
+                    hfp_hf_audio_start(bt_audio_hfp_hf_codec, hfp_peer_addr);
                 }
-                else
-                {
-                    decoder_type = BLUE_AUDIO_DECODER_TYPE_PCM;
-                }
-
-                hf_auido_start = 1;
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-                if (BK_OK != bt_audio_player_open(decoder_type, decoder_type == BLUE_AUDIO_DECODER_TYPE_SBC ? MSBC_EXPECT_FRAME_LEN : 0, spk_task_start_vote))
-                {
-                    LOGE("%s bt_audio_player_open failed\n", __func__);
-                }
-                else
-                {
-                    mic_task_init();
-                }
-
-#endif
-
-                LOGI("hfp audio init ok\r\n");
-            }
-            break;
-
-            case BT_AUDIO_VOICE_USER_START_MSG:
-            {
-                uint32_t enable = (typeof(enable))msg.data;
-
-                LOGI("BT_AUDIO_VOICE_USER_START_MSG %d\n", enable);
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-                if (enable)
-                {
-                    spk_task_start_vote |= (1 << BT_AUDIO_SPK_TASK_START_VOTE_USER);
-
-                    if (BK_OK != bt_audio_player_open(decoder_type, frame_length, spk_task_start_vote))
-                    {
-                        LOGE("%s bt_audio_player_open failed\n", __func__);
-                        BK_ASSERT(0);
-                    }
-                    else
-                    {
-                        mic_task_init();
-                    }
-                }
-                else
-                {
-                    spk_task_start_vote &= ~(1 << BT_AUDIO_SPK_TASK_START_VOTE_USER);
-
-                    /* destroy blue_audio_player */
-                    if (gl_audio_player_handle)
-                    {
-                        blue_audio_player_stop(gl_audio_player_handle);
-                        blue_audio_player_destroy(gl_audio_player_handle);
-                        gl_audio_player_handle = NULL;
-                    }
-                }
-
-#endif
-
-                /* set sync semaphore */
-                if (s_audio_player_en_sema)
-                {
-                    rtos_set_semaphore(&s_audio_player_en_sema);
-                }
-            }
-            break;
-
-            case BT_AUDIO_VOICE_STOP_MSG:
-            case BT_AUDIO_VOICE_TASK_EXIT_MSG:
-            {
-                if (msg.type == BT_AUDIO_VOICE_STOP_MSG)
-                {
-                    LOGI("BT_AUDIO_VOICE_STOP_MSG\n");
-                }
-                else
-                {
-                    LOGI("BT_AUDIO_VOICE_TASK_EXIT_MSG\n");
-                }
-
-                if (hf_mic_thread_handle) //hf_speaker_thread_handle
-                {
-                    if (BK_OK != rtos_init_semaphore(&hf_mic_speaker_exit_sema, 1))//2))
-                    {
-                        LOGE("init sema fail, %d \n", __LINE__);
-                    }
-
-                    hf_auido_start = 0;
-                }
-
-                if (hf_mic_thread_handle)
-                {
-                    LOGI("%s wait mic thread end\n", __func__);
-
-                    if (hf_mic_speaker_exit_sema)
-                    {
-                        rtos_get_semaphore(&hf_mic_speaker_exit_sema, BEKEN_WAIT_FOREVER);
-                    }
-
-                    LOGI("%s mic thread end !!!\n", __func__);
-                    hf_mic_thread_handle = NULL;
-                }
-
-                spk_task_start_vote &= ~(1 << BT_AUDIO_SPK_TASK_START_VOTE_HFP);
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-                /* destroy blue_audio_player */
-                if (gl_audio_player_handle)
-                {
-                    LOGI("%s start blue_audio_player_stop/destroy\n", __func__);
-                    blue_audio_player_stop(gl_audio_player_handle);
-                    blue_audio_player_destroy(gl_audio_player_handle);
-                    gl_audio_player_handle = NULL;
-                    LOGI("%s blue_audio_player_stop/destroy end\n", __func__);
-                }
-
-#endif
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-
-                if (s_bar_handle)
-                {
-                    LOGI("%s start blue_audio_recorder_stop/destroy\n", __func__);
-                    blue_audio_recorder_stop(s_bar_handle);
-                    blue_audio_recorder_destroy(s_bar_handle);
-                    s_bar_handle = NULL;
-                    LOGI("%s blue_audio_recorder_stop/destroy end\n", __func__);
-                }
-
-#endif
-
-                if (hf_mic_speaker_exit_sema)
-                {
-                    rtos_deinit_semaphore(&hf_mic_speaker_exit_sema);
-                    hf_mic_speaker_exit_sema = NULL;
-                }
-
-                if (msg.type == BT_AUDIO_VOICE_TASK_EXIT_MSG)
-                {
-                    goto exit;
-                }
-            }
-            break;
-
-            case BT_AUDIO_VOICE_IND_MSG:
-            {
-                bk_err_t ret = BK_OK;
-                uint8 *fb = (uint8_t *)msg.data;
-                uint16_t r_len = 0;
-                uint16_t packet_len = SCO_CVSD_SAMPLES_PER_FRAME * 2;
-                uint8_t packet_num = 4;
-
-                if (CODEC_VOICE_MSBC == bt_audio_hfp_hf_codec)
-                {
-                    //LOGI("%s -->len %d, 0x%x 0x%x 0x%x\n", __func__, msg.len, fb[0], fb[1], fb[2]);
-
-                    int32_t tmp_frame_len = bk_sbc_frame_length_parse(fb + 2, msg.len - 2);
-
-                    if (tmp_frame_len < 0)
-                    {
-                        LOGE("%s parse msbc err ret %d msg len %d, ignore\n", __func__, tmp_frame_len, msg.len);
-                        goto send_end;
-                    }
-                    else if (tmp_frame_len < msg.len - 2)
-                    {
-                        LOGV("%s recv frame bytes %d != parse frame bytes %d\n", __func__, msg.len - 2, tmp_frame_len);
-                    }
-
-                    packet_len = tmp_frame_len;
-                }
-
-#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE
-
-                if (CODEC_VOICE_MSBC == bt_audio_hfp_hf_codec)
-                {
-                    blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb + 2, packet_len);
-                }
-                else
-                {
-                    packet_len = r_len = SCO_CVSD_SAMPLES_PER_FRAME * 2;
-
-                    if (r_len != msg.len)
-                    {
-                        LOGE("%s len not match %d %d\n", __func__, r_len, msg.len);
-                    }
-
-                    blue_audio_player_write_frame_data(gl_audio_player_handle, (char *)fb, packet_len);
-                }
-
-#endif
-send_end:;
-                psram_free(msg.data);
-            }
-            break;
-
-            default:
                 break;
+
+                case BT_AUDIO_VOICE_STOP_MSG:
+                {
+                    hfp_hf_audio_stop();
+                }
+                break;
+
+                case BT_AUDIO_VOICE_IND_MSG:
+                {
+                    hfp_hf_audio_handle_data((const uint8_t *)msg.data, msg.len);
+                    os_free(msg.data);
+                }
+                break;
+
+                case BT_AUDIO_EXIT_MSG:
+                {
+                    running = 0;
+                }
+                break;
+
+                default:
+                    break;
             }
         }
     }
-
-exit:
 
     rtos_delete_thread(NULL);
 }
@@ -1435,15 +479,13 @@ exit:
 int bt_audio_hf_demo_task_init(void)
 {
     bk_err_t ret = BK_OK;
-
     if ((!bt_audio_hf_demo_thread_handle) && (!bt_audio_hf_demo_msg_que))
     {
         ret = rtos_init_queue(&bt_audio_hf_demo_msg_que,
                               "bt_audio_hf_demo_msg_que",
                               sizeof(bt_audio_hf_demo_msg_t),
                               BT_AUDIO_HF_DEMO_MSG_COUNT);
-
-        if (ret != BK_OK)
+        if (ret != kNoErr)
         {
             LOGI("bt_audio hf demo msg queue failed \r\n");
             return BK_FAIL;
@@ -1453,14 +495,9 @@ int bt_audio_hf_demo_task_init(void)
                                  BEKEN_DEFAULT_WORKER_PRIORITY,
                                  "bt_audio_hf_demo",
                                  (beken_thread_function_t)bt_audio_hf_demo_main,
-#if (HF_MIC_EQ_ENABLE || HF_SPEAKER_EQ_ENABLE)
-                                 1024 * 6,
-#else
                                  4096,
-#endif
                                  (beken_thread_arg_t)0);
-
-        if (ret != BK_OK)
+        if (ret != kNoErr)
         {
             LOGI("bt_audio hf demo task fail \r\n");
             rtos_deinit_queue(&bt_audio_hf_demo_msg_que);
@@ -1468,7 +505,7 @@ int bt_audio_hf_demo_task_init(void)
             bt_audio_hf_demo_thread_handle = NULL;
         }
 
-        return BK_OK;
+        return kNoErr;
     }
     else
     {
@@ -1478,378 +515,64 @@ int bt_audio_hf_demo_task_init(void)
 
 static int bt_audio_hf_demo_task_deinit(void)
 {
-    bk_err_t ret = BK_OK;
-
     if (bt_audio_hf_demo_thread_handle)
     {
-        bt_audio_task_exit();
-
         LOGI("%s wait demo task end\n", __func__);
+        hf_post_simple_msg(BT_AUDIO_EXIT_MSG);
         rtos_thread_join(&bt_audio_hf_demo_thread_handle);
-        LOGI("%s demo task end !!!\n", __func__);
         bt_audio_hf_demo_thread_handle = NULL;
-
-        if (bt_audio_hf_demo_msg_que)
-        {
-            bk_err_t err = 0;
-            bt_audio_hf_demo_msg_t msg = {0};
-
-            while ((err = rtos_pop_from_queue(&bt_audio_hf_demo_msg_que, &msg, 0)) == 0)
-            {
-                switch (msg.type)
-                {
-                case BT_AUDIO_VOICE_IND_MSG:
-                    if (msg.data)
-                    {
-                        os_free(msg.data);
-                        msg.data = NULL;
-                    }
-
-                    break;
-
-                default:
-                    break;
-                }
-
-                os_memset(&msg, 0, sizeof(msg));
-            }
-
-            rtos_deinit_queue(&bt_audio_hf_demo_msg_que);
-            bt_audio_hf_demo_msg_que = NULL;
-        }
+        LOGI("%s demo task end !!!\n", __func__);
     }
 
-    (void)ret;
-    return 0;
-}
-
-static void bk_bt_hfp_connect(uint8_t *remote_addr)
-{
-#define s_auto_active_connnect 1
-
-    LOGI("%s %02x:%02x:%02x:%02x:%02x:%02x %s\n", __func__,
-         remote_addr[5],
-         remote_addr[4],
-         remote_addr[3],
-         remote_addr[2],
-         remote_addr[1],
-         remote_addr[0],
-         s_auto_active_connnect ? "auto active connect" : "ignore"
-        );
-
-    if (s_auto_active_connnect)
+    if (bt_audio_hf_demo_msg_que)
     {
-        bk_bt_hf_client_connect(remote_addr);
+        bt_audio_hf_demo_msg_t msg = {0};
+
+        while (rtos_pop_from_queue(&bt_audio_hf_demo_msg_que, &msg, 0) == kNoErr)
+        {
+            if (msg.type == BT_AUDIO_VOICE_IND_MSG && msg.data)
+            {
+                os_free(msg.data);
+                msg.data = NULL;
+            }
+            os_memset(&msg, 0, sizeof(msg));
+        }
+
+        rtos_deinit_queue(&bt_audio_hf_demo_msg_que);
+        bt_audio_hf_demo_msg_que = NULL;
     }
-}
 
-static void bk_bt_hfp_disconnect(uint8_t *remote_addr)
-{
-    LOGI("%s %02x:%02x:%02x:%02x:%02x:%02x\n", __func__,
-         remote_addr[5],
-         remote_addr[4],
-         remote_addr[3],
-         remote_addr[2],
-         remote_addr[1],
-         remote_addr[0]);
-
-    bk_bt_hf_client_disconnect(remote_addr);
+    return 0;
 }
 
 int hfp_hf_demo_init(uint8_t msbc_supported)
 {
-    int ret = BK_OK;
-
-    LOGI("%s\n", __func__);
-
-    if (s_hfp_hf_is_inited)
-    {
-        LOGE("%s already init\n", __func__);
-        return -1;
-    }
+    LOGI("%s\r\n", __func__);
 
     bt_audio_hf_demo_task_init();
 
-    ret = bk_bt_hf_client_register_callback(bk_bt_app_hfp_client_cb);
+    bk_hfp_hf_register_event_cb(hfp_demo_event_cb, NULL);
 
-    if (ret)
-    {
-        LOGI("%s bk_bt_hf_client_register_callback err %d\n", __func__, ret);
-        return -1;
-    }
-
-    ret = bk_bt_hf_client_init(msbc_supported);
-
-    if (ret)
-    {
-        LOGI("%s bk_bt_hf_client_init err %d\n", __func__, ret);
-        return -1;
-    }
-
-    ret = bk_bt_hf_client_register_data_callback(bt_audio_hfp_client_voice_data_ind);
-
-    if (ret)
-    {
-        LOGI("%s bk_bt_hf_client_register_data_callback err %d\n", __func__, ret);
-        return -1;
-    }
-
-    btm_callback_s btm_cb =
-    {
-        .start_disconnect_cb = bk_bt_hfp_disconnect,
-        .start_connect_cb = bk_bt_hfp_connect,
-    };
-
-    s_bt_manager_index = bt_manager_register_callback(&btm_cb);
-
-    s_hfp_hf_is_inited = 1;
-
-    LOGI("%s end\n", __func__);
-    return ret;
+    return bk_hfp_hf_service_init(msbc_supported);
 }
 
 int hfp_hf_demo_deinit(void)
 {
-    int ret = BK_OK;
+    LOGI("%s\r\n", __func__);
 
-    LOGI("%s\n", __func__);
-
-    if (!s_hfp_hf_is_inited)
-    {
-        LOGE("%s already deinit\n", __func__);
-        return -1;
-    }
-
-    if (s_connect_status)
-    {
-        if (!s_connect_sema)
-        {
-            if (rtos_init_semaphore(&s_connect_sema, 1))
-            {
-                LOGE("%s init connect sema fail\n", __func__);
-                goto end;
-            }
-        }
-
-        LOGW("%s disconnecting hfp\n", __func__);
-        bk_bt_hf_client_disconnect(hfp_profile_peer_addr);
-        LOGW("%s wait disconnect hfp sem\n", __func__);
-
-        ret = rtos_get_semaphore(&s_connect_sema, 5000);
-
-        if (ret)
-        {
-            LOGE("%s wait disconnect hfp sem err %d\n", __func__, ret);
-        }
-        else
-        {
-            LOGW("%s wait disconnect hfp success\n", __func__);
-        }
-    }
+    bk_hfp_hf_service_deinit();
 
     bt_audio_hf_demo_task_deinit();
-
-    bt_manager_unregister_callback(s_bt_manager_index);
-    s_bt_manager_index = 0xFF;
-
-    bk_bt_hf_client_register_callback(NULL);
-    bk_bt_hf_client_register_data_callback(NULL);
-
-    bk_bt_hf_client_deinit();
-
-    s_hfp_hf_is_inited = 0;
-
-end:;
-
-    if (s_connect_sema)
-    {
-        if (rtos_deinit_semaphore(&s_connect_sema))
-        {
-            LOGE("%s deinit connect sema fail\n", __func__);
-        }
-
-        s_connect_sema = NULL;
-    }
-
-    LOGI("%s end\n", __func__);
-    return ret;
-}
-
-static int mic_task_init()
-{
-    bk_err_t ret = BK_OK;
-
-    if (!hf_mic_thread_handle)
-    {
-        ret = rtos_create_thread(&hf_mic_thread_handle,
-                                 HF_MIC_THREAD_PRI,
-                                 "bt_hf_mic",
-                                 (beken_thread_function_t)mic_task,
-                                 4096,
-                                 (beken_thread_arg_t)0);
-
-        if (ret != BK_OK)
-        {
-            LOGE("mic task fail \r\n");
-        }
-
-        return BK_OK;
-    }
-    else
-    {
-        LOGE("%s mic task already exist \r\n", __func__);
-        return kInProgressErr;
-    }
-
-    return BK_OK;
-}
-
-
-static void mic_task(void *arg)
-{
-    int32_t ret = 0;
-    uint8_t h2_index = 0;
-    uint8_t first_mic_buff_index = 0;
-
-    LOGI("%s wait a2dp task end\n", __func__);
-
-    a2dp_sink_demo_wait_player_end();
-
-#if CONFIG_BLUE_AUDIO_RECORDER_SERVICE
-
-    LOGI("%s init success!! \r\n", __func__);
-
-    if (bt_audio_hfp_hf_codec == CODEC_VOICE_CVSD)
-    {
-        first_mic_buff_index = 0;
-    }
-    else if (bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
-    {
-        first_mic_buff_index = 2;
-    }
-
-    while (hf_auido_start)
-    {
-        int32_t expect_len = 0;
-        int32_t read_len = 0;
-        int32_t read_all_len = 0;
-
-        hf_mic_data_count = first_mic_buff_index;
-
-        if (bt_audio_hfp_hf_codec == CODEC_VOICE_CVSD)
-        {
-            expect_len = SCO_CVSD_SAMPLES_PER_FRAME * 2;
-
-        }
-        else if (bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
-        {
-            expect_len = MSBC_EXPECT_FRAME_LEN;
-        }
-
-        if (hf_mic_data_count + expect_len > sizeof(hf_mic_sco_data))
-        {
-            LOGE("%s mic data buffer overflow\n", __func__);
-            continue;
-        }
-
-        while (hf_auido_start && read_all_len < expect_len)
-        {
-            read_len = blue_audio_recorder_read_frame_data(s_bar_handle, (char *)(hf_mic_sco_data + hf_mic_data_count + read_all_len), expect_len - read_all_len);
-
-            if (read_len <= 0)
-            {
-                LOGE("%s blue audio recorder read ret %d !!!\n", __func__, read_len);
-                continue;
-            }
-
-            read_all_len += read_len;
-
-            if (read_all_len < expect_len)
-            {
-                continue;
-            }
-
-            hf_mic_data_count += read_all_len;
-
-            if (hf_mic_data_count > first_mic_buff_index)
-            {
-                LOGV("send sco %d\n", hf_mic_data_count);
-
-                if (bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
-                {
-#define MSBC_PADDED (60 - (MSBC_EXPECT_FRAME_LEN + 2))
-                    const uint8_t sn[] = {0b0000, 0b0011, 0b1100, 0b1111};
-                    hf_mic_sco_data[0] = 1;
-                    hf_mic_sco_data[1] = (0b1000 | (sn[h2_index] << 4));
-                    os_memset(hf_mic_sco_data + hf_mic_data_count, 0, MSBC_PADDED);
-                    h2_index = (h2_index + 1) % 3;
-                    bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count + MSBC_PADDED);
-                }
-                else
-                {
-                    bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count);
-                }
-            }
-
-            break;
-        }
-    }
-
-#else
-
-#endif
-    LOGI("%s end!! %d\r\n", __func__, hf_auido_start);
-
-    if (hf_mic_speaker_exit_sema)
-    {
-        rtos_set_semaphore(&hf_mic_speaker_exit_sema);
-    }
-
-    rtos_delete_thread(NULL);
-}
-
-int32_t wait_hfp_speaker_mic_task_end(void)
-{
-    while (hf_mic_thread_handle || gl_audio_player_handle)
-    {
-        rtos_delay_milliseconds(20);
-    }
 
     return 0;
 }
 
-void bk_bt_app_hfp_audio_spk_enable(uint8_t enable)
+#ifdef CONFIG_AUDIO
+/* Strong override of the weak hook in the bk_bluetooth a2dp_sink_audio component:
+ * before the A2DP player (re)opens it waits here for the HFP speaker/mic tasks to
+ * exit, so the two audio paths never drive the DAC at the same time. */
+int32_t wait_hfp_speaker_mic_task_end(void)
 {
-    int32_t ret = 0;
-
-    LOGI("%s %d\n", __func__, enable);
-    s_hf_spk_user_vote = enable;
-
-    if (!s_audio_player_en_sema)
-    {
-        if (rtos_init_semaphore(&s_audio_player_en_sema, 1))
-        {
-            LOGE("%s init spk sema fail\n", __func__);
-            return;
-        }
-    }
-
-    ret = bt_audio_hf_user_vote_spk_task(enable);
-
-    if (!ret && s_audio_player_en_sema)
-    {
-        rtos_get_semaphore(&s_audio_player_en_sema, BEKEN_WAIT_FOREVER);
-    }
-    else if (ret)
-    {
-        LOGE("%s send user vote err\n", __func__);
-    }
-
-    if (s_audio_player_en_sema)
-    {
-        rtos_deinit_semaphore(&s_audio_player_en_sema);
-        s_audio_player_en_sema = NULL;
-    }
-
-    LOGI("%s end\n", __func__);
+    return hfp_hf_audio_wait_player_end();
 }
+#endif

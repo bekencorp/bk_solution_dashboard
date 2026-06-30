@@ -49,7 +49,6 @@ if (CONFIG_BT)
         list(APPEND incs a2dp_sink)
         list(APPEND srcs
             a2dp_sink/a2dp_sink_demo.c
-            a2dp_sink/a2dp_sink_audio.c
         )
         if (CONFIG_HFP_HF_DEMO)
             list(APPEND srcs

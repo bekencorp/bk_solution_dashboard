@@ -258,7 +258,7 @@ static uint8_t a2dp_sink_get_local_volume(void)
 
 static void a2dp_sink_demo_task(void *arg)
 {
-    uint32_t spk_task_start_vote = (1 << HEADSET_AUDIO_OPEN_VOTE_USER);
+    uint32_t spk_task_start_vote = (1 << BK_A2DP_AUDIO_OPEN_VOTE_USER);
     (void)arg;
 
     while (1)
@@ -275,7 +275,7 @@ static void a2dp_sink_demo_task(void *arg)
         case BT_AUDIO_A2DP_START_MSG:
             if (msg.data && msg.len == sizeof(bk_a2dp_mcc_t))
             {
-                spk_task_start_vote |= (1 << HEADSET_AUDIO_OPEN_VOTE_A2DP);
+                spk_task_start_vote |= (1 << BK_A2DP_AUDIO_OPEN_VOTE_A2DP);
                 LOGI("BT_AUDIO_A2DP_START_MSG\n");
 
                 if (a2dp_sink_audio_start((bk_a2dp_mcc_t *)msg.data,
@@ -290,7 +290,7 @@ static void a2dp_sink_demo_task(void *arg)
 
         case BT_AUDIO_A2DP_STOP_MSG:
             LOGI("BT_AUDIO_A2DP_STOP_MSG\n");
-            spk_task_start_vote &= ~(1 << HEADSET_AUDIO_OPEN_VOTE_A2DP);
+            spk_task_start_vote &= ~(1 << BK_A2DP_AUDIO_OPEN_VOTE_A2DP);
             a2dp_sink_audio_stop();
             break;
 
@@ -306,14 +306,14 @@ static void a2dp_sink_demo_task(void *arg)
                 LOGI("BT_AUDIO_USER_START_MSG %d\n", enable);
                 if (enable)
                 {
-                    spk_task_start_vote |= (1 << HEADSET_AUDIO_OPEN_VOTE_USER);
+                    spk_task_start_vote |= (1 << BK_A2DP_AUDIO_OPEN_VOTE_USER);
                     a2dp_sink_audio_open(spk_task_start_vote,
                                          s_mix_multi_channel,
                                          a2dp_sink_get_local_volume());
                 }
                 else
                 {
-                    spk_task_start_vote &= ~(1 << HEADSET_AUDIO_OPEN_VOTE_USER);
+                    spk_task_start_vote &= ~(1 << BK_A2DP_AUDIO_OPEN_VOTE_USER);
                     a2dp_sink_audio_stop();
                 }
             }
@@ -377,7 +377,7 @@ static void a2dp_sink_demo_task(void *arg)
         case BT_AUDIO_EXIT_MSG:
             LOGI("BT_AUDIO_EXIT_MSG\n");
             a2dp_sink_msg_release(&msg);
-            spk_task_start_vote &= ~(1 << HEADSET_AUDIO_OPEN_VOTE_A2DP);
+            spk_task_start_vote &= ~(1 << BK_A2DP_AUDIO_OPEN_VOTE_A2DP);
             a2dp_sink_audio_stop();
             rtos_delete_thread(NULL);
             return;
