@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <components/bluetooth/bk_dm_bluetooth.h>
 #include "wifi_boarding_demo.h"
-
+#include "ble_cpn_main.h"
 #if WIFI_BOARDING_DEMO_ENABLE
 
 #define BASE_CMD_NAME "wboarding_demo"
@@ -59,8 +59,8 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
         dm_gatt_main(&param);
         dm_gatts_main(&param);
         wifi_boarding_demo_service_main();
-
-        //wifi_boarding_demo_main(NULL);
+        ble_cpn_main_init();
+        ble_cpn_adv_enable(1);
     }
     else
     {

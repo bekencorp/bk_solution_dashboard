@@ -13,6 +13,7 @@
 #include "dm_gatt.h"
 #include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
+#include "ble_cpn_main.h"
 #if CONFIG_BK_BLE_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
@@ -203,6 +204,8 @@ static void ap_bt_app_init(void)
     dm_gatt_main(&param);
     dm_gatts_main(&param);
     wifi_boarding_demo_service_main();
+    ble_cpn_main_init();
+    ble_cpn_adv_enable(1);
 #endif
 
     extern int cli_ble_gatt_demo_init(void);

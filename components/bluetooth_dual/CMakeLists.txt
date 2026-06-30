@@ -34,6 +34,7 @@ if (CONFIG_BLE)
     )
 
     list(APPEND srcs
+        ble_cpn_main.c
         wifi_boarding/wifi_boarding_demo.c
         wifi_boarding/wifi_boarding_demo_service.c
         wifi_boarding/wifi_boarding_demo_cli.c
