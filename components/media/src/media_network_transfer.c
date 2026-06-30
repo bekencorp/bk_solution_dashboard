@@ -29,7 +29,7 @@ typedef struct
 
 media_video_cfg_t *s_media_video_cfg = NULL;
 
-static volatile uint8_t s_cast_video_alloc_allowed = 1U;
+static volatile uint8_t s_cast_video_alloc_allowed = 0U;
 
 void media_bk_net_cast_video_alloc_gate(int allow)
 {
@@ -309,7 +309,7 @@ bk_err_t media_bk_network_transfer_init(char *service_name, void *param)
 
     cast_jpeg_pipeline_set_frame_buffer_release(media_frame_queue_free);
     cast_jpeg_pipeline_set_video_recv_alloc_gate_fn(media_bk_net_cast_video_alloc_gate);
-    media_bk_net_cast_video_alloc_gate(1);
+    media_bk_net_cast_video_alloc_gate(0);
 
     if (strcmp(service_name, "tcp_service") == 0)
     {

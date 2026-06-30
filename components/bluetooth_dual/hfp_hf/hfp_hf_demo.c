@@ -441,7 +441,8 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 640;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 640;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_A2DP_BIT;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_CALL_BIT;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.main_dac_source = AUD_DAC_SOURCE_CALL;
 #endif
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_en = true;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.pa_ctrl_gpio = 5;
@@ -474,7 +475,8 @@ static bk_err_t bt_audio_player_open(blue_audio_decoder_type_t decoder_type, uin
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[0] = 640;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[1] = 640;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size[2] = 640;
-        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_A2DP_BIT;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.dac_source_bitmap = ONBOARD_SPEAKER_STREAM_DAC_SOURCE_CALL_BIT;
+        temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.main_dac_source = AUD_DAC_SOURCE_CALL;
 #else
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.sample_rate = 8000;
         temp_audio_player_cfg.speaker_cfg.ob_spk_cfg.frame_size = 640;
