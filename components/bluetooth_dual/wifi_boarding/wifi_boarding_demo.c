@@ -113,7 +113,7 @@ static uint16_t s_boarding_attr_handle_list[sizeof(s_gatts_attr_db_service_board
 
 __attribute__((weak)) int wifi_boarding_notify(uint8_t *data, uint16_t length)
 {
-    int16_t current_conn_id = dm_ble_gap_get_current_conn_id();
+    int16_t current_conn_id = bk_dm_prf_gap_get_current_conn_id();
 
     if (current_conn_id < 0)
     {
@@ -125,7 +125,7 @@ __attribute__((weak)) int wifi_boarding_notify(uint8_t *data, uint16_t length)
         int32_t ret = 0;
 
         wboard_logi("len %d", length);
-        bk_ble_gatts_send_indicate(dm_gatts_get_current_if(), (uint16_t)current_conn_id, s_boarding_attr_handle_list[BOARDING_IDX_CHAR1], length, data, 0);
+        bk_ble_gatts_send_indicate(bk_dm_prf_gatts_get_current_if(), (uint16_t)current_conn_id, s_boarding_attr_handle_list[BOARDING_IDX_CHAR1], length, data, 0);
 
         ret = rtos_get_semaphore(&s_send_sem, SYNC_CMD_TIMEOUT_MS);
 
@@ -456,7 +456,7 @@ static int32_t wifi_boarding_gatts_cb(bk_gatts_cb_event_t event, bk_gatt_if_t ga
 
 static int32_t wifi_boarding_demo_reg_db(void)
 {
-    int32_t ret = dm_gatts_reg_db((bk_gatts_attr_db_t *)s_gatts_attr_db_service_boarding,
+    int32_t ret = bk_dm_prf_gatts_reg_db((bk_gatts_attr_db_t *)s_gatts_attr_db_service_boarding,
                                   sizeof(s_gatts_attr_db_service_boarding) / sizeof(s_gatts_attr_db_service_boarding[0]),
                                   s_boarding_attr_handle_list,
                                   wifi_boarding_gatts_cb, s_db_init ? 0 : 1);
@@ -492,7 +492,7 @@ int32_t wifi_boarding_demo_main(ble_boarding_info_t *info)
 #if WIFI_BOARDING_DEMO_ENABLE
     int32_t ret = 0;
 
-    if (!dm_gatts_is_init())
+    if (!bk_dm_prf_gatts_is_init())
     {
         wboard_loge("gatts is not init");
         return -1;
@@ -536,7 +536,7 @@ int32_t wifi_boarding_demo_deinit(uint8_t deinit_bluetooth_future)
     }
 
     wboard_logw("sdk can't del db service now !!!");
-    dm_gatts_unreg_db((bk_gatts_attr_db_t *)s_gatts_attr_db_service_boarding);
+    bk_dm_prf_gatts_unreg_db((bk_gatts_attr_db_t *)s_gatts_attr_db_service_boarding);
 
     if (deinit_bluetooth_future)
     {

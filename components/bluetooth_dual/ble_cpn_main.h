@@ -11,7 +11,7 @@ extern "C" {
  *
  * Builds a legacy connectable advertisement carrying the local name
  * (SCOOTER-xxxxxx, derived from the BLE identity address) plus the Beken
- * manufacturer id, then enables advertising. dm_gatts_main() no longer
+ * manufacturer id, then enables advertising. bk_dm_prf_gatts_main() no longer
  * auto-enables advertising, so this must be called once after the GATT
  * server has been initialised.
  */

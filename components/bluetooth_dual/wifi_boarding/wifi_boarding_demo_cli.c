@@ -56,8 +56,8 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 #endif
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
-        dm_gatt_main(&param);
-        dm_gatts_main(&param);
+        bk_dm_prf_gap_main(&param);
+        bk_dm_prf_gatts_main(&param);
         wifi_boarding_demo_service_main();
         ble_cpn_main_init();
         ble_cpn_adv_enable(1);

@@ -78,7 +78,7 @@ static int ble_cpn_adv_start(void)
     char adv_name[32] = {0};
     uint8_t company_id[2] = {BEKEN_COMPANY_ID & 0xFF, BEKEN_COMPANY_ID >> 8};
 
-    dm_ble_gap_get_identity_addr(identity_addr);
+    bk_dm_prf_gap_get_identity_addr(identity_addr);
 
     snprintf(adv_name, sizeof(adv_name) - 1, "%s-%02X%02X%02X",
              ADV_NAME_PREFIX, identity_addr[2], identity_addr[1], identity_addr[0]);
@@ -243,7 +243,7 @@ void ble_cpn_main_init(void)
 
     if (!s_cpn_cb_registered)
     {
-        if (dm_gatt_add_gap_callback(ble_cpn_gap_cb) != 0)
+        if (bk_dm_prf_gap_add_gap_callback(ble_cpn_gap_cb) != 0)
         {
             LOGE("add gap callback err\n");
             return;
