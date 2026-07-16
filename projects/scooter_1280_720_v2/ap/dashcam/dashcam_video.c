@@ -44,7 +44,7 @@
  * applies to the live read-task path. See §13.13(5).
  */
 #ifndef DASHCAM_PREVIEW_USE_BLEND
-#define DASHCAM_PREVIEW_USE_BLEND 1
+#define DASHCAM_PREVIEW_USE_BLEND 0
 #endif
 
 /* Camera-layer placement in the DPU framebuffer coordinate system. LVGL may use
@@ -1336,9 +1336,9 @@ static void dashcam_video_read_task(void *arg)
 #endif
 
         uint64_t read_t0 = bk_aon_rtc_get_us();
-        LOGD("read#%u: read_start (slot=%d)\n", (unsigned)(frame_count + 1), slot);
+        // LOGD("read#%u: read_start (slot=%d)\n", (unsigned)(frame_count + 1), slot);
         ret = dashcam_camera_read_preview(target, frame_size, DASHCAM_CAMERA_READ_TIMEOUT_MS);
-        LOGD("read#%u: read_done ret=%d\n", (unsigned)(frame_count + 1), ret);
+        // LOGD("read#%u: read_done ret=%d\n", (unsigned)(frame_count + 1), ret);
         if (ret == BK_OK)
         {
             s_dashcam_video.stats_read_us += bk_aon_rtc_get_us() - read_t0;

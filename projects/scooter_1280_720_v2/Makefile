@@ -1,4 +1,4 @@
-SDK_DIR = /home/shi.xiang/wps/DEBUG-SPACE/bk_solution_dashboard_dev_7259v2_bringup_25W4801/0624/avdk_smp
+SDK_DIR ?= $(abspath ../../../avdk)
 
 PROJECT_MAKE_FILE := $(SDK_DIR)/tools/build_tools/build_files/project_main.mk
 ifeq ($(wildcard $(PROJECT_MAKE_FILE)),)

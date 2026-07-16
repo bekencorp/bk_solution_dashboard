@@ -9,6 +9,7 @@
 
 #include "home_ui.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -186,6 +187,38 @@ static lv_obj_t *s_home_beat_canvas = NULL;
 static void *s_home_beat_canvas_buf = NULL;
 
 static void home_music_apply(void);
+
+static void home_ui_cancel_obj_anim(lv_obj_t *obj)
+{
+    if (obj != NULL && lv_obj_is_valid(obj))
+    {
+        lv_anim_delete(obj, NULL);
+    }
+}
+
+static void home_ui_cancel_home_anims(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (ui->home == NULL || !lv_obj_is_valid(ui->home))
+    {
+        return;
+    }
+
+    home_ui_cancel_obj_anim(ui->home_dash_entry);
+    home_ui_cancel_obj_anim(ui->home_dash_ic);
+    home_ui_cancel_obj_anim(ui->home_ota_entry);
+    home_ui_cancel_obj_anim(ui->home_ota_ic);
+    home_ui_cancel_obj_anim(ui->home_music_prog);
+}
+
+static void home_ui_clear_home_handles(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    size_t home_fields_size = offsetof(bk_lv_ui_t, nav_cast) - offsetof(bk_lv_ui_t, home);
+
+    memset(&ui->home, 0, home_fields_size);
+}
 
 static void speed_gauge_apply(void)
 {
@@ -1025,6 +1058,8 @@ void home_ui_enter(void)
 /* Delete the gauge + hazard timers. */
 void home_ui_leave(void)
 {
+    home_ui_cancel_home_anims();
+
     if (s_speed_timer)
     {
         lv_timer_delete(s_speed_timer);
@@ -1040,11 +1075,11 @@ void home_ui_leave(void)
 
 /*
  * The page manager is about to lv_obj_delete() the home screen. Deleting the
- * screen tree also deletes our child canvases, but the static handles to them
- * are not cleared automatically and the canvas backing buffers are user-owned
- * (LVGL never frees a lv_canvas_set_buffer() pointer). Stop the timers, null the
- * handles so nothing dangles, and free the buffers so nothing leaks. The next
- * home entry lazily recreates the screen (init_page_home + home_ui_install_bg).
+ * screen tree removes child LVGL objects, but the generated UI struct and our
+ * static canvas handles are not cleared automatically. Stop timers/animations,
+ * free user-owned canvas buffers, and clear all home-page object handles so a
+ * late async callback cannot touch stale LVGL objects. The next home entry
+ * lazily recreates the screen (init_page_home + home_ui_install_bg).
  *
  * Note: the preloaded background path (beken_ui_install_preloaded_bg) wraps a
  * globally-owned blob and leaves s_bg_canvas_buf NULL, so only the fallback
@@ -1067,4 +1102,6 @@ void home_ui_unload(void)
         os_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
     }
+
+    home_ui_clear_home_handles();
 }

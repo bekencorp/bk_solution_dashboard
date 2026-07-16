@@ -1,7 +1,7 @@
 include(${CMAKE_CURRENT_LIST_DIR}/beken_generated/beken_generated.cmake)
 
 set(MULTIMEDIA_DEVICE_SERVICE_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../../../avdk_smp/projects/common_components/multimedia_device_service
+    $ENV{ARMINO_TOOLS_PATH}/../projects/common_components/multimedia_device_service
 )
 
 set(incs .
@@ -19,8 +19,8 @@ set(srcs
     # Live-preview compositor: pick exactly ONE of the two below.
     #   dashcam_video.c    - CPU page-composite path (working software blend)
     #   dashcam_video_v2.c - GPU path via lv_camera_blend_process (this approach)
-    # dashcam/dashcam_video.c
-    dashcam/dashcam_video_v2.c
+    #   dashcam/dashcam_video_v2.c
+    dashcam/dashcam_video.c
     dashcam/dashcam_player.c
     dashcam/dashcam_recorder.c
     dashcam/dashcam_storage.c
@@ -42,7 +42,7 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
               jpeg_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
-              bk_video_recorder bk_video_player bk_encoder bk_h264d bk_h264e app)
+              bk_video_recorder bk_video_player bk_encoder app)
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")
 
