@@ -13,9 +13,6 @@ scooter_1280_720 开发指南
 MIPI DSI + DPU + LVGL 仪表显示、开机 AVI 播放、手机 JPEG 投屏、BLE / Wi-Fi 配网、
 经典蓝牙音频与多控制器蓝牙 等基础能力，是后续“前后双 UVC 双录产品”的开发底座。
 
-方案整体说明与需求范围请参考仓库根目录 `README_CN.md <../../README_CN.md>`_。
-另请参考 `需求设计说明书 <../../两轮车方案_BK7259_需求设计说明书.docx>`_。
-
 目录结构
 ------------
 
@@ -247,5 +244,5 @@ CLI 命令
 
 .. code-block:: text
 
-   widgets np_erase [reboot]        # 擦除已保存的 BLE 配网信息（可选擦除后重启）
-   widgets np_start_advertise       # 重新开始 BLE 配网广播
+   ap_cmd widgets np_erase [reboot]        # 擦除已保存的 BLE 配网信息（可选擦除后重启）
+   ap_cmd widgets np_start_advertise       # 重新开始 BLE 配网广播

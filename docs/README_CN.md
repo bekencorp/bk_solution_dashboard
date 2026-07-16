@@ -1,61 +1,78 @@
-两轮车demo
--------------------
+# Armino Dashboard 两轮车方案
 
-概述
--------------------
+- [English](./README.md)
 
-    此为两轮车解决方案，支持导航信息的投屏显示，语音导航/提示音的播放，支持1280X720的分辨率的行车记录仪功能。
-    由两块芯片搭配使用，一块为BK7258，负责音视频数据的处理；一块为BK3515N，负责蓝牙音频的传输。
+## 概述
 
-工程编译
--------------------
+本仓库是基于 Armino SMP 的 Dashboard 两轮车解决方案，当前主工程为
+[`projects/scooter_1280_720`](./projects/scooter_1280_720)，目标芯片为 BK7259。
 
-- 此工程依赖： ``bk_avdk_smp_main``。编译时需要下载 ``bk_avdk_smp_main`` 代码。
-- 编译方法：在两轮车方案下： ``./projects/scooter``，下编译。
-- 编译之前需要先修改Makefile文件（./projects/scooter/Makefile），将依赖的源码映射到bk_avdk_smp_main上，参考如下：
+方案采用 BK7259（AP，主控）+ BK3515N（蓝牙从控）双芯片架构，面向 1280x720 横屏仪表场景，当前已支持：
 
-.. code-block:: makefile
+- MIPI DSI + DPU + LVGL 仪表显示；
+- 开机 AVI 播放；
+- 手机 JPEG 投屏；
+- BLE / Wi-Fi 配网；
+- Wi-Fi 图传与 BLE 图传；
+- 经典蓝牙音频、导航语音与多控制器蓝牙；
+- SD 卡存储能力，为后续录像业务预留基础。
 
-    # 映射依赖的源码到bk_avdk_smp_main上
-    SDK_DIR ?= $(abspath ../..)
+## 目录结构
 
-    # change to
-    SDK_DIR = /home/user.name/bk_avdk_smp_main
+```text
+.
+├── components/                  # 显示、投屏、媒体、蓝牙、配网等方案组件
+├── docs/                        # Sphinx 文档
+├── projects/
+│   └── scooter_1280_720/        # 两轮车产品工程主入口
+├── README_CN.md
+├── README.md
+└── 两轮车方案_BK7259_需求设计说明书.docx
+```
 
-- 编译命令： ``make bk7258``
-- 上面是BK7258的编译命令，编译完成后，会生成bin文件件，路径： ``./projects/scooter/build/bk7258/scooter/package/all-app.bin``。
-- 烧录此固件到BK7258上。
+## 编译
 
-开机演示
-------------------------
+进入主工程目录，通过 docker 构建脚本编译 BK7259 固件：
 
-    开机默认LCD屏幕上显示LVGL动画（分辨率：480X272）。
+```bash
+cd projects/scooter_1280_720
+./dbuild.sh make bk7259
+```
 
+Windows PowerShell：
 
-导航演示
-------------------------
+```powershell
+cd projects/scooter_1280_720
+.\dbuild.ps1 make bk7259
+```
 
-1、连接蓝牙设备（如手机）到BK3515N上。
-2、发送命令，BK7258作为STA连接到手机热点，手机热点定义为： ``scooter``，密码为： ``12345678``。命令： ``ap_cmd test sta scooter 12345678``。
-3、连接成功后，打开手机上的导航软件，配置好ip地址，即可开始导航。
-4、LCD屏幕会自动从LVGL画面切到导航画面，导航语言会从BK7258的speaker中输出。
+构建脚本默认以仓库根目录作为 `SDK_DIR`。如 Armino SMP SDK 不在默认位置，可通过环境变量指定：
 
-支持导航画面和LVGL画面切换显示：
-- 发送命令： ``ap_cmd test switch lvgl``，即可从导航画面切换到LVGL画面。
-- 发送命令： ``ap_cmd test switch camera``，即可从LVGL画面切换到导航画面。
+```bash
+export SDK_DIR=/path/to/bk_avdk_smp
+./dbuild.sh make bk7259
+```
 
-行车记录仪
-------------------------
+编译产物位于工程 `build/` 目录下，请将生成的 BK7259 固件烧录到主控板。
 
-行车记录仪是通过UVC采集实时画面，并将其编码压缩成H.264格式数据，存储在SD卡中，默认每十分钟为一段。
+## 使用入口
 
-启动：
-1、发送命令： ``ap_cmd test uvc open 1280X720``，即可打开UVC且输出分辨率为1280X720。
-2、发送命令： ``ap_cmd test h264e open``，即可打开编码器，开始压缩数据。
-3、发送命令： ``ap_cmd test storage open test.h264``，即可打开存储器，开始存储数据到xxx_test.h264中
-4、上面xxx的范围是0-65535，默认每个文件存储10分钟的视频。
+主要文档：
 
-关闭：
-1、发送命令： ``ap_cmd test storage close``，即可关闭存储器。
-2、发送命令： ``ap_cmd test h264e close``，即可关闭编码器。
-3、发送命令： ``ap_cmd test uvc close``，即可关闭UVC。
+- [产品工程说明](./projects/scooter_1280_720/README_CN.md)
+- [中文文档入口](./docs/bk7259/zh_CN/index.rst)
+- [Dashboard App 使用指南](./docs/bk7259/zh_CN/projects/dashboard_app/index.rst)
+- [硬件参考](./docs/bk7259/zh_CN/hw-reference/index.rst)
+
+Dashboard App 支持 Wi-Fi 图传和 BLE 图传两种流程。请先在 App 配置中心选择 BK7259、图传方式和图像参数，保存后按文档步骤进行配网、搜索设备并启动导航投屏。
+
+## 文档构建
+
+如需本地生成 HTML 文档：
+
+```bash
+cd docs
+make doc
+```
+
+生成结果位于 `docs/bk7259/zh_CN/_build/latest` 与 `docs/bk7259/en/_build/latest`。

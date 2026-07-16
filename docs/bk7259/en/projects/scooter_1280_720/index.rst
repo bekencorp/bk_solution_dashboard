@@ -15,10 +15,6 @@ MIPI DSI + DPU + LVGL dashboard display, boot AVI playback, phone JPEG casting, 
 provisioning, classic Bluetooth audio and multi-controller Bluetooth, serving as the foundation for the
 upcoming "front/rear dual-UVC dual-recording" product.
 
-For the overall solution description and requirement scope, see the repository root
-`README.md <../../README.md>`_.
-See also the `design specification <../../两轮车方案_BK7259_需求设计说明书.docx>`_.
-
 Directory Layout
 --------------------
 
@@ -259,5 +255,5 @@ The project registers the ``widgets`` command (see ``cli_widgets_cmd``):
 
 .. code-block:: text
 
-   widgets np_erase [reboot]        # Erase saved BLE provisioning info (optionally reboot afterwards)
-   widgets np_start_advertise       # Restart BLE provisioning advertising
+   ap_cmd widgets np_erase [reboot]        # Erase saved BLE provisioning info (optionally reboot afterwards)
+   ap_cmd widgets np_start_advertise       # Restart BLE provisioning advertising

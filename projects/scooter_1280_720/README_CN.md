@@ -1,6 +1,6 @@
 # scooter_1280_720 开发指南
 
-* [English](./README.md)
+- [English](./README.md)
 
 ## 概述
 
@@ -9,8 +9,6 @@
 **MIPI DSI + DPU + LVGL 仪表显示、开机 AVI 播放、手机 JPEG 投屏、BLE / Wi-Fi 配网、
 经典蓝牙音频与多控制器蓝牙** 等基础能力，是后续“前后双 UVC 双录产品”的开发底座。
 
-> 方案整体说明与需求范围请参考仓库根目录 [README_CN.md](../../README_CN.md) 及
-> [需求设计说明书](../../两轮车方案_BK7259_需求设计说明书.docx)。
 
 ## 目录结构
 
@@ -30,6 +28,8 @@ scooter_1280_720/
 └── bk7259_bsp.ld             # 链接脚本
 ```
 
+
+
 ## 编译
 
 目标芯片为 `bk7259`，通过 docker 构建脚本编译：
@@ -44,30 +44,38 @@ cd projects/scooter_1280_720
 - 构建脚本默认以 `../..`（仓库根目录）作为 `SDK_DIR`，必要时可通过环境变量 `SDK_DIR` 指定。
 - 编译产物位于工程 `build/` 目录下，将对应固件烧录到 BK7259。
 
+
+
 ## 关键配置
 
 工程的可配置项主要集中在 `ap/config/bk7259_ap/defconfig` 与 `ap/Kconfig.projbuild`：
 
-| 配置 | 默认值 | 说明 |
-| --- | --- | --- |
-| `CONFIG_LCD_HX8394F_MIPI_720x1280` | y | MIPI DSI 屏型号（720x1280） |
-| `CONFIG_SCOOTER_LVGL_HOR_RES` / `VER_RES` | 720 / 1280 | LVGL framebuffer 分辨率 |
-| `CONFIG_SCOOTER_UI_ROTATION` | 270 | UI 旋转角度（旋转为横屏 1280x720） |
-| `CONFIG_SCOOTER_UI_CANVAS_WIDTH` / `HEIGHT` | 1280 / 720 | UI 设计器画布尺寸 |
-| `CONFIG_BLUETOOTH_MULTI_CONTROLLER` | y | 启用多控制器（BK3515 从控） |
-| `CONFIG_BK_BLE_PROVISIONING` | y | 启用 BLE 配网 |
-| `CONFIG_A2DP_SINK_DEMO` / `CONFIG_HFP_HF_DEMO` | y | 经典蓝牙音频 / 免提通话 |
-| `CONFIG_MEDIA_RECEIVE_DEMO` | y | 手机投屏 / SDP 发现 |
-| `CONFIG_FATFS_SDCARD` / `CONFIG_SDCARD` | y | SD 卡存储（开机媒体、录像） |
+
+| 配置                                             | 默认值        | 说明                      |
+| ---------------------------------------------- | ---------- | ----------------------- |
+| `CONFIG_LCD_HX8394F_MIPI_720x1280`             | y          | MIPI DSI 屏型号（720x1280）  |
+| `CONFIG_SCOOTER_LVGL_HOR_RES` / `VER_RES`      | 720 / 1280 | LVGL framebuffer 分辨率    |
+| `CONFIG_SCOOTER_UI_ROTATION`                   | 270        | UI 旋转角度（旋转为横屏 1280x720） |
+| `CONFIG_SCOOTER_UI_CANVAS_WIDTH` / `HEIGHT`    | 1280 / 720 | UI 设计器画布尺寸              |
+| `CONFIG_BLUETOOTH_MULTI_CONTROLLER`            | y          | 启用多控制器（BK3515 从控）       |
+| `CONFIG_BK_BLE_PROVISIONING`                   | y          | 启用 BLE 配网               |
+| `CONFIG_A2DP_SINK_DEMO` / `CONFIG_HFP_HF_DEMO` | y          | 经典蓝牙音频 / 免提通话           |
+| `CONFIG_MEDIA_RECEIVE_DEMO`                    | y          | 手机投屏 / SDP 发现           |
+| `CONFIG_FATFS_SDCARD` / `CONFIG_SDCARD`        | y          | SD 卡存储（开机媒体、录像）         |
+
 
 BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）：
 
-| 配置 | 默认值 |
-| --- | --- |
-| `CONFIG_BLUETOOTH_BSC_UART_ID` | 1 |
-| `CONFIG_BLUETOOTH_BSC_RESET_PIN` | 51 |
-| `CONFIG_BLUETOOTH_BSC_CTS_PIN` / `RTS_PIN` | 28 / 29 |
-| `CONFIG_BLUETOOTH_BSC_INIT_BAUD` / `NEGO_BAUD` | 115200 / 921600 |
+
+| 配置                                                                | 默认值             |
+| ----------------------------------------------------------------- | --------------- |
+| `CONFIG_BLUETOOTH_BSC_UART_ID`                                    | 1               |
+| `CONFIG_BLUETOOTH_BSC_RESET_PIN`                                  | 51              |
+| `CONFIG_BLUETOOTH_BSC_CTS_PIN` / `RTS_PIN`                        | 28 / 29         |
+| `CONFIG_BLUETOOTH_BSC_INIT_BAUD` / `NEGO_BAUD`                    | 115200 / 921600 |
+
+
+
 
 ## 启动流程
 
@@ -87,6 +95,8 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
 
 > 以下各小节标注的“涉及源文件”路径均相对于仓库根目录。
 
+
+
 ### 开机动画
 
 开机后在 `app_display_init()` 中、LVGL 启动之前调用 `boot_avi_play()`，从 SD 卡播放开机 AVI，
@@ -101,13 +111,15 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
 
 处理流程：
 
-1. `sdcard_mount()` 挂载 SD 卡，`f_stat()` 查找固定路径 `1:/boot.avi`（不存在则跳过开机动画）；
+1. `sdcard_mount()` 挂载 SD 卡，`f_stat()` 查找固定路径 1:/boot.avi（不存在则跳过开机动画）；
 2. 通过 `modules/avilib.h` 的 `AVI_open_input_file()` 解析 AVI，逐帧读取 MJPEG 数据；
 3. 帧兼容性修复：MJPEG 帧常缺少 DHT / QT1，硬件解码器（VCDEC）要求其存在，
    分别由 `jpeg_has_dht()` + 内置 `s_mjpeg_dht` 表与 `jpeg_inject_qt1_if_missing()` 补齐；
 4. 当 AVI 为竖屏（`avi_w == dpu_h && avi_h == dpu_w`）时，流水线设置 `rotate_degree = 90` 由 GPU 旋转；
 5. 解码帧经 `boot_frame_display_cb()` 调用 `bk_display_flush()` 上屏；播放期间 DPU 临时切到
    `ARGB8888 + decompress`（`dpu_switch_to_argb8888_decompress()`），结束后恢复（`dpu_restore_rgb565()`）。
+
+
 
 ### 手机投屏（JPEG）
 
@@ -137,6 +149,8 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
    调用 `av_server_jpeg_decode_manager_turn_off()` → `cast_jpeg_pipeline_turn_off()`，
    关闭投屏管线、恢复 LVGL 并重启 SDP 广播。
 
+
+
 ### BLE 配网与导航控制
 
 涉及源文件：
@@ -152,17 +166,19 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
 - BLE 配网支持手机发现设备、STA / AP / P2P 配置、Wi-Fi 扫描结果分包上报；
 - 复用 boarding 通道扩展导航投屏与文件传输，opcode 定义见 `network_provisioning.h`：
 
-  | Opcode | 枚举 | 功能 |
-  | --- | --- | --- |
-  | 50 | `BOARDING_OP_TRANSFER_FILE_CONTROL` | 文件传输控制（开始 / 停止 / 完成） |
-  | 51 | `BOARDING_OP_TRANSFER_FILE_DATA` | 按 packet num 传输文件分片 |
-  | 52 | `BOARDING_OP_NAVIGATION_CONTROL` | 导航投屏启动 / 停止 |
-  | 53 | `BOARDING_OP_NAVIGATION_TYPE_CONTROL` | 导航类型选择（BT / Wi-Fi） |
+  | Opcode | 枚举                                    | 功能                   |
+  | ------ | ------------------------------------- | -------------------- |
+  | 50     | `BOARDING_OP_TRANSFER_FILE_CONTROL`   | 文件传输控制（开始 / 停止 / 完成） |
+  | 51     | `BOARDING_OP_TRANSFER_FILE_DATA`      | 按 packet num 传输文件分片  |
+  | 52     | `BOARDING_OP_NAVIGATION_CONTROL`      | 导航投屏启动 / 停止          |
+  | 53     | `BOARDING_OP_NAVIGATION_TYPE_CONTROL` | 导航类型选择（BT / Wi-Fi）   |
 
 - opcode 52 由 `network_provisioning.c` 的 `handle_navigation_control_msg()` 处理，START / STOP 分别调用
   `av_server_jpeg_decode_manager_turn_on()` / `..._turn_off()`，与手机投屏复用同一条 JPEG 解码显示链路；
 - opcode 50/51 的文件传输由 `media_navigation_transfer_begin()` / `..._push()` / `..._cancel()` 承接
   （`media_navigation_transfer.c`）。
+
+
 
 ### 经典蓝牙音频
 
@@ -181,7 +197,10 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
 - HFP HF 免提通话（SCO，CVSD / mSBC），上行麦克风采集经 `blue_audio_recorder_service` 发送给手机，
   通话优先级高于 A2DP 背景音乐。
 
+
+
 ### 宠物 GIF
+
 `projects/scooter_1280_720/ap/beken_generated/pet_page.c` 支持从 SD 卡加载宠物 GIF 页面。
 
 ## CLI 命令
@@ -189,6 +208,7 @@ BK3515 从控 UART 链路相关引脚（默认值，可在 defconfig 调整）�
 工程注册了 `widgets` 命令（见 `cli_widgets_cmd`）：
 
 ```text
-widgets np_erase [reboot]        # 擦除已保存的 BLE 配网信息（可选擦除后重启）
-widgets np_start_advertise       # 重新开始 BLE 配网广播
+ap_cmd widgets np_erase [reboot]        # 擦除已保存的 BLE 配网信息（可选擦除后重启）
+ap_cmd widgets np_start_advertise       # 重新开始 BLE 配网广播
 ```
+
