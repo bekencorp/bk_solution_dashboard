@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "Blue Audio Recorder Service"
 
     config BLUE_AUDIO_RECORDER_SERVICE

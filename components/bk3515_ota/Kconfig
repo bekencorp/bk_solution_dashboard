@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "BK3515_OTA"
 
     config BK3515_OTA

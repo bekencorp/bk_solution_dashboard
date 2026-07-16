@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "Bluetooth_Dual"
 
     config A2DP_SINK_DEMO

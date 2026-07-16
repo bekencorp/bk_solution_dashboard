@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "Blue Audio Player Service"
 
 	config BLUE_AUDIO_PLAYER_SERVICE

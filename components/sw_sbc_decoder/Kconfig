@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "SW SBC Decoder"
 
 	config SW_SBC_DECODER

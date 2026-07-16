@@ -1,3 +1,4 @@
+# KCONFIG_GROUP: Solution & Product
 menu "BK_MP3_Play"
 
 	config MP3_PLAY
