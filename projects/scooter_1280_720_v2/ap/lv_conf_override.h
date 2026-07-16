@@ -18,11 +18,26 @@
 #undef LV_USE_FS_FATFS
 #define LV_USE_FS_FATFS 1
 
+/*
+ * Chinese glyphs are loaded at runtime from a TrueType file on the SD card
+ * (S:/simhei_new.ttf) via LVGL's tiny_ttf (stb_truetype) engine, so no CJK
+ * bitmap font is compiled into flash. Keep the built-in Source Han Sans SC CJK
+ * subsets disabled (unreferenced).
+ */
 #undef LV_FONT_SOURCE_HAN_SANS_SC_14_CJK
-#define LV_FONT_SOURCE_HAN_SANS_SC_14_CJK 1
+#define LV_FONT_SOURCE_HAN_SANS_SC_14_CJK 0
 
 #undef LV_FONT_SOURCE_HAN_SANS_SC_16_CJK
-#define LV_FONT_SOURCE_HAN_SANS_SC_16_CJK 1
+#define LV_FONT_SOURCE_HAN_SANS_SC_16_CJK 0
+
+/* Runtime TrueType rendering for Chinese track metadata (see home_ui.c). The
+ * .ttf is read once into PSRAM and built via lv_tiny_ttf_create_data, so the
+ * file-streaming path is not needed and LV_TINY_TTF_FILE_SUPPORT stays off. */
+#undef LV_USE_TINY_TTF
+#define LV_USE_TINY_TTF 1
+
+#undef LV_TINY_TTF_FILE_SUPPORT
+#define LV_TINY_TTF_FILE_SUPPORT 0
 
 #undef LV_FS_FATFS_LETTER
 #define LV_FS_FATFS_LETTER 'S'

@@ -12,7 +12,16 @@ extern "C" {
 
 #include <stdint.h>
 
-typedef void (*hfp_hf_phone_update_cb_t)(const char *number, uint8_t active, void *user_data);
+/** Phone call state reported to the UI. */
+typedef enum
+{
+    HFP_HF_CALL_NONE = 0, /**< No call / call ended. */
+    HFP_HF_CALL_INCOMING, /**< Incoming call, ringing. */
+    HFP_HF_CALL_OUTGOING, /**< Outgoing call, dialing or alerting. */
+    HFP_HF_CALL_ACTIVE,   /**< Call connected / in progress. */
+} hfp_hf_call_state_t;
+
+typedef void (*hfp_hf_phone_update_cb_t)(hfp_hf_call_state_t state, const char *number, void *user_data);
 
 typedef struct
 {

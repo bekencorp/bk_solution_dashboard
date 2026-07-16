@@ -10,6 +10,9 @@ extern void pet_page_toggle(void);
 #if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 extern void pet_page_enter(void);
 extern void pet_page_double(void);
+/* Phone-scenario control (GPIO_51), implemented in the scooter V2 app layer. */
+extern void phone_key_answer(void);
+extern void phone_key_hangup(void);
 #endif
 
 #define TAG "key_service"
@@ -91,6 +94,14 @@ static void key_event_handler(uint8_t event)
         case USER_PET_DOUBLE:
             LOGI("USER_PET_DOUBLE\r\n");
             pet_page_double();
+            break;
+        case USER_PHONE_ANSWER:
+            LOGI("USER_PHONE_ANSWER\r\n");
+            phone_key_answer();
+            break;
+        case USER_PHONE_HANGUP:
+            LOGI("USER_PHONE_HANGUP\r\n");
+            phone_key_hangup();
             break;
 #endif
         default:

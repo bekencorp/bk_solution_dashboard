@@ -9,7 +9,6 @@
 
 #include "home_ui.h"
 
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -21,6 +20,73 @@
 #include "components/bluetooth/bk_dm_avrcp_types.h"
 #include "a2dp_sink_demo.h"
 #include "hfp_hf_demo.h"
+
+/* Chinese track metadata (song title/artist) is rendered from a TrueType font
+ * via LVGL's tiny_ttf engine, so arbitrary Chinese displays without baking a
+ * CJK bitmap font into flash. On first home entry the whole .ttf is read once
+ * from the SD card into a PSRAM buffer and handed to tiny_ttf via create_data;
+ * after that the SD card is never touched again (no streaming, no open handle)
+ * and cache-miss glyphs rasterize straight from PSRAM. The buffer and font are
+ * kept for the process lifetime (create_data keeps a pointer into the buffer).
+ * If loading fails, the labels keep their designer default (Latin) font. */
+#define HOME_CN_TTF_PATH   "S:/simhei_new.ttf"
+#define HOME_CN_TTF_SIZE   32
+static lv_font_t *s_cn_font = NULL;
+static void *s_cn_font_buf = NULL;
+
+/* Read the whole TTF into PSRAM and build a tiny_ttf font from the buffer.
+ * Returns NULL on any failure (file missing, OOM, short read, parse error). */
+static lv_font_t *home_cn_font_load(void)
+{
+    lv_fs_file_t f;
+    uint32_t size = 0;
+    uint32_t rd = 0;
+    lv_font_t *font;
+
+    if (lv_fs_open(&f, HOME_CN_TTF_PATH, LV_FS_MODE_RD) != LV_FS_RES_OK)
+    {
+        BK_LOGE("home_ui", "open %s failed\n", HOME_CN_TTF_PATH);
+        return NULL;
+    }
+    lv_fs_seek(&f, 0, LV_FS_SEEK_END);
+    lv_fs_tell(&f, &size);
+    lv_fs_seek(&f, 0, LV_FS_SEEK_SET);
+    if (size == 0)
+    {
+        lv_fs_close(&f);
+        BK_LOGE("home_ui", "%s is empty\n", HOME_CN_TTF_PATH);
+        return NULL;
+    }
+
+    s_cn_font_buf = psram_malloc(size);
+    if (s_cn_font_buf == NULL)
+    {
+        lv_fs_close(&f);
+        BK_LOGE("home_ui", "psram_malloc(%u) for ttf failed\n", (unsigned)size);
+        return NULL;
+    }
+
+    if (lv_fs_read(&f, s_cn_font_buf, size, &rd) != LV_FS_RES_OK || rd != size)
+    {
+        lv_fs_close(&f);
+        psram_free(s_cn_font_buf);
+        s_cn_font_buf = NULL;
+        BK_LOGE("home_ui", "read %s short (%u/%u)\n", HOME_CN_TTF_PATH, (unsigned)rd, (unsigned)size);
+        return NULL;
+    }
+    lv_fs_close(&f);
+
+    /* create_data does NOT copy: it keeps a pointer into s_cn_font_buf, so the
+     * buffer must outlive the font (both are never freed). */
+    font = lv_tiny_ttf_create_data(s_cn_font_buf, size, HOME_CN_TTF_SIZE);
+    if (font == NULL)
+    {
+        psram_free(s_cn_font_buf);
+        s_cn_font_buf = NULL;
+        BK_LOGE("home_ui", "tiny_ttf parse %s failed\n", HOME_CN_TTF_PATH);
+    }
+    return font;
+}
 
 /*
  * The home background is a 1280x720 image. Two paths render it as a plain
@@ -130,17 +196,18 @@ static lv_timer_t *s_music_timer = NULL;
 
 #define HOME_MUSIC_DEFAULT_TITLE       "Electric Dreams"
 #define HOME_MUSIC_DEFAULT_ARTIST      "Neon Rider"
-#define HOME_MUSIC_DEFAULT_TAG         "NOW PLAYING"
-#define HOME_MUSIC_DIALING_TAG         "NOW DAILING"
+#define HOME_MUSIC_INCOMING_TAG        "INCOMING CALL"
+#define HOME_MUSIC_OUTGOING_TAG        "DIALING"
+#define HOME_MUSIC_ACTIVE_TAG          "IN CALL"
 #define HOME_MUSIC_TIMER_PERIOD_MS     200
-#define HOME_MUSIC_BEAT_MIN_HEIGHT     6
-#define HOME_MUSIC_BEAT_MAX_HEIGHT     26
+#define HOME_MUSIC_BEAT_MIN_HEIGHT     8
+#define HOME_MUSIC_BEAT_MAX_HEIGHT     84
 #define HOME_MUSIC_PANEL_X             435
 #define HOME_MUSIC_PANEL_Y             10
 #define HOME_MUSIC_BEAT_CANVAS_X       (HOME_MUSIC_PANEL_X + 20)
-#define HOME_MUSIC_BEAT_CANVAS_Y       (HOME_MUSIC_PANEL_Y + 70)
+#define HOME_MUSIC_BEAT_CANVAS_Y       (HOME_MUSIC_PANEL_Y + 12)
 #define HOME_MUSIC_BEAT_CANVAS_W       310
-#define HOME_MUSIC_BEAT_CANVAS_H       26
+#define HOME_MUSIC_BEAT_CANVAS_H       84
 #define HOME_MUSIC_BEAT_BAR_COUNT      20
 #define HOME_MUSIC_BEAT_BAR_W          8
 
@@ -153,7 +220,9 @@ typedef struct
     uint32_t position_ms;
     uint32_t progress_accum_ms;
     uint8_t playing;
-    uint8_t phone_active;
+    hfp_hf_call_state_t call_state;
+    uint32_t call_start_tick;
+    uint8_t call_timing;
     uint8_t beat_phase;
     uint8_t last_progress;
     uint8_t progress_valid;
@@ -176,7 +245,7 @@ typedef struct
 typedef struct
 {
     char number[40];
-    uint8_t active;
+    hfp_hf_call_state_t state;
 } home_music_phone_async_t;
 
 static home_music_state_t s_home_music = {
@@ -187,38 +256,6 @@ static lv_obj_t *s_home_beat_canvas = NULL;
 static void *s_home_beat_canvas_buf = NULL;
 
 static void home_music_apply(void);
-
-static void home_ui_cancel_obj_anim(lv_obj_t *obj)
-{
-    if (obj != NULL && lv_obj_is_valid(obj))
-    {
-        lv_anim_delete(obj, NULL);
-    }
-}
-
-static void home_ui_cancel_home_anims(void)
-{
-    bk_lv_ui_t *ui = &bk_lv_tool_ui;
-
-    if (ui->home == NULL || !lv_obj_is_valid(ui->home))
-    {
-        return;
-    }
-
-    home_ui_cancel_obj_anim(ui->home_dash_entry);
-    home_ui_cancel_obj_anim(ui->home_dash_ic);
-    home_ui_cancel_obj_anim(ui->home_ota_entry);
-    home_ui_cancel_obj_anim(ui->home_ota_ic);
-    home_ui_cancel_obj_anim(ui->home_music_prog);
-}
-
-static void home_ui_clear_home_handles(void)
-{
-    bk_lv_ui_t *ui = &bk_lv_tool_ui;
-    size_t home_fields_size = offsetof(bk_lv_ui_t, nav_cast) - offsetof(bk_lv_ui_t, home);
-
-    memset(&ui->home, 0, home_fields_size);
-}
 
 static void speed_gauge_apply(void)
 {
@@ -295,6 +332,88 @@ static bool home_music_obj_valid(lv_obj_t *obj)
     return obj != NULL && lv_obj_is_valid(obj);
 }
 
+static bool home_call_is_active(void)
+{
+    return s_home_music.call_state != HFP_HF_CALL_NONE;
+}
+
+/*
+ * The demo speed sweep and hazard double-flash are idle-screen eye-candy. While
+ * music is playing or any call is in progress, freeze both so they don't fight
+ * with the now-playing / call UI and stop burning redraws. They resume once the
+ * media / call scenario ends. Safe to call before the timers exist (no-op).
+ */
+static void home_speed_hazard_sync(void)
+{
+    bool suspend = s_home_music.playing || home_call_is_active();
+
+    if (s_speed_timer != NULL)
+    {
+        if (suspend)
+        {
+            lv_timer_pause(s_speed_timer);
+        }
+        else
+        {
+            lv_timer_resume(s_speed_timer);
+        }
+    }
+
+    if (s_hazard_timer != NULL)
+    {
+        if (suspend)
+        {
+            lv_timer_pause(s_hazard_timer);
+            /* Leave both indicators lit steady rather than frozen mid-blink-off. */
+            s_hazard_on = true;
+            hazard_blink_apply();
+        }
+        else
+        {
+            lv_timer_resume(s_hazard_timer);
+        }
+    }
+}
+
+/*
+ * Incoming-call popup title + number opacity control. The old attention blink
+ * is disabled (see home_call_blink_sync); these helpers now only keep the popup
+ * fully opaque and tear down any leftover timer.
+ */
+static lv_timer_t *s_call_blink_timer = NULL;
+
+static void home_call_blink_set_opa(lv_opa_t opa)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (home_music_obj_valid(ui->home_cp_title))
+    {
+        lv_obj_set_style_opa(ui->home_cp_title, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+    if (home_music_obj_valid(ui->home_cp_num))
+    {
+        lv_obj_set_style_opa(ui->home_cp_num, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
+static void home_call_blink_stop(void)
+{
+    if (s_call_blink_timer != NULL)
+    {
+        lv_timer_delete(s_call_blink_timer);
+        s_call_blink_timer = NULL;
+    }
+    home_call_blink_set_opa(LV_OPA_COVER);
+}
+
+static void home_call_blink_sync(void)
+{
+    /* Incoming-call attention blink is disabled per request: the popup title +
+     * number stay steady (fully opaque) instead of pulsing. Keep the timer
+     * stopped in every state. */
+    home_call_blink_stop();
+}
+
 static void home_music_set_label(lv_obj_t *label, const char *text)
 {
     if (home_music_obj_valid(label))
@@ -317,7 +436,7 @@ static uint16_t home_music_pack_rgb565(uint8_t r, uint8_t g, uint8_t b)
 }
 
 /* Alpha-blend a foreground color over the panel background (0x12091f) so the
- * canvas bars match the semi-transparent home_beat* objects in home_init.c. */
+ * canvas bars keep the same semi-transparent look on the music panel. */
 static uint16_t home_music_blend_rgb565(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
     const uint8_t bg_r = 0x12, bg_g = 0x09, bg_b = 0x1f;
@@ -326,30 +445,6 @@ static uint16_t home_music_blend_rgb565(uint8_t r, uint8_t g, uint8_t b, uint8_t
     uint8_t ob = (uint8_t)(((uint16_t)b * a + (uint16_t)bg_b * (255U - a)) / 255U);
 
     return home_music_pack_rgb565(or, og, ob);
-}
-
-static void home_music_hide_beat_objects(void)
-{
-    bk_lv_ui_t *ui = &bk_lv_tool_ui;
-    lv_obj_t *bars[] = {
-        ui->home_beat01, ui->home_beat02, ui->home_beat03, ui->home_beat04, ui->home_beat05,
-        ui->home_beat06, ui->home_beat07, ui->home_beat08, ui->home_beat09, ui->home_beat10,
-        ui->home_beat11, ui->home_beat12, ui->home_beat13, ui->home_beat14, ui->home_beat15,
-        ui->home_beat16, ui->home_beat17, ui->home_beat18, ui->home_beat19, ui->home_beat20,
-    };
-
-    if (home_music_obj_valid(ui->home_beat_panel))
-    {
-        lv_obj_add_flag(ui->home_beat_panel, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    for (size_t i = 0; i < sizeof(bars) / sizeof(bars[0]); ++i)
-    {
-        if (home_music_obj_valid(bars[i]))
-        {
-            lv_obj_add_flag(bars[i], LV_OBJ_FLAG_HIDDEN);
-        }
-    }
 }
 
 static bool home_music_beat_canvas_ready(void)
@@ -393,15 +488,14 @@ static bool home_music_beat_canvas_ready(void)
     lv_obj_set_pos(s_home_beat_canvas, HOME_MUSIC_BEAT_CANVAS_X, HOME_MUSIC_BEAT_CANVAS_Y);
     lv_obj_set_size(s_home_beat_canvas, HOME_MUSIC_BEAT_CANVAS_W, HOME_MUSIC_BEAT_CANVAS_H);
     lv_obj_remove_flag(s_home_beat_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    home_music_hide_beat_objects();
     return true;
 }
 
 static void home_music_apply_beat(void)
 {
-    static const uint8_t pattern[] = {4, 14, 7, 20, 10, 24, 8, 17, 9, 22, 6, 18, 12, 23, 8, 16, 10, 21, 7, 18};
+    static const uint8_t pattern[] = {16, 52, 28, 72, 38, 84, 30, 60, 34, 78, 22, 64, 44, 80, 30, 56, 38, 72, 28, 64};
     const uint16_t bg = home_music_pack_rgb565(0x12, 0x09, 0x1f);
-    /* Mirror the 6-color palette + per-bar opacity of home_beat01..home_beat20. */
+    /* 6-color gradient palette (blended over the panel bg) for the beat bars. */
     const uint16_t colors[] = {
         home_music_blend_rgb565(0x7c, 0x3a, 0xed, 204),
         home_music_blend_rgb565(0xa8, 0x55, 0xf7, 221),
@@ -468,6 +562,199 @@ static void home_music_apply_beat(void)
     lv_obj_invalidate(s_home_beat_canvas);
 }
 
+/* sin(angle_deg) scaled by 2^LV_TRIGO_SHIFT, with the angle reduced to [0,360)
+ * in 32-bit first so large/negative accumulators don't overflow int16_t. */
+static int32_t home_wave_sin(int32_t angle_deg)
+{
+    angle_deg %= 360;
+    if (angle_deg < 0)
+    {
+        angle_deg += 360;
+    }
+    return lv_trigo_sin((int16_t)angle_deg);
+}
+
+/*
+ * Call-scenario visualizer: an "electric current" waveform drawn on the same
+ * canvas the music beat bars use. Instead of jumping bars, a horizontal trace
+ * built from two summed sines scrolls across so it ripples like a live current /
+ * scope line. Driven by the same beat_phase counter (advanced once per frame).
+ */
+static void home_music_apply_wave(void)
+{
+    const uint16_t bg = home_music_pack_rgb565(0x12, 0x09, 0x1f);
+    const uint16_t core = home_music_blend_rgb565(0xd9, 0x46, 0xef, 255);
+    const uint16_t glow = home_music_blend_rgb565(0x7c, 0x3a, 0xed, 150);
+    const int32_t center = HOME_MUSIC_BEAT_CANVAS_H / 2;
+    const int32_t amp1 = (HOME_MUSIC_BEAT_MAX_HEIGHT / 2) - 6;
+    const int32_t amp2 = amp1 / 3;
+    uint16_t *buf;
+    int32_t phase = (int32_t)s_home_music.beat_phase;
+
+    if (!home_music_beat_canvas_ready())
+    {
+        return;
+    }
+
+    buf = (uint16_t *)s_home_beat_canvas_buf;
+    if (buf == NULL)
+    {
+        return;
+    }
+
+    for (uint32_t i = 0; i < HOME_MUSIC_BEAT_CANVAS_W * HOME_MUSIC_BEAT_CANVAS_H; ++i)
+    {
+        buf[i] = bg;
+    }
+
+    for (uint32_t x = 0; x < HOME_MUSIC_BEAT_CANVAS_W; ++x)
+    {
+        int32_t s1 = home_wave_sin((int32_t)x * 5 + phase * 26);
+        int32_t s2 = home_wave_sin((int32_t)x * 11 - phase * 34);
+        int32_t off = ((s1 * amp1) >> LV_TRIGO_SHIFT) + ((s2 * amp2) >> LV_TRIGO_SHIFT);
+        /* Draw the trace and its vertical mirror around the center line so the
+         * waveform is symmetric top/bottom. */
+        int32_t ys[2] = { center + off, center - off };
+
+        for (uint32_t k = 0; k < 2; ++k)
+        {
+            for (int32_t t = -1; t <= 1; ++t)
+            {
+                int32_t yy = ys[k] + t;
+                uint16_t c = (t == 0) ? core : glow;
+
+                if (yy < 0 || yy >= HOME_MUSIC_BEAT_CANVAS_H)
+                {
+                    continue;
+                }
+                buf[yy * HOME_MUSIC_BEAT_CANVAS_W + x] = c;
+            }
+        }
+    }
+
+    s_home_music.beat_phase++;
+    lv_obj_invalidate(s_home_beat_canvas);
+}
+
+/*
+ * Now-playing panel (song icon + title + artist): shown while music is playing,
+ * hidden otherwise. The left panel is the opposite: it takes that space when no
+ * music is playing and is hidden while the now-playing panel is up.
+ */
+static void home_np_panel_sync(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (home_music_obj_valid(ui->home_np_panel))
+    {
+        if (s_home_music.playing)
+        {
+            lv_obj_remove_flag(ui->home_np_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(ui->home_np_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (home_music_obj_valid(ui->home_left_panel))
+    {
+        if (s_home_music.playing)
+        {
+            lv_obj_add_flag(ui->home_left_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_remove_flag(ui->home_left_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/*
+ * Call popup: shown ONLY while an incoming call is ringing. The state text goes
+ * to home_cp_title and the remote number to home_cp_num. Answered calls move to
+ * home_oncall_card; outgoing / other states show nothing here.
+ */
+static void home_call_popup_apply(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (!home_music_obj_valid(ui->home_call_popup))
+    {
+        return;
+    }
+
+    if (s_home_music.call_state != HFP_HF_CALL_INCOMING)
+    {
+        lv_obj_add_flag(ui->home_call_popup, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    home_music_set_label(ui->home_cp_title, HOME_MUSIC_INCOMING_TAG);
+    home_music_set_label(ui->home_cp_num,
+                         s_home_music.phone_number[0] ? s_home_music.phone_number : "UNKNOWN");
+    lv_obj_remove_flag(ui->home_call_popup, LV_OBJ_FLAG_HIDDEN);
+}
+
+/*
+ * On-call card: shown ONLY once the call is answered (active). Displays the
+ * remote number (or a generic status when unknown) plus the elapsed call time.
+ * Hidden for every other call state, including incoming/outgoing.
+ *
+ * The generated home_oc_timer label is registered as a global "digital clock"
+ * (shared wall-clock, see basic_callback.c). That is useless as a call timer and
+ * would overwrite our text every second, so on the first active tick we detach
+ * it from the global clock and drive it ourselves from a per-call tick anchor.
+ */
+static void home_oncall_card_apply(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    uint32_t elapsed_s;
+    char timer_text[16];
+
+    if (!home_music_obj_valid(ui->home_oncall_card))
+    {
+        return;
+    }
+
+    if (s_home_music.call_state != HFP_HF_CALL_ACTIVE)
+    {
+        s_home_music.call_timing = 0;
+        lv_obj_add_flag(ui->home_oncall_card, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    if (!s_home_music.call_timing)
+    {
+        s_home_music.call_timing = 1;
+        s_home_music.call_start_tick = lv_tick_get();
+        if (home_music_obj_valid(ui->home_oc_timer))
+        {
+            lv_digital_clock_unregister(ui->home_oc_timer);
+        }
+    }
+
+    elapsed_s = lv_tick_elaps(s_home_music.call_start_tick) / 1000U;
+    if (elapsed_s >= 3600U)
+    {
+        snprintf(timer_text, sizeof(timer_text), "%lu:%02lu:%02lu",
+                 (unsigned long)(elapsed_s / 3600U),
+                 (unsigned long)((elapsed_s % 3600U) / 60U),
+                 (unsigned long)(elapsed_s % 60U));
+    }
+    else
+    {
+        snprintf(timer_text, sizeof(timer_text), "%02lu:%02lu",
+                 (unsigned long)(elapsed_s / 60U),
+                 (unsigned long)(elapsed_s % 60U));
+    }
+
+    home_music_set_label(ui->home_oc_title,
+                         s_home_music.phone_number[0] ? s_home_music.phone_number : HOME_MUSIC_ACTIVE_TAG);
+    home_music_set_label(ui->home_oc_timer, timer_text);
+    lv_obj_remove_flag(ui->home_oncall_card, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void home_music_apply(void)
 {
     bk_lv_ui_t *ui = &bk_lv_tool_ui;
@@ -480,27 +767,20 @@ static void home_music_apply(void)
         return;
     }
 
-    if (s_home_music.phone_active)
-    {
-        title = s_home_music.phone_number[0] ? s_home_music.phone_number : "UNKNOWN NUMBER";
-        artist = "PHONE CALL";
-        home_music_set_label(ui->home_music_tag, HOME_MUSIC_DIALING_TAG);
-    }
-    else
-    {
-        home_music_set_label(ui->home_music_tag, HOME_MUSIC_DEFAULT_TAG);
-    }
+    home_np_panel_sync();
+    home_call_popup_apply();
+    home_oncall_card_apply();
 
     home_music_set_label(ui->home_song_title, title);
     home_music_set_label(ui->home_song_artist, artist);
 
-    if (!s_home_music.phone_active &&
+    if (!home_call_is_active() &&
         s_home_music.duration_ms > 0 &&
         s_home_music.position_ms < s_home_music.duration_ms)
     {
         progress = (uint32_t)(((uint64_t)s_home_music.position_ms * 100ULL) / s_home_music.duration_ms);
     }
-    else if (!s_home_music.phone_active &&
+    else if (!home_call_is_active() &&
              s_home_music.duration_ms > 0 &&
              s_home_music.position_ms >= s_home_music.duration_ms)
     {
@@ -517,14 +797,22 @@ static void home_music_apply(void)
         }
     }
 
-    home_music_apply_beat();
+    /* Phone scenario -> electric-current waveform; music/idle -> beat bars. */
+    if (home_call_is_active())
+    {
+        home_music_apply_wave();
+    }
+    else
+    {
+        home_music_apply_beat();
+    }
 }
 
 static void home_music_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
 
-    if (s_home_music.playing && !s_home_music.phone_active)
+    if (s_home_music.playing && !home_call_is_active())
     {
         s_home_music.progress_accum_ms += HOME_MUSIC_TIMER_PERIOD_MS;
         while (s_home_music.progress_accum_ms >= 1000)
@@ -556,7 +844,12 @@ static void home_music_stop_timer(void)
 
 static void home_music_sync_timer(void)
 {
-    if (s_home_music.playing && !s_home_music.phone_active)
+    /* Keep the periodic timer running for: music playback progress + beat bars,
+     * the elapsed-time counter while a call is active, and the electric-current
+     * waveform for any call state (incoming / dialing / active). */
+    bool need_timer = s_home_music.playing || home_call_is_active();
+
+    if (need_timer)
     {
         if (s_music_timer == NULL)
         {
@@ -621,9 +914,11 @@ static void home_music_update_async_cb(void *user_data)
     }
 
     s_home_music.progress_accum_ms = 0;
-    s_home_music.phone_active = 0;
+    s_home_music.call_state = HFP_HF_CALL_NONE;
+    home_call_blink_sync();
 
     home_music_sync_timer();
+    home_speed_hazard_sync();
     home_music_apply();
     os_free(update);
 }
@@ -637,18 +932,24 @@ static void home_music_phone_async_cb(void *user_data)
         return;
     }
 
-    s_home_music.phone_active = update->active ? 1 : 0;
+    s_home_music.call_state = update->state;
     if (update->number[0] != '\0')
     {
         snprintf(s_home_music.phone_number, sizeof(s_home_music.phone_number), "%s", update->number);
     }
-    if (s_home_music.phone_active)
+    else if (update->state == HFP_HF_CALL_NONE)
+    {
+        s_home_music.phone_number[0] = '\0';
+    }
+    if (home_call_is_active())
     {
         s_home_music.playing = 0;
         s_home_music.progress_accum_ms = 0;
     }
 
+    home_call_blink_sync();
     home_music_sync_timer();
+    home_speed_hazard_sync();
     home_music_apply();
     os_free(update);
 }
@@ -667,7 +968,7 @@ static void home_music_position_async_cb(void *user_data)
         return;
     }
 
-    if (!s_home_music.phone_active)
+    if (!home_call_is_active())
     {
         s_home_music.position_ms = *position_ms;
         if (s_home_music.duration_ms > 0 &&
@@ -931,7 +1232,7 @@ static void home_music_set_position(uint32_t position_ms)
     lv_async_call(home_music_position_async_cb, async_pos);
 }
 
-static void home_phone_update(const char *number, uint8_t active)
+static void home_phone_update(hfp_hf_call_state_t state, const char *number)
 {
     home_music_phone_async_t *update = (home_music_phone_async_t *)os_zalloc(sizeof(*update));
 
@@ -944,7 +1245,7 @@ static void home_phone_update(const char *number, uint8_t active)
     {
         snprintf(update->number, sizeof(update->number), "%s", number);
     }
-    update->active = active ? 1 : 0;
+    update->state = state;
 
     lv_async_call(home_music_phone_async_cb, update);
 }
@@ -996,10 +1297,10 @@ static void home_ui_bt_a2dp_event_cb(a2dp_sink_ui_event_t event,
     }
 }
 
-static void home_ui_bt_phone_update_cb(const char *number, uint8_t active, void *user_data)
+static void home_ui_bt_phone_update_cb(hfp_hf_call_state_t state, const char *number, void *user_data)
 {
     (void)user_data;
-    home_phone_update(number, active);
+    home_phone_update(state, number);
 }
 
 void home_ui_register_bt_callbacks(void)
@@ -1015,6 +1316,24 @@ void home_ui_register_bt_callbacks(void)
 
     a2dp_sink_demo_register_ui_callback(&a2dp_callbacks);
     hfp_hf_demo_register_ui_callback(&hfp_callbacks);
+}
+
+/*
+ * Physical phone-control key (GPIO_5) hooks, called from key_app_service.c:
+ * short press answers, double press hangs up / rejects. These issue the HFP
+ * command directly (thread-safe, just posts a BT message), so no LVGL context is
+ * needed here; the popup / on-call card update when the resulting call-state
+ * change is reported back through home_phone_update(). On-screen call buttons are
+ * intentionally not wired up: call control is handled by the physical key.
+ */
+void phone_key_answer(void)
+{
+    hfp_demo_answer(1);
+}
+
+void phone_key_hangup(void)
+{
+    hfp_demo_answer(0);
 }
 
 /* Create the gauge + hazard timers (idempotent). */
@@ -1050,16 +1369,52 @@ void home_ui_enter(void)
     hazard_blink_apply();
     s_hazard_timer = lv_timer_create(hazard_blink_timer_cb, HAZARD_BLINK_PERIOD_MS, NULL);
 
+    /* If we re-entered mid-call, the page tree was rebuilt and home_oc_timer got
+     * re-registered into the global digital clock (home_init.c). Detach it again
+     * so our per-call elapsed counter (anchored at call_start_tick, preserved
+     * across the reload) is not overwritten by the shared wall clock. */
+    if (s_home_music.call_state == HFP_HF_CALL_ACTIVE &&
+        home_music_obj_valid(ui->home_oc_timer))
+    {
+        lv_digital_clock_unregister(ui->home_oc_timer);
+    }
+
+    /* The designer assigns Latin-only Montserrat to the song title/artist, so
+     * Chinese track metadata renders blank. Load a TrueType font from the SD
+     * card once and apply it so arbitrary Chinese displays. Kept here (not in
+     * the generated home_init.c) so a future regenerate does not clobber it. */
+    if (s_cn_font == NULL)
+    {
+        s_cn_font = home_cn_font_load();
+        if (s_cn_font == NULL)
+        {
+            BK_LOGE("home_ui", "load %s failed, CN glyphs stay blank\n", HOME_CN_TTF_PATH);
+        }
+    }
+    if (s_cn_font != NULL)
+    {
+        if (home_music_obj_valid(ui->home_song_title))
+        {
+            lv_obj_set_style_text_font(ui->home_song_title, s_cn_font,
+                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        if (home_music_obj_valid(ui->home_song_artist))
+        {
+            lv_obj_set_style_text_font(ui->home_song_artist, s_cn_font,
+                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+    }
+
     s_home_music.progress_valid = 0;
     home_music_apply();
     home_music_sync_timer();
+    home_speed_hazard_sync();
+    home_call_blink_sync();
 }
 
 /* Delete the gauge + hazard timers. */
 void home_ui_leave(void)
 {
-    home_ui_cancel_home_anims();
-
     if (s_speed_timer)
     {
         lv_timer_delete(s_speed_timer);
@@ -1071,15 +1426,16 @@ void home_ui_leave(void)
         s_hazard_timer = NULL;
     }
     home_music_stop_timer();
+    home_call_blink_stop();
 }
 
 /*
  * The page manager is about to lv_obj_delete() the home screen. Deleting the
- * screen tree removes child LVGL objects, but the generated UI struct and our
- * static canvas handles are not cleared automatically. Stop timers/animations,
- * free user-owned canvas buffers, and clear all home-page object handles so a
- * late async callback cannot touch stale LVGL objects. The next home entry
- * lazily recreates the screen (init_page_home + home_ui_install_bg).
+ * screen tree also deletes our child canvases, but the static handles to them
+ * are not cleared automatically and the canvas backing buffers are user-owned
+ * (LVGL never frees a lv_canvas_set_buffer() pointer). Stop the timers, null the
+ * handles so nothing dangles, and free the buffers so nothing leaks. The next
+ * home entry lazily recreates the screen (init_page_home + home_ui_install_bg).
  *
  * Note: the preloaded background path (beken_ui_install_preloaded_bg) wraps a
  * globally-owned blob and leaves s_bg_canvas_buf NULL, so only the fallback
@@ -1102,6 +1458,4 @@ void home_ui_unload(void)
         os_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
     }
-
-    home_ui_clear_home_handles();
 }

@@ -89,12 +89,58 @@ void hfp_hf_demo_register_ui_callback(const hfp_hf_ui_callback_t *callback)
     }
 }
 
-static void hfp_ui_emit_phone_state(const char *number, uint8_t active)
+/*
+ * Track the raw HFP indicators so we can derive a single high-level call state
+ * for the UI. The call activity indicator (+CIEV call) tells us an active call,
+ * the call setup indicator distinguishes incoming vs outgoing, and CLIP carries
+ * the remote number for an incoming call.
+ */
+static uint8_t s_call_activity = 0; /* BK_HF_CALL_STATUS_* from CALL_IND */
+static uint8_t s_call_setup = 0;    /* BK_HF_CALL_SETUP_STATUS_* from CALL_SETUP_IND */
+static char s_call_number[32] = {0};
+
+static hfp_hf_call_state_t hfp_derive_call_state(void)
 {
+    if (s_call_activity == BK_HF_CALL_STATUS_CALL_IN_PROGRESS)
+    {
+        return HFP_HF_CALL_ACTIVE;
+    }
+    if (s_call_setup == BK_HF_CALL_SETUP_STATUS_INCOMING)
+    {
+        return HFP_HF_CALL_INCOMING;
+    }
+    if (s_call_setup == BK_HF_CALL_SETUP_STATUS_OUTGOING_DIALING ||
+        s_call_setup == BK_HF_CALL_SETUP_STATUS_OUTGOING_ALERTING)
+    {
+        return HFP_HF_CALL_OUTGOING;
+    }
+    return HFP_HF_CALL_NONE;
+}
+
+static void hfp_ui_sync_phone_state(void)
+{
+    hfp_hf_call_state_t state = hfp_derive_call_state();
+    const char *number = (state == HFP_HF_CALL_NONE || s_call_number[0] == '\0') ? NULL : s_call_number;
+
+    LOGI("hfp ui state=%d number=%s\n", state, number ? number : "");
+
     if (s_ui_callback.phone_update != NULL)
     {
-        s_ui_callback.phone_update(number, active, s_ui_callback.user_data);
+        s_ui_callback.phone_update(state, number, s_ui_callback.user_data);
     }
+
+    if (state == HFP_HF_CALL_NONE)
+    {
+        s_call_number[0] = '\0';
+    }
+}
+
+static void hfp_ui_reset_phone_state(void)
+{
+    s_call_activity = 0;
+    s_call_setup = 0;
+    s_call_number[0] = '\0';
+    hfp_ui_sync_phone_state();
 }
 
 int bt_audio_hf_demo_task_init(void);
@@ -327,7 +373,7 @@ static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
 
         case BK_HFP_HF_EVT_DISCONNECTED:
             s_hfp_status_mach = HFP_STATUS_IDLE;
-            hfp_ui_emit_phone_state(NULL, 0);
+            hfp_ui_reset_phone_state();
             break;
 
         case BK_HFP_HF_EVT_AUDIO_CONNECTED:
@@ -388,21 +434,34 @@ static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
         {
             bk_hfp_hf_call_info_t *call = (bk_hfp_hf_call_info_t *)arg;
             LOGI("+CALL_IND: HFP call activity indicator: %d\n", call->status);
-            hfp_ui_emit_phone_state(NULL, call->status ? 1 : 0);
+            s_call_activity = call->status;
+            hfp_ui_sync_phone_state();
         }
         break;
         case BK_HFP_HF_EVT_CALL_SETUP_IND:
         {
             bk_hfp_hf_call_setup_info_t *call_setup = (bk_hfp_hf_call_setup_info_t *)arg;
             LOGI("+CALL_SETUP_IND: HFP call setup indicator: %d\n", call_setup->status);
-            hfp_ui_emit_phone_state(NULL, (call_setup->status) ? 1 : 0);
+            s_call_setup = call_setup->status;
+            hfp_ui_sync_phone_state();
         }
         break;
         case BK_HFP_HF_EVT_CLIP:
         {
             bk_hfp_hf_clip_info_t *clip = (bk_hfp_hf_clip_info_t *)arg;
             LOGI("+CLIP: HFP calling line number: %s, name:%s \n", clip->number, clip->name);
-            hfp_ui_emit_phone_state(clip->number, 1);
+            if (clip->number != NULL)
+            {
+                os_strncpy(s_call_number, clip->number, sizeof(s_call_number) - 1);
+                s_call_number[sizeof(s_call_number) - 1] = '\0';
+            }
+            /* CLIP only arrives for incoming calls; make sure state reflects that. */
+            if (s_call_activity != BK_HF_CALL_STATUS_CALL_IN_PROGRESS &&
+                s_call_setup == BK_HF_CALL_SETUP_STATUS_IDLE)
+            {
+                s_call_setup = BK_HF_CALL_SETUP_STATUS_INCOMING;
+            }
+            hfp_ui_sync_phone_state();
         }
         break;
         default:
