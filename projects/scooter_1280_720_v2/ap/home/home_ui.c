@@ -31,6 +31,12 @@
  * If loading fails, the labels keep their designer default (Latin) font. */
 #define HOME_CN_TTF_PATH   "S:/simhei_new.ttf"
 #define HOME_CN_TTF_SIZE   32
+/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT
+ * = 256) is an LRU by glyph COUNT; at 32px each CJK bitmap is ~1KB, so 256 of
+ * them (~300KB, all in the HSRAM heap) exhausts HSRAM while music lyrics scroll
+ * through many unique characters. 64 covers the on-screen set (title + artist +
+ * a lyrics line) and bounds HSRAM use to roughly ~64KB. */
+#define HOME_CN_TTF_GLYPH_CACHE_CNT 64
 static lv_font_t *s_cn_font = NULL;
 static void *s_cn_font_buf = NULL;
 
@@ -77,8 +83,11 @@ static lv_font_t *home_cn_font_load(void)
     lv_fs_close(&f);
 
     /* create_data does NOT copy: it keeps a pointer into s_cn_font_buf, so the
-     * buffer must outlive the font (both are never freed). */
-    font = lv_tiny_ttf_create_data(s_cn_font_buf, size, HOME_CN_TTF_SIZE);
+     * buffer must outlive the font (both are never freed). Use the _ex variant
+     * to cap the glyph cache (default 256 blows the HSRAM heap, see above). */
+    font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, size, HOME_CN_TTF_SIZE,
+                                      LV_FONT_KERNING_NORMAL,
+                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
     if (font == NULL)
     {
         psram_free(s_cn_font_buf);
@@ -338,44 +347,6 @@ static bool home_call_is_active(void)
 }
 
 /*
- * The demo speed sweep and hazard double-flash are idle-screen eye-candy. While
- * music is playing or any call is in progress, freeze both so they don't fight
- * with the now-playing / call UI and stop burning redraws. They resume once the
- * media / call scenario ends. Safe to call before the timers exist (no-op).
- */
-static void home_speed_hazard_sync(void)
-{
-    bool suspend = s_home_music.playing || home_call_is_active();
-
-    if (s_speed_timer != NULL)
-    {
-        if (suspend)
-        {
-            lv_timer_pause(s_speed_timer);
-        }
-        else
-        {
-            lv_timer_resume(s_speed_timer);
-        }
-    }
-
-    if (s_hazard_timer != NULL)
-    {
-        if (suspend)
-        {
-            lv_timer_pause(s_hazard_timer);
-            /* Leave both indicators lit steady rather than frozen mid-blink-off. */
-            s_hazard_on = true;
-            hazard_blink_apply();
-        }
-        else
-        {
-            lv_timer_resume(s_hazard_timer);
-        }
-    }
-}
-
-/*
  * Incoming-call popup title + number opacity control. The old attention blink
  * is disabled (see home_call_blink_sync); these helpers now only keep the popup
  * fully opaque and tear down any leftover timer.
@@ -465,7 +436,10 @@ static bool home_music_beat_canvas_ready(void)
     s_home_beat_canvas = NULL;
     if (s_home_beat_canvas_buf == NULL)
     {
-        s_home_beat_canvas_buf = os_malloc(buf_size);
+        /* Keep this ~51KB canvas out of the tight SRAM heap: allocate it in PSRAM
+         * (plenty free), matching the background canvas. Fast enough for the
+         * small per-frame redraw. */
+        s_home_beat_canvas_buf = psram_malloc(buf_size);
         if (s_home_beat_canvas_buf == NULL)
         {
             return false;
@@ -475,7 +449,7 @@ static bool home_music_beat_canvas_ready(void)
     s_home_beat_canvas = lv_canvas_create(ui->home_bottom_bar);
     if (s_home_beat_canvas == NULL)
     {
-        os_free(s_home_beat_canvas_buf);
+        psram_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
         return false;
     }
@@ -918,7 +892,6 @@ static void home_music_update_async_cb(void *user_data)
     home_call_blink_sync();
 
     home_music_sync_timer();
-    home_speed_hazard_sync();
     home_music_apply();
     os_free(update);
 }
@@ -949,7 +922,6 @@ static void home_music_phone_async_cb(void *user_data)
 
     home_call_blink_sync();
     home_music_sync_timer();
-    home_speed_hazard_sync();
     home_music_apply();
     os_free(update);
 }
@@ -1408,7 +1380,6 @@ void home_ui_enter(void)
     s_home_music.progress_valid = 0;
     home_music_apply();
     home_music_sync_timer();
-    home_speed_hazard_sync();
     home_call_blink_sync();
 }
 
@@ -1455,7 +1426,7 @@ void home_ui_unload(void)
     s_home_beat_canvas = NULL;
     if (s_home_beat_canvas_buf != NULL)
     {
-        os_free(s_home_beat_canvas_buf);
+        psram_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
     }
 }
