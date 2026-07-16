@@ -194,14 +194,22 @@ BLE 配网与导航控制
 能力说明：
 
 - BLE 配网支持手机发现设备、STA / AP / P2P 配置、Wi-Fi 扫描结果分包上报；
-- 复用 boarding 通道扩展导航投屏与文件传输，opcode 定义见 ``network_provisioning.h``：
+- 复用 boarding 通道扩展导航投屏与文件传输，opcode 定义见 ``network_provisioning.h``。
 
-  | Opcode | 枚举                                    | 功能                   |
-  | ------ | ------------------------------------- | -------------------- |
-  | 50     | `BOARDING_OP_TRANSFER_FILE_CONTROL`   | 文件传输控制（开始 / 停止 / 完成） |
-  | 51     | `BOARDING_OP_TRANSFER_FILE_DATA`      | 按 packet num 传输文件分片  |
-  | 52     | `BOARDING_OP_NAVIGATION_CONTROL`      | 导航投屏启动 / 停止          |
-  | 53     | `BOARDING_OP_NAVIGATION_TYPE_CONTROL` | 导航类型选择（BT / Wi-Fi）   |
+opcode 定义：
+
++--------+-----------------------------------------+------------------------------------+
+| Opcode | 枚举                                    | 功能                               |
++========+=========================================+====================================+
+| 50     | ``BOARDING_OP_TRANSFER_FILE_CONTROL``   | 文件传输控制（开始 / 停止 / 完成） |
++--------+-----------------------------------------+------------------------------------+
+| 51     | ``BOARDING_OP_TRANSFER_FILE_DATA``      | 按 packet num 传输文件分片         |
++--------+-----------------------------------------+------------------------------------+
+| 52     | ``BOARDING_OP_NAVIGATION_CONTROL``      | 导航投屏启动 / 停止                |
++--------+-----------------------------------------+------------------------------------+
+| 53     | ``BOARDING_OP_NAVIGATION_TYPE_CONTROL`` | 导航类型选择（BT / Wi-Fi）         |
++--------+-----------------------------------------+------------------------------------+
+
 
 - opcode 52 由 ``network_provisioning.c`` 的 ``handle_navigation_control_msg()`` 处理，START / STOP 分别调用
   ``av_server_jpeg_decode_manager_turn_on()`` / ``..._turn_off()``，与手机投屏复用同一条 JPEG 解码显示链路；

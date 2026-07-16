@@ -205,14 +205,22 @@ Source files:
 Capabilities:
 
 - BLE provisioning supports device discovery, STA / AP / P2P configuration and chunked Wi-Fi scan reporting;
-- Navigation casting and file transfer are extended over the boarding channel; opcodes are defined in ``network_provisioning.h``:
+- Navigation casting and file transfer are extended over the boarding channel; opcodes are defined in ``network_provisioning.h``.
 
-  | Opcode | Enum | Function |
-  | --- | --- | --- |
-  | 50 | `BOARDING_OP_TRANSFER_FILE_CONTROL` | File transfer control (start / stop / complete) |
-  | 51 | `BOARDING_OP_TRANSFER_FILE_DATA` | File chunk transfer by packet num |
-  | 52 | `BOARDING_OP_NAVIGATION_CONTROL` | Navigation casting start / stop |
-  | 53 | `BOARDING_OP_NAVIGATION_TYPE_CONTROL` | Navigation type selection (BT / Wi-Fi) |
+Opcode definitions:
+
++--------+-----------------------------------------+-------------------------------------------------+
+| Opcode | Enum                                    | Function                                        |
++========+=========================================+=================================================+
+| 50     | ``BOARDING_OP_TRANSFER_FILE_CONTROL``   | File transfer control (start / stop / complete) |
++--------+-----------------------------------------+-------------------------------------------------+
+| 51     | ``BOARDING_OP_TRANSFER_FILE_DATA``      | File chunk transfer by packet num               |
++--------+-----------------------------------------+-------------------------------------------------+
+| 52     | ``BOARDING_OP_NAVIGATION_CONTROL``      | Navigation casting start / stop                 |
++--------+-----------------------------------------+-------------------------------------------------+
+| 53     | ``BOARDING_OP_NAVIGATION_TYPE_CONTROL`` | Navigation type selection (BT / Wi-Fi)          |
++--------+-----------------------------------------+-------------------------------------------------+
+
 
 - Opcode 52 is handled by ``handle_navigation_control_msg()`` in ``network_provisioning.c``; START / STOP
   respectively call ``av_server_jpeg_decode_manager_turn_on()`` / ``..._turn_off()``, reusing the same JPEG

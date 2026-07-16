@@ -9,7 +9,7 @@ dashboard app使用指南
 
 扫描二维码，下载安装。
 
-.. figure:: ../../../_static/dashboard_app/download_qr_code.png
+.. figure:: ../../../_static/dashboard_app/download_qr_code_v2.png
    :alt: downlaod_qr_code
    :width: 30%
    
