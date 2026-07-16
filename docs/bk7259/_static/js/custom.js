@@ -6,7 +6,7 @@ var sdkList = [
         "name" : "bk7259",
         "lang" : [ "zh-cn" ],
         "version" : [
-            "4.0.1"
+            "v4.0.1"
         ]
     }
 ]
@@ -34,7 +34,7 @@ function buildMultiVersionSelector()
 
     var target = urlList[1];
     var language = urlList[2] || "zh-cn";
-    var version = urlList[3] || "4.0.1";
+    var version = urlList[3] || "v4.0.1";
     var index;
 
     for (index = 0; index < urlList.length; index++)
@@ -43,7 +43,7 @@ function buildMultiVersionSelector()
         {
             language = urlList[index];
             target = urlList[index - 1];
-            version = urlList[index + 1] || "4.0.1";
+            version = urlList[index + 1] || "v4.0.1";
             break;
         }
     }
