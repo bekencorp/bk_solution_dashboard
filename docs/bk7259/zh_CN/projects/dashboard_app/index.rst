@@ -51,11 +51,11 @@ dashboard app使用指南
 根据需要选择配置。
 
 
-.. figure:: ../../../_static/dashboard_app/setting.png
-   :alt: setting
+.. figure:: ../../../_static/dashboard_app/config_center_0701.jpg
+   :alt: config_center
    :width: 30%
 
-   设置
+   配置中心
 
 
 4.3 配网
@@ -63,43 +63,37 @@ dashboard app使用指南
 
 使用BLE进行配网。
 
-.. figure:: ../../../_static/dashboard_app/wifi_working_page.png
-   :alt: wifi_working_page
+.. figure:: ../../../_static/dashboard_app/dashboard_home_0701.jpg
+   :alt: dashboard_home
    :width: 30%
 
-   wifi界面功能介绍
+   首页与当前配置
 
-.. figure:: ../../../_static/dashboard_app/wifi_tips.png
-   :alt: wifi_tip
+.. figure:: ../../../_static/dashboard_app/bluetooth_devices_0701.jpg
+   :alt: bluetooth_devices
    :width: 30%
 
-   配网提示
+   蓝牙设备扫描结果
 
 
-.. figure:: ../../../_static/dashboard_app/ble_scan.png
-   :alt: ble_scan
+.. figure:: ../../../_static/dashboard_app/provision_type_0701.jpg
+   :alt: provision_type
    :width: 30%
 
-   蓝牙扫描结果
+   选择配网方式
 
-.. figure:: ../../../_static/dashboard_app/wifi_select_type.png
-   :alt: wifi_select_type
+.. figure:: ../../../_static/dashboard_app/wifi_config_0701.jpg
+   :alt: wifi_config
    :width: 30%
 
-   选择配网类型
+   输入 Wi-Fi 配置信息
 
 
-.. figure:: ../../../_static/dashboard_app/wifi_input_pwd.png
-   :alt: wifi_input_pwd
+.. figure:: ../../../_static/dashboard_app/provision_progress_0701.jpg
+   :alt: provision_progress
    :width: 30%
 
-   输入配网信息
-
-.. figure:: ../../../_static/dashboard_app/wifi_dn_done.png
-   :alt: wifi_dn_done
-   :width: 30%
-
-   配网成功
+   配网进度提示
 
 
 4.4 语音配置
@@ -120,22 +114,22 @@ dashboard app使用指南
 
 点击搜索，选择类型，开始搜索设备。
 
-.. figure:: ../../../_static/dashboard_app/wifi_select_type_discovery.png
-   :alt: wifi_select_type_discovery
+.. figure:: ../../../_static/dashboard_app/wifi_devices_0701.jpg
+   :alt: wifi_devices
    :width: 30%
 
-   发现设备
-
-.. figure:: ../../../_static/dashboard_app/wifi_discover_success.png
-   :alt: wifi_discover_success
-   :width: 30%
-
-   发现设备成功
+   Wi-Fi 设备列表
 
 4.6 导航与图传
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 点击导航功能按钮，开始导航。导航开始后，可以点击投屏按钮，开始投屏。
+
+.. figure:: ../../../_static/dashboard_app/casting_running_0701.jpg
+   :alt: casting_running
+   :width: 30%
+
+   投屏进行中
 
 
 5. 蓝牙图传使用步骤
@@ -153,35 +147,29 @@ dashboard app使用指南
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 根据需要选择配置。
 
-.. figure:: ../../../_static/dashboard_app/setting.png
-   :alt: setting
+.. figure:: ../../../_static/dashboard_app/ble_config_center_0701.jpg
+   :alt: ble_config_center
    :width: 30%
 
-   设置
+   BLE 图传配置
 
 
 5.3 选择图传设备
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 
-.. figure:: ../../../_static/dashboard_app/ble_working_page.png
-   :alt: ble_working_page
+.. figure:: ../../../_static/dashboard_app/ble_dashboard_home_0701.jpg
+   :alt: ble_dashboard_home
    :width: 30%
 
-   蓝牙图传界面功能介绍
+   BLE 图传首页与当前配置
 
 
-.. figure:: ../../../_static/dashboard_app/ble_tips.png
-   :alt: ble_tips
+.. figure:: ../../../_static/dashboard_app/ble_devices_0701.jpg
+   :alt: ble_devices
    :width: 30%
 
-   蓝牙提示
-
-.. figure:: ../../../_static/dashboard_app/ble_scan_ble.jpg
-   :alt: ble_tips
-   :width: 30%
-
-   蓝牙扫描结果
+   蓝牙设备列表
 
 5.4 语音配置
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -199,3 +187,9 @@ dashboard app使用指南
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 点击导航功能按钮，开始导航。导航开始后，可以点击投屏按钮，开始投屏。
+
+.. figure:: ../../../_static/dashboard_app/ble_casting_running_0701.jpg
+   :alt: ble_casting_running
+   :width: 30%
+
+   BLE 投屏进行中

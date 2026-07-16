@@ -3,14 +3,7 @@ var hostRoot = ""
 var asyncDone = false;
 var sdkList = [
     {
-        "name" : "bk7236",
-        "lang" : [ "zh-cn" ],
-        "version" : [
-            "latest"
-        ]
-    },
-    {
-        "name" : "bk7258",
+        "name" : "bk7259",
         "lang" : [ "zh-cn" ],
         "version" : [
             "latest"

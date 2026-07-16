@@ -37,17 +37,17 @@ You can download the Armino Dashboard solution code from gitlab::
 The version compilation method is as follows::
 
     cd ~/armino/bk_solution_dashboard
-    cd projects/scooter
+    cd projects/scooter_1280_720
     make clean SDK_DIR=~/armino/bk_avdk_smp
-    make bk7258 SDK_DIR=~/armino/bk_avdk_smp
+    make bk7259 SDK_DIR=~/armino/bk_avdk_smp
 
 Alternatively, you can specify the SDK path using the export command::
 
     cd ~/armino/bk_solution_dashboard
-    cd projects/scooter
+    cd projects/scooter_1280_720
     export SDK_DIR=~/armino/bk_avdk_smp
     make clean
-    make bk7258
+    make bk7259
 
 Compile using Docker as follows::
 
@@ -55,13 +55,13 @@ Compile using Docker as follows::
 
         export SDK_DIR=~/armino/bk_avdk_smp
         ./dbuild.sh make clean
-        ./dbuild.sh make bk7258
+        ./dbuild.sh make bk7259
 
     On Windows, use PowerShell to execute the following commands::
 
         $env:SDK_DIR = "C:\armino\bk_avdk_smp"
         ./dbuild.ps1 make clean
-        ./dbuild.ps1 make bk7258
+        ./dbuild.ps1 make bk7259
 
 .. note::
 
@@ -73,9 +73,9 @@ Compile using Docker as follows::
 4.1 Mother board
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-Path of the generated burning bin file after compilation: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
+Path of the generated burning bin file after compilation: ``projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin``
 
-For burning process, please refer to `Burning Code <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.0.1/get-started/index.html#burn-code>`_
+For burning process, please refer to `Burning Code <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/en/v3.0.1/get-started/index.html#burn-code>`_
 
 4.2 3515
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -93,25 +93,25 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 
 - relationship:
 
-    +------------------+----------------------+----------------+------------------+
-    | EVB version      | relative dir         | 3515 used uart | bk7258 used uart |
-    +------------------+----------------------+----------------+------------------+
-    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11        | P30 P31          |
-    +------------------+----------------------+----------------+------------------+
-    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1          | P30 P31          |
-    +------------------+----------------------+----------------+------------------+
+    +------------------+----------------------+----------------+-----------------------+
+    | EVB version      | relative dir         | 3515 used uart | bk7259 UART TX/RX     |
+    +------------------+----------------------+----------------+-----------------------+
+    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11        | P55 P54               |
+    +------------------+----------------------+----------------+-----------------------+
+    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1          | P55 P54               |
+    +------------------+----------------------+----------------+-----------------------+
 
 4. Launch Beken_BT_Toolkit，set bk3296 in chipset，click login
 
 5. Select flash download with 3515 firmware above. select uart setting，change uart id
 
-6. Press 3515NS RESET/7258 RESET on mother board simultaneously，wait 5 seconds，click Beken_BT_Toolkit download button.
+6. Press 3515NS RESET/7259 RESET on mother board simultaneously，wait 5 seconds，click Beken_BT_Toolkit download button.
 
 7. Relase 3515NS RESET，you will see download processing, if fail, try again from step 6
 
-8. It will prompt Download successful，you cant release 7258 RESET now.
+8. It will prompt Download successful，you cant release 7259 RESET now.
 
-9. Disconnect all connected wires above, press 7258 RESET
+9. Disconnect all connected wires above, press 7259 RESET
 
 .. note::
 
@@ -119,16 +119,16 @@ For burning process, please refer to `Burning Code <https://docs.bekencorp.com/a
 
 This document is based on the Armino SMP architecture to help users develop applications.
 
-For the Armino SMP architecture, please refer to `Armino SMP Architecture <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+For the Armino SMP architecture, please refer to `Armino SMP Architecture <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
-For Application Processor (AP) configuration and usage, please refer to `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+For Application Processor (AP) configuration and usage, please refer to `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
-For Communication Processor (CP) configuration and usage, please refer to `Armino CP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/cp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+For Communication Processor (CP) configuration and usage, please refer to `Armino CP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/cp_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
 .. toctree::
     :hidden:
 
-    Armino SMP Architecture <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>
+    Armino SMP Architecture <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/zh_CN/v4.0.1/index.html>
 
     Example Projects <projects/index>
 

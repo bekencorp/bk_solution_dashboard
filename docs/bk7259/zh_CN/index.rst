@@ -33,17 +33,17 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 版本编译方法如下::
 
     cd ~/armino/bk_solution_dashboard
-    cd projects/scooter
+    cd projects/scooter_1280_720
     make clean SDK_DIR=~/armino/bk_avdk_smp
-    make bk7258 SDK_DIR=~/armino/bk_avdk_smp
+    make bk7259 SDK_DIR=~/armino/bk_avdk_smp
 
 或者可以通过export来指定SDK路径::
 
     cd ~/armino/bk_solution_dashboard
-    cd projects/scooter
+    cd projects/scooter_1280_720
     export SDK_DIR=~/armino/bk_avdk_smp
     make clean
-    make bk7258
+    make bk7259
 
 使用docker编译方式如下
 
@@ -51,13 +51,13 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 
         export SDK_DIR=~/armino/bk_avdk_smp
         ./dbuild.sh make clean
-        ./dbuild.sh make bk7258
+        ./dbuild.sh make bk7259
 
     Windows下使用powershell执行以下命令::
 
         $env:SDK_DIR = "C:\armino\bk_avdk_smp"
         ./dbuild.ps1 make clean
-        ./dbuild.ps1 make bk7258
+        ./dbuild.ps1 make bk7259
 
 .. note::
 
@@ -70,9 +70,9 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 4.1 母板
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
+编译生成的烧录bin文件路径：``projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin``
 
-烧录流程参考 `烧录代码 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/get-started/index.html#id7>`_
+烧录流程参考 `烧录代码 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/zh_CN/v3.0.1/get-started/index.html#id7>`_
 
 4.2 3515
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -90,25 +90,25 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 
 - 对应关系:
 
-    +------------------+----------------------+---------------+----------------+
-    | EVB版本          | 对应固件目录         | 3515使用串口  | bk7258使用串口 |
-    +------------------+----------------------+---------------+----------------+
-    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11       | P30 P31        |
-    +------------------+----------------------+---------------+----------------+
-    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1         | P30 P31        |
-    +------------------+----------------------+---------------+----------------+
+    +------------------+----------------------+---------------+--------------------+
+    | EVB版本          | 对应固件目录         | 3515使用串口  | bk7259 UART TX/RX  |
+    +------------------+----------------------+---------------+--------------------+
+    | V1.1 20250904    | EVB_v1.1_20250904    | P10 P11       | P55 P54            |
+    +------------------+----------------------+---------------+--------------------+
+    | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1         | P55 P54            |
+    +------------------+----------------------+---------------+--------------------+
 
 4. 打开Beken_BT_Toolkit，chipset选择bk3296，点击login
 
 5. 选择flash烧录，选择刚刚下载的3515固件。选择串口设置，更改对应的串口号
 
-6. 同时按住母板的3515NS RESET/7258 RESET键，等待5秒，点击Beken_BT_Toolkit下载按钮
+6. 同时按住母板的3515NS RESET/7259 RESET键，等待5秒，点击Beken_BT_Toolkit下载按钮
 
 7. 松开3515NS RESET，此时可以看到正在下载，如果失败，从第6步重试
 
-8. 烧录成功会提示Download successful，此时可以松开7258 RESET
+8. 烧录成功会提示Download successful，此时可以松开7259 RESET
 
-9. 拔掉所有引出的线，按7258 RESET复位
+9. 拔掉所有引出的线，按7259 RESET复位
 
 .. note::
 
@@ -116,16 +116,16 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
 
 本文档基于Armino SMP架构, 帮助用户开发应用;
 
-Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+Armino SMP架构, 请参考 `Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
-应用处理器AP配置和使用, 请参考 `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+应用处理器AP配置和使用, 请参考 `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
-通信处理器CP配置和使用, 请参考 `Armino CP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/cp_doc/bk7258/zh_CN/v3.0.1/index.html>`_
+通信处理器CP配置和使用, 请参考 `Armino CP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/cp_doc/bk7259/zh_CN/v3.0.1/index.html>`_
 
 .. toctree::
     :hidden:
 
-    Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/index.html>
+    Armino SMP架构 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/zh_CN/v4.0.1/index.html>
 
     示例工程 <projects/index>
 

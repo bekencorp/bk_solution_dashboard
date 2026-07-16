@@ -20,7 +20,7 @@ Scan the QR code to download and install.
 This app allows the development board to play navigation voice and display navigation images. According to different image transmission methods, it is divided into Bluetooth image transmission and WiFi image transmission.
 
 3. Development Board Introduction
------------------------
+------------------------------------------------
 
 The following development board is used as an example.
 
@@ -34,7 +34,7 @@ The following development board is used as an example.
 
 
 4. WiFi Image Transmission Usage Steps
------------------------
+------------------------------------------------
 
 Images are transmitted via WiFi, and voice is transmitted via classic Bluetooth.
 
@@ -51,11 +51,11 @@ Press the K1 button to reset the development board.
 Select configuration as needed.
 
 
-.. figure:: ../../../_static/dashboard_app/setting.png
-   :alt: setting
+.. figure:: ../../../_static/dashboard_app/config_center_0701.jpg
+   :alt: config_center
    :width: 30%
 
-   Settings
+   Configuration Center
 
 
 4.3 Network Configuration
@@ -63,43 +63,37 @@ Select configuration as needed.
 
 Use BLE for network configuration.
 
-.. figure:: ../../../_static/dashboard_app/wifi_working_page.png
-   :alt: wifi_working_page
+.. figure:: ../../../_static/dashboard_app/dashboard_home_0701.jpg
+   :alt: dashboard_home
    :width: 30%
 
-   WiFi Interface Function Introduction
+   Home Page and Current Configuration
 
-.. figure:: ../../../_static/dashboard_app/wifi_tips.png
-   :alt: wifi_tip
+.. figure:: ../../../_static/dashboard_app/bluetooth_devices_0701.jpg
+   :alt: bluetooth_devices
    :width: 30%
 
-   Network Configuration Tips
+   Bluetooth Device Scan Results
 
 
-.. figure:: ../../../_static/dashboard_app/ble_scan.png
-   :alt: ble_scan
+.. figure:: ../../../_static/dashboard_app/provision_type_0701.jpg
+   :alt: provision_type
    :width: 30%
 
-   Bluetooth Scan Results
+   Select Provisioning Type
 
-.. figure:: ../../../_static/dashboard_app/wifi_select_type.png
-   :alt: wifi_select_type
+.. figure:: ../../../_static/dashboard_app/wifi_config_0701.jpg
+   :alt: wifi_config
    :width: 30%
 
-   Select Network Configuration Type
+   Enter Wi-Fi Configuration
 
 
-.. figure:: ../../../_static/dashboard_app/wifi_input_pwd.png
-   :alt: wifi_input_pwd
+.. figure:: ../../../_static/dashboard_app/provision_progress_0701.jpg
+   :alt: provision_progress
    :width: 30%
 
-   Enter Network Configuration Information
-
-.. figure:: ../../../_static/dashboard_app/wifi_dn_done.png
-   :alt: wifi_dn_done
-   :width: 30%
-
-   Network Configuration Successful
+   Provisioning Progress
 
 
 4.4 Voice Configuration
@@ -120,26 +114,26 @@ Navigation voice is transmitted via classic Bluetooth.
 
 Click search, select type, and start searching for devices.
 
-.. figure:: ../../../_static/dashboard_app/wifi_select_type_discovery.png
-   :alt: wifi_select_type_discovery
+.. figure:: ../../../_static/dashboard_app/wifi_devices_0701.jpg
+   :alt: wifi_devices
    :width: 30%
 
-   Discover Device
-
-.. figure:: ../../../_static/dashboard_app/wifi_discover_success.png
-   :alt: wifi_discover_success
-   :width: 30%
-
-   Device Discovery Successful
+   Wi-Fi Device List
 
 4.6 Navigation and Image Transmission
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 Click the navigation function button to start navigation. After navigation starts, you can click the screen mirroring button to start screen mirroring.
 
+.. figure:: ../../../_static/dashboard_app/casting_running_0701.jpg
+   :alt: casting_running
+   :width: 30%
+
+   Casting in Progress
+
 
 5. Bluetooth Image Transmission Usage Steps
------------------------
+------------------------------------------------
 
 Images are transmitted via BLE, and voice is transmitted via classic Bluetooth.
 
@@ -153,35 +147,29 @@ Press the K1 button to reset the development board.
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Select configuration as needed.
 
-.. figure:: ../../../_static/dashboard_app/setting.png
-   :alt: setting
+.. figure:: ../../../_static/dashboard_app/ble_config_center_0701.jpg
+   :alt: ble_config_center
    :width: 30%
 
-   Settings
+   BLE Image Transmission Configuration
 
 
 5.3 Select Image Transmission Device
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 
-.. figure:: ../../../_static/dashboard_app/ble_working_page.png
-   :alt: ble_working_page
+.. figure:: ../../../_static/dashboard_app/ble_dashboard_home_0701.jpg
+   :alt: ble_dashboard_home
    :width: 30%
 
-   Bluetooth Image Transmission Interface Function Introduction
+   BLE Home Page and Current Configuration
 
 
-.. figure:: ../../../_static/dashboard_app/ble_tips.png
-   :alt: ble_tips
+.. figure:: ../../../_static/dashboard_app/ble_devices_0701.jpg
+   :alt: ble_devices
    :width: 30%
 
-   Bluetooth Tips
-
-.. figure:: ../../../_static/dashboard_app/ble_scan_ble.jpg
-   :alt: ble_tips
-   :width: 30%
-
-   Bluetooth Scan Results
+   Bluetooth Device List
 
 5.4 Voice Configuration
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
@@ -196,7 +184,13 @@ Navigation voice is transmitted via classic Bluetooth.
    Bluetooth Pairing
 
 5.5 Navigation and Image Transmission
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 Click the navigation function button to start navigation. After navigation starts, you can click the screen mirroring button to start screen mirroring.
+
+.. figure:: ../../../_static/dashboard_app/ble_casting_running_0701.jpg
+   :alt: ble_casting_running
+   :width: 30%
+
+   BLE Casting in Progress
 
