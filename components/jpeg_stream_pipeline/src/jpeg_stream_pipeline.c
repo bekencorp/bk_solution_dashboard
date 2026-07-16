@@ -34,6 +34,7 @@
  #include <os/os.h>
  #include <os/mem.h>
  #include <string.h>
+ #include <cache.h>
  #include <components/log.h>
  #include <common/avdk_pixel_types.h>
  #include <components/bk_decode/bk_jpeg_decode_ctlr.h>
@@ -553,6 +554,16 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 if (dropped > 0)
 			 LOGW("[cast] drop %u stale frame(s) for low-latency\n", (unsigned)dropped);
 	 }
+
+	 /*
+	  * AP PSRAM now runs with D-Cache enabled (mpu_cfg L2 cache). The JPEG
+	  * stream is produced by the CPU (SD read + DHT/QT inject for boot_avi,
+	  * network fill for cast) and consumed by the VCDEC (DMA). Sync the whole
+	  * range down to physical PSRAM, then a barrier before the decode task can
+	  * pop it, so the hardware never reads stale/cached bytes.
+	  */
+	 flush_dcache((void *)jpeg_stream, jpeg_len);
+	 __DSB();
 
 	 bk_err_t ret = rtos_push_to_queue(&ctx->frame_queue, &entry, BEKEN_NO_WAIT);
 	 if (ret != BK_OK)
