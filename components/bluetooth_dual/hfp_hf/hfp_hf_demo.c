@@ -75,6 +75,28 @@ static uint8_t s_hfp_hf_is_iphone = 0;
 static beken_queue_t bt_audio_hf_demo_msg_que = NULL;
 static beken_thread_t bt_audio_hf_demo_thread_handle = NULL;
 
+static hfp_hf_ui_callback_t s_ui_callback = {0};
+
+void hfp_hf_demo_register_ui_callback(const hfp_hf_ui_callback_t *callback)
+{
+    if (callback != NULL)
+    {
+        s_ui_callback = *callback;
+    }
+    else
+    {
+        os_memset(&s_ui_callback, 0, sizeof(s_ui_callback));
+    }
+}
+
+static void hfp_ui_emit_phone_state(const char *number, uint8_t active)
+{
+    if (s_ui_callback.phone_update != NULL)
+    {
+        s_ui_callback.phone_update(number, active, s_ui_callback.user_data);
+    }
+}
+
 int bt_audio_hf_demo_task_init(void);
 
 static void hf_post_simple_msg(uint8_t type)
@@ -305,6 +327,7 @@ static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
 
         case BK_HFP_HF_EVT_DISCONNECTED:
             s_hfp_status_mach = HFP_STATUS_IDLE;
+            hfp_ui_emit_phone_state(NULL, 0);
             break;
 
         case BK_HFP_HF_EVT_AUDIO_CONNECTED:
@@ -357,6 +380,31 @@ static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
         }
 
         case BK_HFP_HF_EVT_RING:
+        {
+            LOGI("+RING: HFP incoming call\n");
+        }
+        break;
+        case BK_HFP_HF_EVT_CALL_IND:
+        {
+            bk_hfp_hf_call_info_t *call = (bk_hfp_hf_call_info_t *)arg;
+            LOGI("+CALL_IND: HFP call activity indicator: %d\n", call->status);
+            hfp_ui_emit_phone_state(NULL, call->status ? 1 : 0);
+        }
+        break;
+        case BK_HFP_HF_EVT_CALL_SETUP_IND:
+        {
+            bk_hfp_hf_call_setup_info_t *call_setup = (bk_hfp_hf_call_setup_info_t *)arg;
+            LOGI("+CALL_SETUP_IND: HFP call setup indicator: %d\n", call_setup->status);
+            hfp_ui_emit_phone_state(NULL, (call_setup->status) ? 1 : 0);
+        }
+        break;
+        case BK_HFP_HF_EVT_CLIP:
+        {
+            bk_hfp_hf_clip_info_t *clip = (bk_hfp_hf_clip_info_t *)arg;
+            LOGI("+CLIP: HFP calling line number: %s, name:%s \n", clip->number, clip->name);
+            hfp_ui_emit_phone_state(clip->number, 1);
+        }
+        break;
         default:
             break;
     }

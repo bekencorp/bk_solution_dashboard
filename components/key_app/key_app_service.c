@@ -7,6 +7,10 @@
 #endif
 
 extern void pet_page_toggle(void);
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+extern void pet_page_enter(void);
+extern void pet_page_double(void);
+#endif
 
 #define TAG "key_service"
 
@@ -14,6 +18,10 @@ extern void pet_page_toggle(void);
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+#define USER_PET_TOGGLE_THROTTLE_MS 500
+#endif
 
 
 static void config_network(void)
@@ -34,9 +42,16 @@ static void release_info(void)
 }
 
 static KeyConfig_t key_configs[] = KEY_DEFAULT_CONFIG_TABLE;
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+static uint32_t s_last_pet_toggle_ms = 0;
+#endif
 
 static void key_event_handler(uint8_t event)
 {
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+    uint32_t now_ms = 0;
+#endif
+
     if (IS_INVALID_EVENT(event))
     {
         LOGI("Invalid event: %d\r\n", event);
@@ -51,9 +66,33 @@ static void key_event_handler(uint8_t event)
             release_info();
             break;
         case USER_PET_TOGGLE:
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+            now_ms = rtos_get_time();
+            if (s_last_pet_toggle_ms != 0 &&
+                (now_ms - s_last_pet_toggle_ms) < USER_PET_TOGGLE_THROTTLE_MS)
+            {
+                LOGI("USER_PET_TOGGLE throttled, delta=%u ms\r\n",
+                     (unsigned)(now_ms - s_last_pet_toggle_ms));
+                break;
+            }
+
+            s_last_pet_toggle_ms = now_ms;
+#endif
             LOGI("USER_PET_TOGGLE\r\n");
             pet_page_toggle();
             break;
+        case USER_PET_ENTER:
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+            LOGI("USER_PET_ENTER\r\n");
+            pet_page_enter();
+#endif
+            break;
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+        case USER_PET_DOUBLE:
+            LOGI("USER_PET_DOUBLE\r\n");
+            pet_page_double();
+            break;
+#endif
         default:
             break;
     }

@@ -30,8 +30,29 @@ typedef struct
     a2dp_sink_avrcp_attr_t attr_array[];
 } a2dp_sink_avrcp_elem_attr_msg_t;
 
+typedef enum
+{
+    A2DP_SINK_UI_EVT_TRACK_CHANGED,
+    A2DP_SINK_UI_EVT_PLAY_STATUS_CHANGED,
+    A2DP_SINK_UI_EVT_ELEM_ATTR_RSP,
+    A2DP_SINK_UI_EVT_PLAY_POS,
+    A2DP_SINK_UI_EVT_DISCONNECTED,
+} a2dp_sink_ui_event_t;
+
+typedef void (*a2dp_sink_ui_event_cb_t)(a2dp_sink_ui_event_t event,
+                                        const void *event_data,
+                                        void *user_data);
+
+typedef struct
+{
+    a2dp_sink_ui_event_cb_t event;
+    void *user_data;
+} a2dp_sink_ui_callback_t;
+
 int a2dp_sink_demo_init(uint8_t aac_supported, uint8_t auto_accept_conn);
 int a2dp_sink_demo_deinit(void);
+
+void a2dp_sink_demo_register_ui_callback(const a2dp_sink_ui_callback_t *callback);
 
 int32_t a2dp_sink_demo_wait_player_end(void);
 

@@ -1,0 +1,84 @@
+menu "PROJECT Configuration"
+    config PROJECT_SCOOTER_V2
+        bool
+        default y
+endmenu
+
+menu "LVGL Widgets_v9 Configuration"
+
+    config LV_USE_DEMO_WIDGETS
+        bool "Enable LV_USE_DEMO_WIDGETS"
+        default n
+endmenu
+
+
+menu "Scooter media / display configuration"
+    config MEDIA_RECEIVE_DEMO
+        bool "Media receive demo (SDP + TCP image transfer for app search)"
+        default y
+
+    config MEDIA_DEMO_MODE_TCP
+        bool "MEDIA RECEIVE DEMO USE TCP MODE"
+        depends on MEDIA_RECEIVE_DEMO
+        default n
+
+    config MEDIA_PIPELINE
+        bool "Enable media pipeline (frame queue + decode)"
+        default n
+
+    comment "LVGL vendor framebuffer (lv_vendor_init width/height) — 1280x720 project defaults"
+
+    config SCOOTER_LVGL_HOR_RES
+        int "LVGL horizontal resolution (lv_vendor width)"
+        default 720
+        range 1 10000
+
+    config SCOOTER_LVGL_VER_RES
+        int "LVGL vertical resolution (lv_vendor height)"
+        default 1280
+        range 1 10000
+
+    config SCOOTER_UI_ROTATION
+        int "LVGL rotation (degrees: 0, 90, 180, 270)"
+        default 90
+        range 0 270
+
+    comment "UI designer canvas (beken_ui SCREEN_* and root page size)"
+
+    config SCOOTER_UI_CANVAS_WIDTH
+        int "UI canvas width (SCREEN_WIDTH, root page)"
+        default 1280
+        range 1 10000
+
+    config SCOOTER_UI_CANVAS_HEIGHT
+        int "UI canvas height (SCREEN_HEIGHT, root page)"
+        default 720
+        range 1 10000
+
+    comment "Cast JPEG pipeline (src/dst in pixels; rotate in degrees)"
+
+    config SCOOTER_CAST_JPEG_SRC_WIDTH
+        int "Cast JPEG source width"
+        default 1280
+        range 1 10000
+
+    config SCOOTER_CAST_JPEG_SRC_HEIGHT
+        int "Cast JPEG source height"
+        default 720
+        range 1 10000
+
+    config SCOOTER_CAST_JPEG_DST_WIDTH
+        int "Cast JPEG destination width"
+        default 1280
+        range 1 10000
+
+    config SCOOTER_CAST_JPEG_DST_HEIGHT
+        int "Cast JPEG destination height"
+        default 720
+        range 1 10000
+
+    config SCOOTER_CAST_JPEG_ROTATE_DEG
+        int "Cast JPEG rotate degree"
+        default 90
+        range 0 270
+endmenu

@@ -16,6 +16,13 @@ extern "C" {
 #define USER_CONFIG_NETWORK     (USER_EVENT_START + 0)  
 #define USER_ERASE_INFO        (USER_EVENT_START + 1)   
 #define USER_PET_TOGGLE        (USER_EVENT_START + 2)
+#define USER_PET_ENTER         (USER_EVENT_START + 3)
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+#define USER_PET_DOUBLE        (USER_EVENT_START + 4)
+#define USER_PET_DOUBLE_EVENT  ((key_event_t)USER_PET_DOUBLE)
+#else
+#define USER_PET_DOUBLE_EVENT  EVENT_NONE
+#endif
 
 
 #define KEY_DEFAULT_CONFIG_TABLE \
@@ -38,8 +45,8 @@ extern "C" {
         .gpio_id = KEY_GPIO_50, \
         .active_level = LOW_LEVEL_TRIGGER, \
         .short_event = (key_event_t)USER_PET_TOGGLE, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
+        .double_event = USER_PET_DOUBLE_EVENT, \
+        .long_event = (key_event_t)USER_PET_ENTER \
     } \
 }
 

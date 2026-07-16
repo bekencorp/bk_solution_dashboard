@@ -52,6 +52,12 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+__attribute__((weak)) void dashboard_network_ready_hook(void)
+{
+}
+#endif
+
 //bk_ble_provisioning_event_notify_with_data
 static void (*s_send)(uint16_t opcode, int status);
 static void (*s_send_data)(uint16_t opcode, int status, char *payload, uint16_t length);
@@ -791,6 +797,12 @@ static bk_err_t demo_netif_event_cb(void *arg, event_module_t event_module,
 		LOGI("%s got ip\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
         uint8_t success_status = 0;
         if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, (char *)&success_status, sizeof(success_status));
+#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+        if (got_ip->netif_if == NETIF_IF_STA)
+        {
+            dashboard_network_ready_hook();
+        }
+#endif
     }
     break;
 

@@ -47,8 +47,36 @@ static uint8_t s_a2dp_sink_inited = 0;
 static uint8_t s_a2dp_connected = 0;
 static uint8_t s_bt_manager_index = 0xFF;
 static uint16_t s_queue_count = 0;
+static a2dp_sink_ui_callback_t s_ui_callback = {0};
 
 static const char *a2dp_sink_play_status_to_str(uint8_t play_status);
+
+void a2dp_sink_demo_register_ui_callback(const a2dp_sink_ui_callback_t *callback)
+{
+    if (callback != NULL)
+    {
+        s_ui_callback = *callback;
+    }
+    else
+    {
+        os_memset(&s_ui_callback, 0, sizeof(s_ui_callback));
+    }
+}
+
+static void a2dp_sink_ui_emit_event(a2dp_sink_ui_event_t event, const void *event_data)
+{
+    if (s_ui_callback.event != NULL)
+    {
+        s_ui_callback.event(event, event_data, s_ui_callback.user_data);
+    }
+}
+
+static void a2dp_sink_request_track_attrs(void)
+{
+    bk_avrcp_ct_get_attr(BK_AVRCP_MEDIA_ATTR_ID_TITLE);
+    bk_avrcp_ct_get_attr(BK_AVRCP_MEDIA_ATTR_ID_ARTIST);
+    bk_avrcp_ct_get_attr(BK_AVRCP_MEDIA_ATTR_ID_PLAYING_TIME);
+}
 
 static int a2dp_sink_queue_push(uint8_t type, const void *data, uint16_t len, uint32_t timeout_ms)
 {
@@ -197,9 +225,11 @@ static int a2dp_sink_queue_push_avrcp_elem_attr_rsp(const bk_avrcp_ct_cb_param_t
     queue_msg.type = BT_AUDIO_AVRCP_ELEM_ATTR_RSP_MSG;
     queue_msg.len = (uint16_t)msg_len;
     queue_msg.data = (uint8_t *)attr_msg;
+    s_queue_count++;
     rc = rtos_push_to_queue(&s_a2dp_sink_msg_queue, &queue_msg, BEKEN_NO_WAIT);
     if (rc != BK_OK)
     {
+        s_queue_count--;
         LOGE("%s, send queue failed\n", __func__);
         a2dp_sink_avrcp_elem_attr_msg_free(attr_msg);
     }
@@ -269,7 +299,10 @@ static void a2dp_sink_demo_task(void *arg)
             continue;
         }
 
-        s_queue_count--;
+        if (s_queue_count > 0)
+        {
+            s_queue_count--;
+        }
         switch (msg.type)
         {
         case BT_AUDIO_A2DP_START_MSG:
@@ -338,6 +371,7 @@ static void a2dp_sink_demo_task(void *arg)
                 LOGI("AVRCP CT play status changed: %s(0x%x)\n",
                      a2dp_sink_play_status_to_str(play_status),
                      play_status);
+                a2dp_sink_ui_emit_event(A2DP_SINK_UI_EVT_PLAY_STATUS_CHANGED, &play_status);
             }
             break;
 
@@ -369,6 +403,7 @@ static void a2dp_sink_demo_task(void *arg)
                     }
                 }
 
+                a2dp_sink_ui_emit_event(A2DP_SINK_UI_EVT_ELEM_ATTR_RSP, rsp);
                 a2dp_sink_avrcp_elem_attr_msg_free(rsp);
                 msg.data = NULL;
             }
@@ -561,8 +596,9 @@ static void on_avrcp_ct_evt(bk_avrcp_ct_evt_t evt, void *arg, void *user_data)
         {
             track_id = *(uint64_t *)arg;
         }
-        // LOGI("AVRCP CT track changed: %llu\n", (unsigned long long)track_id);
-        // bk_avrcp_ct_get_attr(BK_AVRCP_MEDIA_ATTR_ID_TITLE);
+        LOGI("AVRCP CT track changed: %llu\n", (unsigned long long)track_id);
+        a2dp_sink_ui_emit_event(A2DP_SINK_UI_EVT_TRACK_CHANGED, NULL);
+        a2dp_sink_request_track_attrs();
         break;
     }
 
@@ -577,6 +613,21 @@ static void on_avrcp_ct_evt(bk_avrcp_ct_evt_t evt, void *arg, void *user_data)
         a2dp_sink_queue_push_avrcp_elem_attr_rsp(param);
         break;
     }
+
+    case BK_AVRCP_CT_EVT_PLAY_POS_CHANGED:
+    {
+        uint32_t play_pos = arg ? *(uint32_t *)arg : 0;
+        LOGI("AVRCP CT play position: %u ms\n", play_pos);
+        a2dp_sink_ui_emit_event(A2DP_SINK_UI_EVT_PLAY_POS, &play_pos);
+        break;
+    }
+
+    case BK_AVRCP_CT_EVT_CONNECTED:
+        break;
+
+    case BK_AVRCP_CT_EVT_DISCONNECTED:
+        a2dp_sink_ui_emit_event(A2DP_SINK_UI_EVT_DISCONNECTED, NULL);
+        break;
 
     default:
         LOGW("Unhandled AVRCP CT event: %d\n", evt);
