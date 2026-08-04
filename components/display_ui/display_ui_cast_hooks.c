@@ -5,8 +5,6 @@
 #include <stdint.h>
 #include <components/log.h>
 #include <components/bk_display.h>
-#include <components/bk_frame_buffer.h>
-#include <common/avdk_pixel_types.h>
 #include "cast_jpeg_pipeline.h"
 #include "lv_vendor.h"
 
@@ -20,6 +18,17 @@
 extern void beken_ui_kick_after_display_resume(void);
 
 /*
+ * LVGL's own GPU lifecycle (lv_vendor.c): lv_gpu_init == bk_gpu_driver_init +
+ * vg_lite_init(0,0), lv_gpu_deinit == vg_lite_close + bk_gpu_driver_deinit.
+ * LVGL owns the single global vg_lite context; the cast pipeline's plain teardown
+ * (jpeg_stream_pipeline_destroy -> bk_gpu_deinit) closes that shared context, so
+ * we must re-acquire it here BEFORE restarting the LVGL task, exactly like the
+ * assist-view path does. Safe to call when vg_lite is still alive: vg_lite_init
+ * short-circuits ("already initialized") and bk_gpu_driver_init is a bool guard.
+ */
+extern void lv_gpu_init(uint32_t tess_width, uint32_t tess_height);
+
+/*
  * Before casting/CMD path starts LVGL teardown: the product (e.g. scooter_1280_720 beken_ui.c)
  * may override with a strong symbol (e.g. switch page then teardown). Default weak impl is
  * no-op and zero delay.
@@ -31,11 +40,9 @@ __attribute__((weak)) uint32_t beken_ui_after_cast_ui_painted_delay_ms(void)
 }
 
 static volatile int s_dpu_casting_reopen_pending = 0;
-static volatile int s_lvgl_stopped_for_cast = 0;
 static volatile int s_lvgl_suspended_for_cast = 0;
-/* Set when this cast session actually called lv_vendor_stop (first frame path). */
+/* Set when this cast session actually called lv_vendor_stop. */
 static int s_cast_lvgl_was_stopped = 0;
-static volatile int s_cast_decompress_enabled = 1;
 static volatile int s_dpu_switched_to_cast = 0;
 static int s_cast_hooks_registered = 0;
 
@@ -49,7 +56,7 @@ bk_err_t lvgl_app_suspend_display(void)
 {
     LOGI("LVGL display suspend deferred to first casting frame\n");
 
-    if (display_ui_get_ctx() && display_ui_get_ctx()->dpu_ctlr_handle) {
+    if (display_ui_get_dpu_handle()) {
         s_dpu_casting_reopen_pending = 1;
         LOGI("DPU casting config deferred to first frame\n");
     }
@@ -57,52 +64,20 @@ bk_err_t lvgl_app_suspend_display(void)
     return BK_OK;
 }
 
-void lvgl_app_stop_for_casting(void)
-{
-    if (!s_dpu_casting_reopen_pending) {
-        LOGW("[cast] sf skip pend0\n");
-        return;
-    }
-    if (s_lvgl_stopped_for_cast) {
-        LOGW("[cast] sf skip stp\n");
-        return;
-    }
-    lv_vendor_stop();
-    s_lvgl_stopped_for_cast = 1;
-
-    if (display_ui_get_ctx() && display_ui_get_ctx()->dpu_ctlr_handle && display_ui_get_lvgl_fb(1)) {
-        avdk_err_t fr = bk_display_flush(display_ui_get_ctx()->dpu_ctlr_handle, display_ui_get_lvgl_fb(1),
-                                         cast_bank_steer_noop_cb);
-        LOGI("[cast] st %p r=%d\n", display_ui_get_lvgl_fb(1), (int)fr);
-        rtos_delay_milliseconds(30);
-    } else {
-        LOGE("[cast] st !ctx %p %p %p\n",
-             (void *)display_ui_get_ctx(),
-             display_ui_get_ctx() ? (void *)display_ui_get_ctx()->dpu_ctlr_handle : NULL,
-             (void *)display_ui_get_lvgl_fb(1));
-    }
-    LOGI("DPU steered to fb[1] (PSRAM bank 0) for contention-free GPU compress\n");
-}
-
 void lvgl_app_dpu_apply_casting_config(void)
 {
-    bk_display_dpu_config_t cast_config = *display_ui_get_dpu_config();
-    cast_config.video.decompress = true;
-    cast_config.video.format = BK_PIXEL_FORMAT_ARGB8888;
-    LOGI("[diag] dpu apply cast: decompress=%d format=%d disp=%ux%u\n",
-         (int)cast_config.video.decompress, (int)cast_config.video.format,
-         (unsigned)cast_config.video.disp_w, (unsigned)cast_config.video.disp_h);
-    if (display_ui_get_ctx() && display_ui_get_ctx()->dpu_ctlr_handle) {
-        bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
-                                          &(bk_display_pixel_format_config_t) {
-                                              .format = cast_config.video.format,
-                                              .decompress = cast_config.video.decompress,
-                                          });
-    }
+    /*
+     * LVGL renders through the GPU-compressed ARGB8888 path (display_ui.c:
+     * output_compress), so the DPU is permanently ARGB8888 + decompress -- the
+     * exact format cast/GPU output needs. The old bk_display_pixel_format_set()
+     * runtime switch is therefore redundant (it also raced the pending flush:
+     * "dpu_core_runtime_switch wait pending frame failed"). Just record state;
+     * the DPU already carries the right format.
+     */
+    LOGI("[cast] dpu already ARGB8888+decompress; skip runtime format switch\n");
     s_dpu_casting_reopen_pending = 0;
     s_dpu_switched_to_cast = 1;
     LOGI("[cast] dpu ok\n");
-
 }
 
 bk_err_t lvgl_app_resume_display(void)
@@ -115,12 +90,14 @@ bk_err_t lvgl_app_resume_display(void)
     if (s_dpu_casting_reopen_pending) {
         s_dpu_casting_reopen_pending = 0;
         /*
-         * Cast may defer lv_vendor_stop to first frame; if we never got a frame,
-         * s_cast_lvgl_was_stopped stays 0 and LVGL must not be lv_vendor_start() again.
+         * suspend_display() (e.g. provisioning) only defers teardown; it never
+         * calls lv_vendor_stop, so s_cast_lvgl_was_stopped stays 0 and LVGL must
+         * not be lv_vendor_start()ed again. The cast hook path sets it in pre_start.
          */
-        s_lvgl_stopped_for_cast = 0;
         if (s_cast_lvgl_was_stopped) {
             s_cast_lvgl_was_stopped = 0;
+            /* Cast teardown closed the shared vg_lite; re-acquire before LVGL runs. */
+            lv_gpu_init(0, 0);
             lv_vendor_start();
             rtos_delay_milliseconds(50);
             lv_vendor_disp_lock();
@@ -133,40 +110,18 @@ bk_err_t lvgl_app_resume_display(void)
         return BK_OK;
     }
 
-    s_lvgl_stopped_for_cast = 0;
-
-    if (s_dpu_switched_to_cast && display_ui_get_ctx() && display_ui_get_ctx()->dpu_ctlr_handle) {
+    if (s_dpu_switched_to_cast && display_ui_get_dpu_handle()) {
         avdk_err_t fr;
 
         s_dpu_switched_to_cast = 0;
         /*
-         * Apply LVGL layer (RGB565, decompress off) before flushing the LVGL FB so
-         * scanout does not interpret RGB565 through the cast ARGB/decompress path.
-         * Flush then repoints DPU at valid LVGL memory (cast pool freed only after
-         * post_stop in cast_jpeg_pipeline_turn_off).
+         * DPU format no longer differs between LVGL and cast: both scan out
+         * ARGB8888 + decompress (LVGL uses the GPU-compress path now). So the
+         * pixel-format restore is gone; we only need to repoint the DPU scanout
+         * back at the LVGL frame buffer (cast steered it to its own pool).
          */
-        fr = bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
-            &(bk_display_pixel_format_config_t) {
-                .format = display_ui_get_dpu_config()->video.format,
-                .decompress = display_ui_get_dpu_config()->video.decompress,
-            });
-        if (fr != AVDK_ERR_OK) {
-            bk_err_t wait_ret = cast_jpeg_pipeline_wait_display_flush(1000);
-            LOGW("[cast] restore LVGL pixel format retry after flush wait, r=%d wait=%d\n",
-                 (int)fr, (int)wait_ret);
-            fr = bk_display_pixel_format_set(display_ui_get_ctx()->dpu_ctlr_handle,
-                &(bk_display_pixel_format_config_t) {
-                    .format = display_ui_get_dpu_config()->video.format,
-                    .decompress = display_ui_get_dpu_config()->video.decompress,
-                });
-        }
-        if (fr != AVDK_ERR_OK) {
-            LOGE("[cast] restore LVGL pixel format failed, r=%d\n", (int)fr);
-            return BK_FAIL;
-        }
-        LOGI("DPU layer config + open restored for LVGL\n");
         if (display_ui_get_lvgl_fb(0)) {
-            fr = bk_display_flush(display_ui_get_ctx()->dpu_ctlr_handle,
+            fr = bk_display_flush(display_ui_get_dpu_handle(),
                                   display_ui_get_lvgl_fb(0), cast_bank_steer_noop_cb);
             LOGI("[cast] restore flush lvgl fb[0] %p r=%d\n",
                  (void *)display_ui_get_lvgl_fb(0), (int)fr);
@@ -179,6 +134,8 @@ bk_err_t lvgl_app_resume_display(void)
 
     if (s_cast_lvgl_was_stopped) {
         s_cast_lvgl_was_stopped = 0;
+        /* Cast teardown closed the shared vg_lite; re-acquire before LVGL runs. */
+        lv_gpu_init(0, 0);
         lv_vendor_start();
         rtos_delay_milliseconds(50);
         lv_vendor_disp_lock();
@@ -193,35 +150,61 @@ bk_err_t lvgl_app_resume_display(void)
 
 static void display_ui_cast_pre_start(void)
 {
-    s_cast_lvgl_was_stopped = 0;
-    s_lvgl_suspended_for_cast = 1;
-    /*
-     * Pipeline create/start runs next (cast_jpeg_pipeline_turn_on). LVGL stop and
-     * DPU ARGB/decompress apply in display_ui_cast_first_frame_apply on first flush.
-     * Disconnect before any frame keeps RGB565 and leaves LVGL running.
-     */
-    LOGI("[cast] pipeline prep: lvgl stop + dpu cast format deferred to first frame flush\n");
-}
-
-static void display_ui_cast_first_frame_apply(void)
-{
     uint32_t post_paint_ms = beken_ui_after_cast_ui_painted_delay_ms();
 
+    s_cast_lvgl_was_stopped = 0;
+    s_lvgl_suspended_for_cast = 1;
+
     /*
-     * Runs from cast frame_display path; keep section minimal. Hold disp_lock
-     * until lv_vendor_stop completes (same ordering as former pre_start).
+     * Stop LVGL and release the single vg_lite/GPU engine BEFORE the cast
+     * JPEG->GPU pipeline is created/started (cast_jpeg_pipeline_turn_on calls
+     * this right before jpeg_stream_pipeline_create/start).
+     *
+     * The cast decoder's flexa bond needs the GPU to drain its output ring; if
+     * LVGL keeps compositing (GPU-compress every frame) the bond starves ->
+     * "wait flexa registered ports done" / vcdec decode timeout, and the first
+     * cast frame never arrives. Deferring the stop to the first frame therefore
+     * deadlocks (no GPU -> no first frame -> no stop). Do it up front instead.
+     */
+    /*
+     * Do the LVGL-touching teardown (page leave + lv_timer_delete via the product
+     * hook) UNDER the disp lock so the LVGL task is parked on g_disp_mutex and the
+     * timers are still on the active list, then RELEASE the lock BEFORE
+     * lv_vendor_stop().
+     *
+     * lv_vendor_stop() sets STATE_STOP and blocks (NEVER timeout) on the LVGL
+     * task's exit semaphore, but that task only reaches the exit / semaphore after
+     * re-acquiring g_disp_mutex at the top of every loop iteration. Holding the
+     * disp lock across lv_vendor_stop() therefore deadlocks: turn_on hangs inside
+     * pre_start, never reaches cast_video_recv_gate_call(1), and the WiFi unfragment
+     * alloc gate stays closed forever -> endless "frame_malloc: denied (cast alloc
+     * gate)". This mirrors the assist-view teardown (dashcam_assitview.c).
      */
     lv_vendor_disp_lock();
     beken_ui_before_cast_lvgl_teardown();
+    lv_vendor_disp_unlock();
+
     if (post_paint_ms > 0U) {
         LOGI("[cast] post page-switch delay %u ms\n", (unsigned)post_paint_ms);
         rtos_delay_milliseconds((uint32_t)post_paint_ms);
     }
+
     lv_vendor_stop();
     s_cast_lvgl_was_stopped = 1;
-    lv_vendor_disp_unlock();
 
     lvgl_app_dpu_apply_casting_config();
+
+    LOGI("[cast] pipeline prep: LVGL stopped + GPU released before pipeline create\n");
+}
+
+static void display_ui_cast_first_frame_apply(void)
+{
+    /*
+     * LVGL stop + DPU cast config now happen in display_ui_cast_pre_start (before
+     * the pipeline is created) so the cast GPU bond is not starved by LVGL.
+     * Nothing left to do on the first frame.
+     */
+    LOGI("[cast] first frame (lvgl already stopped in pre_start)\n");
 }
 
 static void display_ui_cast_post_stop(void)

@@ -41,9 +41,11 @@
  #include <components/bk_decode/bk_jpeg_decode_types.h>
  #include <components/bk_gpu_ctlr.h>
  #include <components/bk_gpu.h>
- #include <components/bk_flexa_bond.h>
- 
- #define TAG "jsp"
+#include <components/bk_flexa_bond.h>
+
+#include <cache.h>
+
+#define TAG "jsp"
  
  #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
  #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -555,13 +557,6 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 			 LOGW("[cast] drop %u stale frame(s) for low-latency\n", (unsigned)dropped);
 	 }
 
-	 /*
-	  * AP PSRAM now runs with D-Cache enabled (mpu_cfg L2 cache). The JPEG
-	  * stream is produced by the CPU (SD read + DHT/QT inject for boot_avi,
-	  * network fill for cast) and consumed by the VCDEC (DMA). Sync the whole
-	  * range down to physical PSRAM, then a barrier before the decode task can
-	  * pop it, so the hardware never reads stale/cached bytes.
-	  */
 	 flush_dcache((void *)jpeg_stream, jpeg_len);
 	 __DSB();
 
@@ -652,7 +647,13 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 ctx->bond = NULL;
 	 }
  
-	 /* Close GPU */
+	 /* Close GPU.
+	  *
+	  * bk_gpu_deinit() -> gpu_ctlr_deinit() calls vg_lite_close() + bk_gpu_driver_deinit()
+	  * on the *single global* GPU engine (not reference counted). If LVGL shares that
+	  * engine (screencast), the caller MUST re-acquire it (lv_gpu_init) before letting
+	  * LVGL draw again -- that is now the display layer's job (display_ui_cast_hooks
+	  * resume), so this component stays LVGL-agnostic and just does a plain teardown. */
 	 if (ctx->gpu_handle != NULL)
 	 {
 		 (void)bk_gpu_close(ctx->gpu_handle);

@@ -67,16 +67,12 @@ void cast_jpeg_pipeline_register_hooks(const cast_jpeg_pipeline_hooks_t *hooks)
 
 static jpeg_stream_pipeline_handle_t s_pipeline;
 static bk_display_ctlr_handle_t      s_disp;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 static bk_display_ctlr_handle_t      s_pipeline_disp;
-#endif
 /* Apply ARGB+decompress on first GPU frame, not right after pipeline start — avoids
  * a window where the panel scans decompress mode while the last buffer is still
  * RGB565 (DC panel0 data underflow / apparent freeze). */
 static volatile int s_cast_dpu_apply_on_first_frame;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 static volatile uint8_t s_cast_pipeline_running;
-#endif
 static uint32_t     s_cast_frame_display_seq;
 static uint32_t     s_pipeline_start_ms;
 /* Incremented when cast_gpu_malloc_cb fails (e.g. bk_gpu_open extra allocs); checked after jpeg_stream_pipeline_create. */
@@ -366,25 +362,18 @@ bk_err_t cast_jpeg_pipeline_push_frame_buffer(frame_buffer_t *fb)
 		return BK_FAIL;
 	}
 
+	/* On any failure here the caller frees fb (media_frame_queue_free); do NOT free
+	 * it again in the callee — the pipeline only owns fb once push succeeds. */
 	if (s_pipeline == NULL) {
 		LOGW("[cast] pjfb !pipe\n");
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
-		cast_release_fb(fb);
-#endif
 		return BK_FAIL;
 	}
 
 	if (!cast_ops_mutex_ensure()) {
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
-		cast_release_fb(fb);
-#endif
 		return BK_FAIL;
 	}
 	rtos_lock_mutex(&s_cast_ops_mutex);
 	if (s_pipeline == NULL) {
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
-		cast_release_fb(fb);
-#endif
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		return BK_FAIL;
 	}
@@ -403,18 +392,16 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 
 	if (!cast_ops_mutex_ensure()) {
 		LOGE("[cast] on: mutex init failed\n");
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
 		cast_video_recv_gate_call(1);
-#endif
 		return BK_FAIL;
 	}
 
 	rtos_lock_mutex(&s_cast_ops_mutex);
 
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 	if (disp == NULL) {
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		LOGE("[cast] 0 !disp\n");
+		cast_video_recv_gate_call(1);
 		return BK_FAIL;
 	}
 
@@ -444,6 +431,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 				s_disp = NULL;
 				s_cast_hooks.post_stop();
 				rtos_unlock_mutex(&s_cast_ops_mutex);
+				cast_video_recv_gate_call(1);
 				return BK_FAIL;
 			}
 			s_cast_pipeline_running = 1U;
@@ -461,48 +449,6 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 		s_pipeline_disp = NULL;
 		cast_gpu_pool_free_all();
 	}
-#endif
-
-	// if (s_pipeline != NULL) {
-	// 	uint32_t age_ms = rtos_get_time() - s_pipeline_start_ms;
-	// 	if (s_cast_frame_display_seq == 0 && age_ms > 5000) {
-	// 		/*
-	// 		 * Pipeline exists, never displayed any frame, AND has been
-	// 		 * running >5 s — truly stuck (e.g. rapid reconnect where
-	// 		 * TCP data never arrived).  Force-shutdown before recreating.
-	// 		 */
-	// 		LOGW("[cast] on: stale pipeline (0 frames, %u ms), force shutdown\n",
-	// 		     (unsigned)age_ms);
-	// 		rtos_unlock_mutex(&s_cast_ops_mutex);
-	// 		cast_jpeg_pipeline_turn_off();
-	// 		rtos_lock_mutex(&s_cast_ops_mutex);
-	// 	} else if (s_cast_frame_display_seq == 0U && age_ms >= 2500U) {
-	// 		/*
-	// 		 * Second CONNECT while still no first frame for a long time — e.g. GPU
-	// 		 * path broken but create returned OK (19-32-36.DAT).  Do not use a
-	// 		 * short window: phone often posts CTRL+VIDEO as two CONNECTED ~0.5s
-	// 		 * apart while JPEG has not arrived yet (19-47-04 last cast); a low
-	// 		 * threshold would tear down a healthy pipeline (wifi still 0).
-	// 		 */
-	// 		LOGW("[cast] on: 0 frames after %u ms, force shutdown (dup/reconnect)\n",
-	// 		     (unsigned)age_ms);
-	// 		rtos_unlock_mutex(&s_cast_ops_mutex);
-	// 		cast_jpeg_pipeline_turn_off();
-	// 		rtos_lock_mutex(&s_cast_ops_mutex);
-	// 	} else {
-	// 		rtos_unlock_mutex(&s_cast_ops_mutex);
-	// 		LOGW("[cast] on dup (seq=%u age=%u ms)\n",
-	// 		     (unsigned)s_cast_frame_display_seq, (unsigned)age_ms);
-	// 		cast_video_recv_gate_call(1);
-	// 		return BK_OK;
-	// 	}
-	// }
-	// if (disp == NULL) {
-	// 	rtos_unlock_mutex(&s_cast_ops_mutex);
-	// 	LOGE("[cast] 0 !disp\n");
-	// 	cast_video_recv_gate_call(1);
-	// 	return BK_FAIL;
-	// }
 
 	LOGI("[cast] 0 %p\n", disp);
 	s_disp = disp;
@@ -529,9 +475,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 		LOGE("[cast] gpu pool alloc failed\n");
 		s_disp = NULL;
 		s_cast_hooks.post_stop();
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
 		cast_video_recv_gate_call(1);
-#endif
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		return BK_FAIL;
 	}
@@ -559,35 +503,25 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	if (err != AVDK_ERR_OK || s_pipeline == NULL) {
 		LOGE("[cast] 3e %d %p\n", (int)err, s_pipeline);
 		s_pipeline = NULL;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 		s_pipeline_disp = NULL;
-#endif
 		s_disp = NULL;
 		s_cast_hooks.post_stop();
 		cast_gpu_pool_free_all();
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
 		cast_video_recv_gate_call(1);
-#endif
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		return BK_FAIL;
 	}
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 	s_pipeline_disp = disp;
-#endif
 	if (s_cast_gpu_malloc_fail_count != 0U) {
 		LOGE("[cast] 3e gpu flex alloc failed during create (fail_cnt=%u), abort\n",
 		     (unsigned)s_cast_gpu_malloc_fail_count);
 		(void)jpeg_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 		s_pipeline_disp = NULL;
-#endif
 		s_disp = NULL;
 		s_cast_hooks.post_stop();
 		cast_gpu_pool_free_all();
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
 		cast_video_recv_gate_call(1);
-#endif
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		return BK_FAIL;
 	}
@@ -599,23 +533,17 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 		s_cast_gpu_pool_active = 0;
 		(void)jpeg_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 		s_pipeline_disp = NULL;
-#endif
 		s_disp = NULL;
 		s_cast_hooks.post_stop();
 		cast_gpu_pool_free_all();
-#if !defined(CONFIG_PROJECT_SCOOTER_V2) || !CONFIG_PROJECT_SCOOTER_V2
 		cast_video_recv_gate_call(1);
-#endif
 		rtos_unlock_mutex(&s_cast_ops_mutex);
 		return BK_FAIL;
 	}
 
 	s_cast_dpu_apply_on_first_frame = 1;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 	s_cast_pipeline_running = 1U;
-#endif
 	s_pipeline_start_ms = rtos_get_time();
 	LOGI("[cast] 4 ok first_frame_pending=1 s_disp=%p\n", s_disp);
 
@@ -638,33 +566,32 @@ bk_err_t cast_jpeg_pipeline_turn_off(void)
 
 	s_cast_dpu_apply_on_first_frame = 0;
 	s_cast_frame_display_seq = 0;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 	if (s_pipeline != NULL && s_cast_pipeline_running) {
 		(void)jpeg_stream_pipeline_stop(s_pipeline);
 		s_cast_pipeline_running = 0;
 	}
-#else
-	if (s_pipeline != NULL) {
-		(void)jpeg_stream_pipeline_stop(s_pipeline);
-		(void)jpeg_stream_pipeline_destroy(s_pipeline);
-		s_pipeline = NULL;
-	}
-#endif
 	s_disp = NULL;
 	s_cast_gpu_pool_active = 0;
-	/*
-	 * Repoint DPU / restore LVGL layer inside post_stop before freeing the cast
-	 * GPU pool; otherwise scanout may still use a pool buffer address after free.
-	 */
-	s_cast_hooks.post_stop();
 
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+	/*
+	 * Destroy the cast pipeline FIRST: this does a plain GPU teardown
+	 * (bk_gpu_deinit -> vg_lite_close + GPU power off on the single global engine).
+	 * post_stop() then re-acquires that engine for LVGL (lv_gpu_init) and restarts
+	 * the LVGL task, so it must run AFTER the teardown, not before.
+	 */
 	if (s_pipeline != NULL) {
 		(void)jpeg_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
 	}
 	s_pipeline_disp = NULL;
-#endif
+
+	/*
+	 * Repoint DPU / restore LVGL layer (re-init vg_lite + lv_vendor_start) inside
+	 * post_stop before freeing the cast GPU pool; otherwise scanout may still use a
+	 * pool buffer address after free.
+	 */
+	s_cast_hooks.post_stop();
+
 	cast_gpu_pool_free_all();
 
 	rtos_unlock_mutex(&s_cast_ops_mutex);

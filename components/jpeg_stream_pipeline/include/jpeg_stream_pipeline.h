@@ -124,7 +124,7 @@
 	 uint32_t task_priority;            /**< Decode task priority, default BEKEN_DEFAULT_WORKER_PRIORITY */
 	 uint32_t task_stack_size;          /**< Decode task stack size in bytes, default 4096 */
 	 uint32_t queue_depth;              /**< Frame queue depth, default 4 */
- } jpeg_stream_pipeline_config_t;
+} jpeg_stream_pipeline_config_t;
  
  /* ------------------------------------------------------------------ */
  /* Lifecycle API                                                       */
