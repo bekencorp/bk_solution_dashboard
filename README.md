@@ -1,6 +1,6 @@
 # Armino Dashboard Two-Wheeler Solution
 
-- [中文](./README_CN.md)
+* [中文](./README_CN.md)
 
 ## Overview
 
@@ -28,7 +28,6 @@ architecture for a 1280x720 landscape dashboard. It currently supports:
 │   └── scooter_1280_720/        # Main two-wheeler product project
 ├── README_CN.md
 ├── README.md
-└── 两轮车方案_BK7259_需求设计说明书.docx
 ```
 
 ## Build
@@ -63,7 +62,6 @@ Main documents:
 - [Product project guide](./projects/scooter_1280_720/README.md)
 - [English documentation entry](./docs/bk7259/en/index.rst)
 - [Dashboard App user guide](./docs/bk7259/en/projects/dashboard_app/index.rst)
-- [Hardware reference](./docs/bk7259/en/hw-reference/index.rst)
 
 The Dashboard App supports both Wi-Fi image transmission and BLE image transmission. Select BK7259, the image transmission mode, and image parameters in the App configuration center, then follow the documentation to provision, search for devices, and start navigation casting.
 

@@ -1,6 +1,6 @@
 # Armino Dashboard 两轮车方案
 
-- [English](./README.md)
+* [English](./README.md)
 
 ## 概述
 
@@ -27,7 +27,6 @@
 │   └── scooter_1280_720/        # 两轮车产品工程主入口
 ├── README_CN.md
 ├── README.md
-└── 两轮车方案_BK7259_需求设计说明书.docx
 ```
 
 ## 编译
@@ -62,7 +61,6 @@ export SDK_DIR=/path/to/bk_avdk_smp
 - [产品工程说明](./projects/scooter_1280_720/README_CN.md)
 - [中文文档入口](./docs/bk7259/zh_CN/index.rst)
 - [Dashboard App 使用指南](./docs/bk7259/zh_CN/projects/dashboard_app/index.rst)
-- [硬件参考](./docs/bk7259/zh_CN/hw-reference/index.rst)
 
 Dashboard App 支持 Wi-Fi 图传和 BLE 图传两种流程。请先在 App 配置中心选择 BK7259、图传方式和图像参数，保存后按文档步骤进行配网、搜索设备并启动导航投屏。
 
