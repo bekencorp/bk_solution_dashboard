@@ -53,11 +53,14 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+/*
+ * Weak default network-ready hook. Projects that need to react to STA got-ip
+ * (e.g. scooter_1280_720_v2 starts the FTP server in dashcam_storage.c) provide
+ * a strong override; everyone else links this harmless no-op.
+ */
 __attribute__((weak)) void dashboard_network_ready_hook(void)
 {
 }
-#endif
 
 //bk_ble_provisioning_event_notify_with_data
 static void (*s_send)(uint16_t opcode, int status);
@@ -814,12 +817,10 @@ static bk_err_t demo_netif_event_cb(void *arg, event_module_t event_module,
 		LOGI("%s got ip\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
         uint8_t success_status = 0;
         if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, (char *)&success_status, sizeof(success_status));
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
         if (got_ip->netif_if == NETIF_IF_STA)
         {
             dashboard_network_ready_hook();
         }
-#endif
     }
     break;
 
@@ -830,6 +831,41 @@ static bk_err_t demo_netif_event_cb(void *arg, event_module_t event_module,
 
 	return BK_OK;
 }
+
+#if CONFIG_BK_BLE_PROVISIONING
+/*
+ * Netif event cb for the SDK provisioning path (reg_method==0). Unlike
+ * demo_netif_event_cb() (wifi_boarding path), it does NOT send
+ * BOARDING_OP_CONFIG_WIFI_STA to the phone on got-ip: the SDK path already
+ * notifies the phone from demo_network_provisioning_status_cb() on SUCCEED.
+ * It only fires the network-ready hook so FTP (scooter v2) starts once STA has
+ * an IP.
+ */
+static bk_err_t demo_np_netif_event_cb(void *arg, event_module_t event_module,
+					   int event_id, void *event_data)
+{
+	netif_event_got_ip4_t *got_ip;
+
+	switch (event_id) {
+	case EVENT_NETIF_GOT_IP4:
+    {
+		got_ip = (netif_event_got_ip4_t *)event_data;
+		LOGI("%s got ip (np)\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
+        if (got_ip->netif_if == NETIF_IF_STA)
+        {
+            dashboard_network_ready_hook();
+        }
+    }
+    break;
+
+	default:
+		LOGD("rx event <%d %d>\n", event_module, event_id);
+		break;
+	}
+
+	return BK_OK;
+}
+#endif
 
 static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
 					  int event_id, void *event_data)
@@ -927,6 +963,13 @@ bk_err_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use
         bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
         bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
         bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
+        /*
+         * Register a dedicated netif got-ip cb on the SDK path so the
+         * network-ready hook (FTP start on scooter v2) still fires. It does not
+         * re-notify the phone with BOARDING_OP_CONFIG_WIFI_STA (already sent by
+         * demo_network_provisioning_status_cb() on SUCCEED).
+         */
+        bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_np_netif_event_cb, NULL);
         //cli_network_provisioning_init();
         s_send = bk_ble_provisioning_event_notify;
         s_send_data = bk_ble_provisioning_event_notify_with_data;
