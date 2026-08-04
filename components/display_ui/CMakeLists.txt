@@ -2,7 +2,7 @@
 # + display_board_config_t) from multimedia_device_service. Adding the search path
 # unconditionally is harmless for projects that leave the macro off.
 set(MULTIMEDIA_DEVICE_SERVICE_DIR
-    $ENV{ARMINO_TOOLS_PATH}/../projects/common_components/multimedia_device_service
+    ${CMAKE_CURRENT_LIST_DIR}/../multimedia_device_service
 )
 
 set(incs
