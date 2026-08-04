@@ -70,10 +70,10 @@ static int32_t bsc_uart_enable(uint8_t uart_id, uint8_t enable, uint32_t band)
         switch (uart_id)
         {
         case UART_ID_0:
-            gpio_dev_unmap(GPIO_10);
-            gpio_dev_unmap(GPIO_11);
-            gpio_dev_map(GPIO_10, GPIO_DEV_UART0_RXD);
-            gpio_dev_map(GPIO_11, GPIO_DEV_UART0_TXD);
+            gpio_dev_unmap(CONFIG_UART0_RX_PIN);
+            gpio_dev_unmap(CONFIG_UART0_TX_PIN);
+            gpio_dev_map(CONFIG_UART0_RX_PIN, GPIO_DEV_UART0_RXD);
+            gpio_dev_map(CONFIG_UART0_TX_PIN, GPIO_DEV_UART0_TXD);
 
             // gpio_dev_unmap(GPIO_12);
             // gpio_dev_unmap(GPIO_13);
@@ -81,25 +81,21 @@ static int32_t bsc_uart_enable(uint8_t uart_id, uint8_t enable, uint32_t band)
             break;
 
         case UART_ID_1:
-            gpio_dev_unmap(GPIO_55);
-            gpio_dev_unmap(GPIO_54);
-            gpio_dev_map(GPIO_55, GPIO_DEV_UART1_TXD);
-            gpio_dev_map(GPIO_54, GPIO_DEV_UART1_RXD);
+            gpio_dev_unmap(CONFIG_UART1_TX_PIN);
+            gpio_dev_unmap(CONFIG_UART1_RX_PIN);
+            gpio_dev_map(CONFIG_UART1_TX_PIN, GPIO_DEV_UART1_TXD);
+            gpio_dev_map(CONFIG_UART1_RX_PIN, GPIO_DEV_UART1_RXD);
             // gpio_dev_map resets the pin register and never applies pull,
             // so the RX line would float low and flood with 0x00. Force pull-up.
-            bk_gpio_pull_up(GPIO_54);
-            bk_gpio_pull_up(GPIO_55);
+            bk_gpio_pull_up(CONFIG_UART1_RX_PIN);
+            bk_gpio_pull_up(CONFIG_UART1_TX_PIN);
             break;
 
         case UART_ID_2:
-            gpio_dev_unmap(GPIO_30);
-            gpio_dev_unmap(GPIO_31);
-            gpio_dev_map(GPIO_30, GPIO_DEV_UART2_RXD);
-            gpio_dev_map(GPIO_31, GPIO_DEV_UART2_TXD);
-            // gpio_dev_unmap(GPIO_40);
-            // gpio_dev_unmap(GPIO_41);
-            // gpio_dev_map(GPIO_40, GPIO_DEV_UART2_RXD);
-            // gpio_dev_map(GPIO_41, GPIO_DEV_UART2_TXD);
+            gpio_dev_unmap(CONFIG_UART2_RX_PIN);
+            gpio_dev_unmap(CONFIG_UART2_TX_PIN);
+            gpio_dev_map(CONFIG_UART2_RX_PIN, GPIO_DEV_UART2_RXD);
+            gpio_dev_map(CONFIG_UART2_TX_PIN, GPIO_DEV_UART2_TXD);
             break;
 
         default:

@@ -206,7 +206,7 @@ static bk_err_t display_hw_init_internal(void)
         .video.format = BK_PIXEL_FORMAT_RGB565,
     };
     const bk_lcd_panel_config_t panel_config = {
-        .reset_pin = GPIO_60,
+        .reset_pin = CONFIG_PROJECT_LCD_RESET_PIN,
     };
 
     g_disp_ctx = os_malloc(sizeof(display_ctx_t));
@@ -215,6 +215,27 @@ static bk_err_t display_hw_init_internal(void)
         return BK_FAIL;
     }
     os_memset(g_disp_ctx, 0, sizeof(display_ctx_t));
+
+#if defined(CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0) && CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0
+    /* LCD panel control/power enable (P45_LCD_PCTRL): must be high before the
+     * panel is reset and initialized, otherwise the panel stays unpowered/dark. */
+    gpio_dev_unmap(GPIO_45);
+    BK_LOG_ON_ERR(bk_gpio_enable_output(GPIO_45));
+    BK_LOG_ON_ERR(bk_gpio_pull_up(GPIO_45));
+    bk_gpio_set_capacity(GPIO_45, GPIO_DRIVER_CAPACITY_3);
+    bk_gpio_set_output_high(GPIO_45);
+
+    /* Bring-up: drive the backlight (P46_LCD_BL) high here, BEFORE the DSI/panel
+     * init, so it is not gated behind bk_display_open() success. This makes the
+     * backlight a standalone electrical test: if it stays dark now, the issue is
+     * power/pin/polarity; if it lights but shows no image, the issue is DSI/panel. */
+    gpio_dev_unmap(GPIO_46);
+    BK_LOG_ON_ERR(bk_gpio_enable_output(GPIO_46));
+    BK_LOG_ON_ERR(bk_gpio_pull_up(GPIO_46));
+    bk_gpio_set_capacity(GPIO_46, GPIO_DRIVER_CAPACITY_3);
+    bk_gpio_set_output_high(GPIO_46);
+#endif /* CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0 */
+
     AVDK_GOTO_ON_ERROR(bk_display_dsi_bus_new(&g_disp_ctx->dis_bus_handle, NULL), err, TAG, "display dsi bus new err\n");
     const bk_display_dsi_panel_t *panel = scooter_get_mipi_panel();
     if (panel == NULL) {
@@ -227,12 +248,7 @@ static bk_err_t display_hw_init_internal(void)
 
     AVDK_GOTO_ON_ERROR(bk_display_dpu_ctlr_new(&g_disp_ctx->dpu_ctlr_handle, g_disp_ctx->panel_handle, &dpu_config), err, TAG, "display dpu ctlr new err\n");
     AVDK_GOTO_ON_ERROR(bk_display_init(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display init err\n");
-    AVDK_GOTO_ON_ERROR(bk_display_open(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display open err\n");  
-    gpio_dev_unmap(GPIO_7);
-    BK_LOG_ON_ERR(bk_gpio_enable_output(GPIO_7));
-    BK_LOG_ON_ERR(bk_gpio_pull_up(GPIO_7));
-    bk_gpio_set_capacity(GPIO_7, GPIO_DRIVER_CAPACITY_3);
-    bk_gpio_set_output_high(GPIO_7);
+    AVDK_GOTO_ON_ERROR(bk_display_open(g_disp_ctx->dpu_ctlr_handle), err, TAG, "display open err\n");
 
     s_dpu_config = dpu_config;
     vendor_config.args = g_disp_ctx->dpu_ctlr_handle;
