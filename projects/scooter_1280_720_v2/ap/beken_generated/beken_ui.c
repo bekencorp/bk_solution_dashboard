@@ -190,6 +190,7 @@ static void home_menu_select(home_menu_item_t item)
 static void beken_ui_free_heavy_page(bk_lv_ui_t *ui, int32_t page)
 {
     lv_obj_t **slot = NULL;
+    lv_obj_t *victim = NULL;
 
     if (page == HOME_MENU_DASHCAM)
     {
@@ -209,14 +210,15 @@ static void beken_ui_free_heavy_page(bk_lv_ui_t *ui, int32_t page)
         return;
     }
 
-    if (!lv_obj_is_valid(*slot))
+    victim = *slot;
+    if (!lv_obj_is_valid(victim))
     {
         *slot = NULL;
         return;
     }
 
     /* Never delete the screen that is currently being displayed. */
-    if (*slot == lv_screen_active())
+    if (victim == lv_screen_active())
     {
         return;
     }
@@ -228,7 +230,7 @@ static void beken_ui_free_heavy_page(bk_lv_ui_t *ui, int32_t page)
         home_ui_unload();
     }
 
-    lv_obj_delete(*slot);
+    lv_obj_delete(victim);
     *slot = NULL;
 }
 
@@ -640,9 +642,29 @@ void beken_ui_before_cast_lvgl_teardown(void)
 {
     home_ui_leave();
     ota_ui_leave();
-    /* Full stop (camera + recorder + segment-tick timer): the LVGL timers are
-     * about to be torn down, so the continuous-recording tick must not survive. */
-    dashcam_ui_shutdown();
+    /*
+     * Keep the dashcam recorder + camera (MP flexa -> H264) running WHILE casting:
+     * only leave the standby pages and pause the LVGL segment-rotation tick (the
+     * LVGL task is about to stop, so that timer must not survive). The cast path
+     * (network JPEG -> GPU -> DPU) uses different hardware than the recorder, so
+     * recording keeps appending to the current segment in the background during
+     * casting. Mirrors the assist-view teardown.
+     */
+    dashcam_ui_suspend_keep_recording();
+}
+
+/*
+ * Pre-assist-view hook. Like beken_ui_before_cast_lvgl_teardown() it leaves the
+ * standby pages and pauses the LVGL segment tick before lv_vendor_stop(), BUT
+ * it does NOT stop the dashcam recorder/camera: the assist view keeps recording
+ * (MP flexa -> H264) alive and adds a second MP flexa -> GPU bond for the
+ * full-screen live view, so recording is uninterrupted while assisting.
+ */
+void beken_ui_before_assist_lvgl_teardown(void)
+{
+    home_ui_leave();
+    ota_ui_leave();
+    dashcam_ui_suspend_keep_recording();
 }
 
 /*
@@ -675,8 +697,15 @@ void beken_ui_kick_after_display_resume(void)
     home_menu_apply_selection();
     home_ui_enter();
 
-    /* Resume background recording torn down in the pre-cast teardown. */
+    /*
+     * Recording is kept alive across casting now (suspend_keep_recording), so
+     * normally we only need to re-arm the paused segment-rotation tick.
+     * schedule_dashcam_boot() stays as an idempotent safety net: it is a no-op
+     * unless the recorder is IDLE (e.g. a cast started before the initial boot),
+     * in which case it (re)starts recording.
+     */
     beken_ui_schedule_dashcam_boot();
+    dashcam_ui_resume_keep_recording();
 }
 
 /* key_app_service.c calls pet_page_toggle() for the GPIO_50 short press. */

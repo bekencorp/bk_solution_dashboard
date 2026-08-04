@@ -12,19 +12,51 @@
 #include "dashcam_video.h"
 #include "os/os.h"
 
-#define TAG "dashcam_app"
+#define TAG "d_app"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
 #define DASHCAM_APP_TICK_MS 1000
+#define DASHCAM_TICK_PRIO  4
+#define DASHCAM_TICK_STACK 6144
 
-static dashcam_app_state_t s_state = DASHCAM_APP_IDLE;
+/*
+ * Recording and playback are independent (they can both be active at once), so
+ * each has its own state variable. s_rec is owned by the recorder path (start
+ * capture / rotation worker / stop), s_play by the playback path (play /
+ * stop_playback); neither transition touches the other's variable.
+ */
+static dashcam_rec_state_t  s_rec = DASHCAM_REC_IDLE;
+static dashcam_play_state_t s_play = DASHCAM_PLAY_IDLE;
 static lv_obj_t *s_parent = NULL;
-static lv_timer_t *s_tick_timer = NULL;
 static uint32_t s_segment_start_ms = 0;
 static char s_status[64] = "IDLE";
+
+/*
+ * Segment-rotation tick.
+ *
+ * An rtos timer wakes a dedicated worker once per second; the worker does the
+ * heavy rotation (recorder stop -> MP4 close/open). Driving it from an rtos timer
+ * instead of an lv_timer keeps segment rotation running while the LVGL task is
+ * stopped for casting / assist view (recording keeps going in the background).
+ *
+ * The worker runs in its own task, but needs no lock against the UI dashcam ops:
+ * it only touches the recorder (camera -> H264 -> MP4), which is independent of
+ * the player (H264 -> GPU) that the UI ops drive. Recording state (s_rec) is
+ * orthogonal to playback, so rotation gates purely on s_rec == RECORDING and
+ * keeps running while a clip plays back. UI ops only bring the recorder up/down
+ * while s_rec != RECORDING (i.e. when the worker is idle); the one op that tears
+ * the recorder down while it may be recording is shutdown(), which joins the
+ * worker (stop_tick) first. The shared scalars (s_rec, s_play, s_segment_start_ms)
+ * are word-atomic on this target.
+ */
+static beken_timer_t     s_tick_timer;
+static beken_thread_t    s_tick_thread = NULL;
+static beken_semaphore_t s_tick_wake = NULL;
+static beken_semaphore_t s_tick_exit = NULL;
+static volatile bool     s_tick_running = false;
 
 static void dashcam_app_set_status(const char *text)
 {
@@ -33,16 +65,28 @@ static void dashcam_app_set_status(const char *text)
 }
 
 /*
- * Pick the camera mode for a recording session: full RECORD (with the SP live
- * preview channel) when a page is showing the preview, or the lighter
- * RECORD_ONLY (no SP buffers) for headless/background recording. Keeping SP off
- * when nobody is viewing is what keeps the AP heap from being starved at boot
- * (req5 §9.1 OOM fix).
+ * Derive the single status-line string from the two orthogonal states. Playback
+ * owns the display while a clip is playing, so it takes priority; otherwise the
+ * line reflects the background recording state.
  */
-static dashcam_camera_mode_t dashcam_app_record_camera_mode(void)
+static void dashcam_app_refresh_status(void)
 {
-    return (s_parent != NULL) ? DASHCAM_CAMERA_MODE_RECORD
-                              : DASHCAM_CAMERA_MODE_RECORD_ONLY;
+    if (s_play == DASHCAM_PLAY_PLAYING)
+    {
+        dashcam_app_set_status("PLAYBACK");
+    }
+    else if (s_rec == DASHCAM_REC_RECORDING)
+    {
+        dashcam_app_set_status("REC");
+    }
+    else if (s_rec == DASHCAM_REC_STOPPED)
+    {
+        dashcam_app_set_status("REC FULL");
+    }
+    else
+    {
+        dashcam_app_set_status("IDLE");
+    }
 }
 
 static bool dashcam_app_record_allowed(void)
@@ -56,6 +100,7 @@ static bool dashcam_app_record_allowed(void)
     {
         return false;
     }
+    LOGI("dev build, dashcam_app_record_allowed: count=%u, max=%u\n", count, DASHCAM_DEV_MAX_FILES);
     return count < DASHCAM_DEV_MAX_FILES;
 #endif
 }
@@ -83,79 +128,63 @@ static bk_err_t dashcam_app_begin_segment(void)
     }
 
     s_segment_start_ms = rtos_get_time();
-    dashcam_app_set_status("REC");
+    /* Don't clobber the "PLAYBACK" label when rotation happens under a clip. */
+    if (s_play == DASHCAM_PLAY_IDLE)
+    {
+        dashcam_app_set_status("REC");
+    }
     LOGI("begin_segment: recording to %s\n", path);
     return BK_OK;
 }
 
 /*
- * Recording is not active (dev file cap reached, or a record-mode open failed).
- * Tear the encoder down so no H264 frames pile up with no consumer. Keep a
- * preview-only camera up only while the page is actively showing it; otherwise
- * power the camera down entirely (no viewer, no recording).
+ * Recording is not active (dev file cap reached, or a record open failed). Tear
+ * the encoder/camera down so no H264 frames pile up with no consumer. There is
+ * no preview to keep the camera up for, so power it down entirely.
  */
-static void dashcam_app_switch_to_live_only(void)
+static void dashcam_app_stop_recording(void)
 {
-    bool had_preview = (s_parent != NULL);
+    LOGI("stop_recording: tearing down recorder\n");
 
-    LOGI("switch_to_live_only: tearing down recorder (had_preview=%d)\n",
-         (int)had_preview);
-
-    if (had_preview)
-    {
-        dashcam_video_stop();
-    }
+    /* Only the recorder path is touched here; the playback surface (if any) is
+     * independent and left alone. This can run from the rotation worker while a
+     * clip is playing (s_play == PLAYING), in which case the status line stays
+     * "PLAYBACK" and only flips to "REC FULL" once playback ends. */
     dashcam_camera_close();
+    s_rec = DASHCAM_REC_STOPPED;
 
-    if (had_preview)
-    {
-        if (dashcam_camera_open(DASHCAM_CAMERA_MODE_PREVIEW) != BK_OK)
-        {
-            LOGE("preview-only camera open failed\n");
-            dashcam_app_set_status("CAM FAIL");
-            s_state = DASHCAM_APP_IDLE;
-            return;
-        }
-        (void)dashcam_video_start(s_parent);
-        dashcam_app_set_status("LIVE (REC FULL)");
-    }
-    else
+    if (s_play == DASHCAM_PLAY_IDLE)
     {
         dashcam_app_set_status("REC FULL");
     }
-
-    s_state = DASHCAM_APP_LIVE_ONLY;
-    LOGI("recording disabled (dev file cap), state=%d\n", (int)s_state);
+    LOGI("recording disabled, rec=%d\n", (int)s_rec);
 }
 
 /*
- * Bring up the continuous recording session: ISP RECORD mode (MP/flexa->H264
- * plus the SP channel for the live view) and the first segment. On the dev file
- * cap, or a failed record open, fall back via switch_to_live_only. Idempotent
- * while already recording.
+ * Bring up the continuous recording session (camera MP/flexa->H264 encoder) and
+ * the first segment. On the dev file cap, or a failed record open, fall back via
+ * stop_recording. Idempotent while already recording.
  */
 static void dashcam_app_start_capture(void)
 {
-    if (s_state == DASHCAM_APP_LIVE_REC)
+    if (s_rec == DASHCAM_REC_RECORDING)
     {
-        LOGI("start_capture: already LIVE_REC, skip\n");
+        LOGI("start_capture: already RECORDING, skip\n");
         return;
     }
 
     bool allowed = dashcam_app_record_allowed();
-    dashcam_camera_mode_t mode = dashcam_app_record_camera_mode();
-    LOGI("start_capture: record_allowed=%d viewer=%p -> camera mode=%d\n",
-         (int)allowed, (void *)s_parent, (int)mode);
+    LOGI("start_capture: record_allowed=%d viewer=%p\n",
+         (int)allowed, (void *)s_parent);
 
     if (allowed)
     {
-        if (dashcam_camera_open(mode) == BK_OK)
+        if (dashcam_camera_open() == BK_OK)
         {
             if (dashcam_app_begin_segment() == BK_OK)
             {
-                s_state = DASHCAM_APP_LIVE_REC;
-                LOGI("start_capture: recording ON (camera mode=%d, state=LIVE_REC)\n",
-                     (int)mode);
+                s_rec = DASHCAM_REC_RECORDING;
+                LOGI("start_capture: recording ON (rec=RECORDING)\n");
                 return;
             }
             /* Don't leave the encoder bonded with no recorder draining it. */
@@ -164,29 +193,13 @@ static void dashcam_app_start_capture(void)
         }
         else
         {
-            LOGE("start_capture: record camera open failed (mode=%d)\n", (int)mode);
+            LOGE("start_capture: record camera open failed\n");
         }
     }
 
-    LOGI("start_capture: recording NOT started (allowed=%d), fall back to live-only\n",
+    LOGI("start_capture: recording NOT started (allowed=%d), stopping recorder\n",
          (int)allowed);
-    dashcam_app_switch_to_live_only();
-}
-
-/*
- * Tear the current recording session down and bring it back up in the camera
- * mode that matches the current viewer state (RECORD vs RECORD_ONLY). Used to
- * add/drop the SP preview channel when a page attaches/detaches without leaving
- * the dashcam recording stopped. This starts a new MP4 segment.
- */
-static void dashcam_app_restart_capture(void)
-{
-    LOGI("restart_capture: stop recorder + close camera, then reopen (viewer=%p)\n",
-         (void *)s_parent);
-    (void)dashcam_recorder_stop();
-    dashcam_camera_close();
-    s_state = DASHCAM_APP_IDLE;
-    dashcam_app_start_capture();
+    dashcam_app_stop_recording();
 }
 
 static void dashcam_app_rotate_segment(void)
@@ -196,53 +209,178 @@ static void dashcam_app_rotate_segment(void)
 
     if (!dashcam_app_record_allowed())
     {
-        dashcam_app_switch_to_live_only();
+        dashcam_app_stop_recording();
         return;
     }
 
     if (dashcam_app_begin_segment() != BK_OK)
     {
-        dashcam_app_switch_to_live_only();
+        dashcam_app_stop_recording();
     }
 }
 
-static void dashcam_app_tick_cb(lv_timer_t *timer)
+/*
+ * rtos-timer callback (runs in the timer-daemon task): the rotation does blocking
+ * file IO (MP4 close/open) and would stall every other software timer, so here we
+ * only wake the worker and let it do the heavy lifting.
+ */
+static void dashcam_app_tick_timer_cb(void *arg)
 {
-    (void)timer;
+    (void)arg;
+    if (s_tick_wake != NULL)
+    {
+        rtos_set_semaphore(&s_tick_wake);
+    }
+}
 
-    if (s_state != DASHCAM_APP_LIVE_REC)
+/*
+ * Segment-rotation worker. Runs in its own task (independent of the LVGL task), so
+ * rotation keeps going while LVGL is stopped for casting / assist view. It only
+ * touches the recorder, which no UI op touches while recording (see the note on
+ * the tick state above), so it needs no lock.
+ */
+static void dashcam_app_tick_thread(void *arg)
+{
+    (void)arg;
+
+    while (s_tick_running)
+    {
+        if (rtos_get_semaphore(&s_tick_wake, BEKEN_WAIT_FOREVER) != BK_OK)
+        {
+            continue;
+        }
+        if (!s_tick_running)
+        {
+            break;
+        }
+
+        if (s_tick_running &&
+            s_rec == DASHCAM_REC_RECORDING &&
+            (rtos_get_time() - s_segment_start_ms) >= (DASHCAM_SEGMENT_SECONDS * 1000u))
+        {
+            dashcam_app_rotate_segment();
+        }
+    }
+
+    if (s_tick_exit != NULL)
+    {
+        rtos_set_semaphore(&s_tick_exit);
+    }
+    s_tick_thread = NULL;
+    rtos_delete_thread(NULL);
+}
+
+/* Start the rotation tick (rtos timer + worker). Idempotent. */
+static void dashcam_app_start_tick(void)
+{
+    if (s_tick_running)
     {
         return;
     }
 
-    if ((rtos_get_time() - s_segment_start_ms) >= (DASHCAM_SEGMENT_SECONDS * 1000u))
+    if (rtos_init_semaphore(&s_tick_wake, 1) != BK_OK)
     {
-        dashcam_app_rotate_segment();
+        s_tick_wake = NULL;
+        LOGE("tick: wake sem init failed\n");
+        return;
     }
+    if (rtos_init_semaphore(&s_tick_exit, 1) != BK_OK)
+    {
+        rtos_deinit_semaphore(&s_tick_wake);
+        s_tick_wake = NULL;
+        s_tick_exit = NULL;
+        LOGE("tick: exit sem init failed\n");
+        return;
+    }
+
+    s_tick_running = true;
+    if (rtos_create_thread(&s_tick_thread, DASHCAM_TICK_PRIO, "dcam_tick",
+                           (beken_thread_function_t)dashcam_app_tick_thread,
+                           DASHCAM_TICK_STACK, NULL) != BK_OK)
+    {
+        s_tick_running = false;
+        rtos_deinit_semaphore(&s_tick_wake);
+        rtos_deinit_semaphore(&s_tick_exit);
+        s_tick_wake = NULL;
+        s_tick_exit = NULL;
+        s_tick_thread = NULL;
+        LOGE("tick: worker thread create failed\n");
+        return;
+    }
+
+    if (rtos_init_timer(&s_tick_timer, DASHCAM_APP_TICK_MS, dashcam_app_tick_timer_cb, NULL) == BK_OK)
+    {
+        rtos_start_timer(&s_tick_timer);
+    }
+    else
+    {
+        LOGE("tick: timer init failed\n");
+    }
+    LOGI("rotation tick started\n");
 }
 
-static void dashcam_app_start_tick(void)
-{
-    if (s_tick_timer == NULL)
-    {
-        s_tick_timer = lv_timer_create(dashcam_app_tick_cb, DASHCAM_APP_TICK_MS, NULL);
-    }
-}
-
+/* Stop the rotation tick and join the worker, so no rotation is in flight once
+ * this returns (used by shutdown before it tears the recorder down). */
 static void dashcam_app_stop_tick(void)
 {
-    if (s_tick_timer != NULL)
+    if (!s_tick_running)
     {
-        lv_timer_delete(s_tick_timer);
-        s_tick_timer = NULL;
+        return;
+    }
+
+    if (rtos_is_timer_init(&s_tick_timer))
+    {
+        rtos_stop_timer(&s_tick_timer);
+        rtos_deinit_timer(&s_tick_timer);
+    }
+
+    s_tick_running = false;
+    if (s_tick_wake != NULL)
+    {
+        rtos_set_semaphore(&s_tick_wake);
+    }
+    if (s_tick_exit != NULL)
+    {
+        rtos_get_semaphore(&s_tick_exit, BEKEN_WAIT_FOREVER);
+    }
+
+    if (s_tick_wake != NULL)
+    {
+        rtos_deinit_semaphore(&s_tick_wake);
+        s_tick_wake = NULL;
+    }
+    if (s_tick_exit != NULL)
+    {
+        rtos_deinit_semaphore(&s_tick_exit);
+        s_tick_exit = NULL;
+    }
+    LOGI("rotation tick stopped\n");
+}
+
+/*
+ * Casting / assist-view hooks. The rotation tick is now rtos-driven and runs
+ * independently of the LVGL task, so it keeps rotating while casting; there is
+ * nothing to pause. Resume is kept as an idempotent safety net that re-arms the
+ * tick if recording is active.
+ */
+void dashcam_app_pause_segment_tick(void)
+{
+    /* no-op: rtos tick keeps running while LVGL is stopped */
+}
+
+void dashcam_app_resume_segment_tick(void)
+{
+    if (s_rec == DASHCAM_REC_RECORDING)
+    {
+        dashcam_app_start_tick();
     }
 }
 
 void dashcam_app_boot_start(void)
 {
-    LOGD("boot_start (state=%d)\n", (int)s_state);
+    LOGD("boot_start (rec=%d)\n", (int)s_rec);
 
-    if (s_state != DASHCAM_APP_IDLE)
+    if (s_rec != DASHCAM_REC_IDLE)
     {
         return;
     }
@@ -250,12 +388,65 @@ void dashcam_app_boot_start(void)
     (void)dashcam_storage_init();
     dashcam_app_start_capture();
     dashcam_app_start_tick();
-    LOGI("continuous recording started, state=%d\n", (int)s_state);
+    LOGI("continuous recording started, rec=%d\n", (int)s_rec);
+}
+
+bk_err_t dashcam_app_record_start(void)
+{
+    LOGD("record_start (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
+
+    if (s_rec == DASHCAM_REC_RECORDING)
+    {
+        LOGI("record_start: already recording\n");
+        return BK_OK;
+    }
+
+    (void)dashcam_storage_init();
+    dashcam_app_start_capture();
+    dashcam_app_start_tick();
+
+    if (s_rec != DASHCAM_REC_RECORDING)
+    {
+        /* Blocked (e.g. dev file cap still reached, or camera/record open failed);
+         * start_capture already settled into STOPPED and logged the reason. */
+        LOGW("record_start: could not start, rec=%d\n", (int)s_rec);
+        return BK_FAIL;
+    }
+
+    LOGI("record_start: recording ON\n");
+    return BK_OK;
+}
+
+void dashcam_app_record_stop(void)
+{
+    LOGD("record_stop (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
+
+    if (s_rec != DASHCAM_REC_RECORDING)
+    {
+        LOGI("record_stop: not recording, rec=%d\n", (int)s_rec);
+        return;
+    }
+
+    /* Join the rotation worker before touching the recorder while it may be
+     * actively recording (same ordering shutdown() uses), then finalize the
+     * current MP4 and power the camera down. Playback, if any, is on independent
+     * hardware and left running. */
+    dashcam_app_stop_tick();
+    (void)dashcam_recorder_stop();
+    dashcam_camera_close();
+    s_rec = DASHCAM_REC_STOPPED;
+
+    if (s_play == DASHCAM_PLAY_IDLE)
+    {
+        dashcam_app_set_status("REC OFF");
+    }
+    LOGI("record_stop: recording OFF\n");
 }
 
 void dashcam_app_attach(lv_obj_t *preview_parent)
 {
-    LOGD("attach parent=%p (state=%d)\n", (void *)preview_parent, (int)s_state);
+    LOGD("attach parent=%p (rec=%d play=%d)\n",
+         (void *)preview_parent, (int)s_rec, (int)s_play);
 
     if (preview_parent == NULL || !lv_obj_is_valid(preview_parent))
     {
@@ -266,96 +457,55 @@ void dashcam_app_attach(lv_obj_t *preview_parent)
     s_parent = preview_parent;
     (void)dashcam_storage_init();
 
-    /* Recording normally runs from boot; cover the page being entered before
-     * boot_start ran, or after a full shutdown. */
-    if (s_state == DASHCAM_APP_IDLE)
+    /* Recording normally runs headless from boot; cover the page being entered
+     * before boot_start ran, or after a full shutdown. There is no live camera
+     * preview to show (playback-only video surface) - recording just keeps
+     * running in the background and the page is used for clip playback. */
+    if (s_rec == DASHCAM_REC_IDLE)
     {
         dashcam_app_start_capture();
         dashcam_app_start_tick();
     }
-    else if (s_state == DASHCAM_APP_LIVE_REC &&
-             dashcam_camera_get_mode() == DASHCAM_CAMERA_MODE_RECORD_ONLY)
-    {
-        /* Was recording headless (record-only, no SP). A viewer arrived, so
-         * restart the session with the SP preview channel up. */
-        dashcam_app_restart_capture();
-    }
-    else if (s_state == DASHCAM_APP_LIVE_ONLY &&
-             dashcam_camera_get_mode() == DASHCAM_CAMERA_MODE_OFF)
-    {
-        /* Dev cap was reached while no one was viewing; bring the preview camera
-         * up so the page still shows a live image. */
-        if (dashcam_camera_open(DASHCAM_CAMERA_MODE_PREVIEW) == BK_OK)
-        {
-            dashcam_app_set_status("LIVE (REC FULL)");
-        }
-    }
 
-    /* Live view needs a readable preview channel; RECORD_ONLY has none. */
-    if ((s_state == DASHCAM_APP_LIVE_REC || s_state == DASHCAM_APP_LIVE_ONLY) &&
-        dashcam_camera_get_mode() != DASHCAM_CAMERA_MODE_OFF &&
-        dashcam_camera_get_mode() != DASHCAM_CAMERA_MODE_RECORD_ONLY)
-    {
-        (void)dashcam_video_start(s_parent);
-    }
-
-    LOGI("preview attached, state=%d\n", (int)s_state);
+    LOGI("page attached, rec=%d\n", (int)s_rec);
 }
 
 void dashcam_app_detach(void)
 {
-    LOGD("detach (state=%d)\n", (int)s_state);
+    LOGD("detach (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
 
-    /* Page is leaving: drop the preview but keep recording in the background
-     * (power-on continuous recording, req5 §9.1). */
-    dashcam_video_stop();
-
-    if (s_state == DASHCAM_APP_PLAYBACK)
+    /* Page is leaving: stop any clip playback and drop the playback surface, but
+     * leave the background recording completely alone (power-on continuous
+     * recording, req5 §9.1). Recording state is independent of the page, so no
+     * camera re-open / state restore is needed here. */
+    if (s_play == DASHCAM_PLAY_PLAYING)
     {
-        /* Was viewing a clip; return to background recording. */
         (void)dashcam_player_stop();
-        s_parent = NULL;
-        dashcam_app_start_capture();
-        LOGI("detached from playback, state=%d\n", (int)s_state);
-        return;
+        s_play = DASHCAM_PLAY_IDLE;
     }
-
-    if (s_state == DASHCAM_APP_LIVE_ONLY && !dashcam_app_record_allowed())
-    {
-        /* Recording disabled and no viewer left: power the camera down. */
-        dashcam_camera_close();
-        dashcam_app_set_status("REC FULL");
-        s_parent = NULL;
-        LOGI("preview detached, recording continues, state=%d\n", (int)s_state);
-        return;
-    }
-
-    if (s_state == DASHCAM_APP_LIVE_REC &&
-        dashcam_camera_get_mode() == DASHCAM_CAMERA_MODE_RECORD)
-    {
-        /* Leaving the page while recording with the SP preview up: drop back to
-         * record-only so the 960x540 SP buffers are freed for the rest of the UI
-         * (req5 §9.1 OOM fix). Restarting starts a new segment. */
-        s_parent = NULL;
-        dashcam_app_restart_capture();
-        LOGI("preview detached, record-only continues, state=%d\n", (int)s_state);
-        return;
-    }
-
+    dashcam_video_stop();
     s_parent = NULL;
-    LOGI("preview detached, recording continues, state=%d\n", (int)s_state);
+
+    dashcam_app_refresh_status();
+    LOGI("page detached, recording continues, rec=%d\n", (int)s_rec);
 }
 
 void dashcam_app_shutdown(void)
 {
-    LOGD("shutdown (state=%d)\n", (int)s_state);
+    LOGD("shutdown (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
+
+    /* Join the worker first so no segment rotation is in flight while we tear the
+     * recorder down (the only place a UI op touches the recorder while it may be
+     * actively recording). */
     dashcam_app_stop_tick();
+
     (void)dashcam_recorder_stop();
     (void)dashcam_player_stop();
     dashcam_video_stop();
     dashcam_camera_close();
     s_parent = NULL;
-    s_state = DASHCAM_APP_IDLE;
+    s_rec = DASHCAM_REC_IDLE;
+    s_play = DASHCAM_PLAY_IDLE;
     dashcam_app_set_status("IDLE");
     LOGI("shutdown done\n");
 }
@@ -370,58 +520,59 @@ bk_err_t dashcam_app_play(const char *path)
         return BK_ERR_PARAM;
     }
 
-    /* Pause the recording session: playback needs the H264 decoder + canvas and
-     * the camera/encoder released. Recording resumes on resume_live / detach.
-     * The segment-rotation tick is a no-op outside LIVE_REC, so it is left
-     * running. */
+    /*
+     * Concurrent record + playback: the H264 decoder (+PP) and the H264 encoder
+     * are independent hardware blocks, so recording keeps running and the camera
+     * stays open while a clip plays back. This only (re)builds the playback path
+     * (player + sink) and flips s_play; s_rec is never touched, so segment
+     * rotation keeps cutting the background recording into DASHCAM_SEGMENT_SECONDS
+     * segments underneath.
+     */
     (void)dashcam_player_stop();
-    (void)dashcam_recorder_stop();
     dashcam_video_stop();
-    dashcam_camera_close();
 
     if (dashcam_video_start_sink(s_parent) != BK_OK)
     {
         LOGE("playback sink start failed\n");
-        dashcam_app_resume_live();
+        dashcam_app_stop_playback();
         return BK_FAIL;
     }
 
     if (dashcam_player_play(path) != BK_OK)
     {
         LOGE("player play failed: %s\n", path);
-        dashcam_app_resume_live();
+        dashcam_app_stop_playback();
         return BK_FAIL;
     }
 
-    s_state = DASHCAM_APP_PLAYBACK;
+    s_play = DASHCAM_PLAY_PLAYING;
     dashcam_app_set_status("PLAYBACK");
-    LOGI("playback: %s\n", path);
+    LOGI("playback: %s (rec=%d)\n", path, (int)s_rec);
     return BK_OK;
 }
 
-void dashcam_app_resume_live(void)
+void dashcam_app_stop_playback(void)
 {
-    lv_obj_t *parent = s_parent;
+    LOGD("stop_playback (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
 
-    LOGD("resume_live\n");
+    /* Tear down only the playback path; the recorder ran independently underneath
+     * and is left untouched. The status line falls back to the recording state. */
     (void)dashcam_player_stop();
     dashcam_video_stop();
+    s_play = DASHCAM_PLAY_IDLE;
 
-    /* Restart the background recording session, then re-show the live preview
-     * if the page is still active. */
-    dashcam_app_start_capture();
-
-    if (parent != NULL &&
-        (s_state == DASHCAM_APP_LIVE_REC || s_state == DASHCAM_APP_LIVE_ONLY) &&
-        dashcam_camera_get_mode() != DASHCAM_CAMERA_MODE_OFF)
-    {
-        (void)dashcam_video_start(parent);
-    }
+    dashcam_app_refresh_status();
+    LOGI("stop_playback: playback off, rec=%d\n", (int)s_rec);
 }
 
-dashcam_app_state_t dashcam_app_get_state(void)
+dashcam_rec_state_t dashcam_app_rec_state(void)
 {
-    return s_state;
+    return s_rec;
+}
+
+bool dashcam_app_is_playing(void)
+{
+    return s_play == DASHCAM_PLAY_PLAYING;
 }
 
 const char *dashcam_app_status_text(void)

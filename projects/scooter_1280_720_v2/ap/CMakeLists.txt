@@ -14,23 +14,27 @@ set(incs .
 
 set(srcs
     ap_main.c
-    boot_avi_play.c
-    boot_bg_preload.c
-    # Live-preview compositor: pick exactly ONE of the two below.
-    #   dashcam_video.c    - CPU page-composite path (working software blend)
-    #   dashcam_video_v2.c - GPU path via lv_camera_blend_process (this approach)
+    # Video surface: pick exactly ONE.
+    #   dashcam_video.c    - legacy live-preview compositor (CPU page-composite blend)
+    #   dashcam_video_v2.c - legacy live-preview via lv_camera_blend_process (GPU)
+    #   dashcam_video_v3.c - playback-only (camera preview removed; the camera->display
+    #                        path now lives in dashcam_assitview.c). Active.
+    #   dashcam/dashcam_video.c
     #   dashcam/dashcam_video_v2.c
-    dashcam/dashcam_video.c
+    dashcam/dashcam_video_v3.c
     dashcam/dashcam_player.c
     dashcam/dashcam_recorder.c
     dashcam/dashcam_storage.c
     dashcam/dashcam_camera.c
     dashcam/dashcam_app.c
     dashcam/dashcam_ui.c
+    dashcam/dashcam_assitview.c
     ota/ota_ui.c
     home/home_ui.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_camera.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_codec.c
+    ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_gpu.c
+    ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_display.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_h264_encode.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/doorbell_img_manager.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/encode_frame_que.c
@@ -42,7 +46,7 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
               jpeg_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
-              bk_video_recorder bk_video_player bk_encoder app)
+              bk_video_recorder bk_video_player bk_encoder app boot_avi_play)
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")
 

@@ -40,10 +40,13 @@
 #include "beken_ui.h"
 #include "dashcam_config.h"
 #include "dashcam_storage.h"
+#include "dashcam_app.h"
 #include "sdkconfig.h"
 #include "headset_user_config.h"
+#include "dashcam_assitview.h"
 
 #define TAG "scooter_1280_720_v2"
+
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -61,9 +64,8 @@ extern void pet_page_enter(void);
 #define LDO_ANA_REG         (0x69)
 #define SYS_M55_BASE_ADDR   (0x48000000)
 
-#if !CONFIG_BLUETOOTH_AUTO_ENABLE
 static beken_thread_t s_ap_bt_startup_task_handle = NULL;
-#endif
+
 
 /* ==================== LDO / Power ==================== */
 
@@ -370,9 +372,34 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
              (unsigned)DASHCAM_DEV_MAX_FILES,
              (unsigned)(DASHCAM_RELEASE_BUILD || count < DASHCAM_DEV_MAX_FILES));
     }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_rec_start") == 0))
+    {
+        bk_err_t ret = dashcam_app_record_start();
+        LOGI("dashcam_rec_start: ret=%d rec=%d\n", ret, (int)dashcam_app_rec_state());
+    }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_rec_stop") == 0))
+    {
+        dashcam_app_record_stop();
+        LOGI("dashcam_rec_stop: rec=%d\n", (int)dashcam_app_rec_state());
+    }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_turn_left") == 0))
+    {
+        LOGI("turn dashcam left\n");
+        dashcam_assitview_start();
+    }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_turn_right") == 0))
+    {
+        LOGI("turn dashcam right\n");
+        // dashcam_video_turn_right();
+    }
+    else if((argc >= 2) && (os_strcmp(argv[1], "dashcam_turn_off") == 0))
+    {
+        LOGI("turn dashcam stop\n");
+        dashcam_assitview_stop();
+    }
     else
     {
-        LOGI("usage: widgets np_erase [reboot] | np_start_advertise | dashcam | pet_toggle | pet_double | pet_enter | dashcam_count | dashcam_trim [target]\n");
+        LOGI("usage: widgets np_erase [reboot] | np_start_advertise | dashcam | pet_toggle | pet_double | pet_enter | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
     }
 }
 
@@ -429,9 +456,12 @@ static void app_display_init(void)
          * animation plays, so the UI can switch in instantly afterwards. */
         boot_bg_preload_start();
         rtos_delay_milliseconds(10);
+
         boot_avi_play();
+
         if (display_ui_start_lvgl() != BK_OK)
             LOGE("lvgl start failed\n");
+
         boot_bg_preload_finish();
     }
 
@@ -441,9 +471,6 @@ static void app_display_init(void)
 
 static void app_bt_init(void)
 {
-#if CONFIG_BLUETOOTH_AUTO_ENABLE
-    ap_bt_app_init();
-#else
     bk_err_t ret;
 
     LOGI("creating ap_bt_startup_task\n");
@@ -456,7 +483,6 @@ static void app_bt_init(void)
     if (ret != BK_OK) {
         LOGE("start ap_bt_startup_task err\n");
     }
-#endif
 }
 
 static void app_cli_init(void)
@@ -470,10 +496,6 @@ static void app_cli_init(void)
 
 int main(void)
 {
-#if CONFIG_BLUETOOTH_AUTO_ENABLE && CONFIG_BLUETOOTH_MULTI_CONTROLLER
-    app_bsc_init();
-#endif
-
     bk_init();
 
     LOGI("ap is initializing\n");

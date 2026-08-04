@@ -7,8 +7,6 @@ CONFIG_DSI_DRIVER=y
 CONFIG_ISP=y
 CONFIG_MIPI_CSI=y
 CONFIG_BK_CAMERA=y
-CONFIG_BK_H264D=y
-CONFIG_BK_H264E=y
 CONFIG_BK_DECODER=y
 CONFIG_VIDEO_RECORDER=y
 CONFIG_AVI_PLAYER=y
@@ -18,12 +16,6 @@ CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_JPEG_VIDEO_DECODER=y
 CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_H264_VIDEO_DECODER=y
 CONFIG_BK_VIDEO_PLAYER_VIDEO_DECODE_THREAD_STACK_SIZE=8192
 CONFIG_BK_ENCODER=y
-# Coded slab heap (0x64000000, 7MB) is shared with the DPU display framebuffers
-# (1280x720x2 double-buffered ~3.6MB). The encoded-data manager allocates a
-# 20-deep pool of this size; 256KB*20=5MB no longer fits beside the display
-# buffers and the H264 manager malloc fails (-> bk_mem_slab_free assert).
-# 960x540 H264 frames are <100KB, so 128KB*20=2.5MB fits with margin.
-CONFIG_BK_ENCODER_MJPEG_MAX_OUTPUT_BUFFER=131072
 CONFIG_APP_GPU=y
 CONFIG_BLUETOOTH_AP=y
 CONFIG_BT=y
@@ -46,7 +38,8 @@ CONFIG_CSI_CAMERA=y
 CONFIG_CSI_GC2053=y
 CONFIG_LCD_DSI=y
 # CONFIG_LCD_HX8399C_MIPI_1080x1920 is not set
-CONFIG_LCD_HX8394F_MIPI_720x1280=y
+# CONFIG_LCD_HX8394F_MIPI_720x1280=y
+CONFIG_LCD_ER68576B_MIPI_720x1280=y
 # CONFIG_TP is not set
 CONFIG_FREERTOS_USE_QUEUE_SETS=y
 # CONFIG_WIFI_CLI_DEBUG is not set
@@ -135,6 +128,33 @@ CONFIG_SOC_SMP=y
 # CONFIG_FREERTOS_V10 is not set
 CONFIG_FREERTOS_SMP=y
 CONFIG_VG_LITE_GPU=y
+# Sized between the SDK default 0x20000 (128KB) and the too-small 0x8000 (32KB).
+# vg_lite_init() carves its heap FROM this contiguous buffer and needs, per
+# vg_lite_kernel.c init_vglite(): 2x command_buffer (~8KB each = 16KB) PLUS a
+# mandatory 32KB power/backup command context (power_context_capacity = 32<<10),
+# i.e. ~48KB minimum. 0x8000 (32KB) only fits the 2 command buffers and then OOMs
+# on the power context (init_vglite:459) -> vg_lite_init fails but leaves
+# s_context.rtbuffer set, so every later vg_lite_init() short-circuits with
+# "already initialized" WITHOUT binding command_buffer[] -> set_render_target
+# spams VG_LITE_NO_CONTEXT and the assist view shows nothing. That OOM first
+# fires at boot from boot_avi's GPU splash path (jsp/bk_gpu_init).
+# Budget at assist-view entry (measured): ~114KB free HSRAM must hold THREE
+# separate HSRAM allocations from gpu_ctlr_open():
+#   1) vg_lite contiguous heap  = this value
+#   2) pingpong output buffers  = ~40KB (bk_get_gpu_output_buffer)
+#   3) GPU flexa worker stack    = 10KB (rtos_create_hsram_thread, 1024*10)
+# 0x10000 (64KB) let vg_lite + pingpong fit but left only ~10KB, so the 10KB
+# worker stack alloc failed (gpu_ctlr_open:1387 rtos_create_hsram_thread failed).
+# 0xD000 (52KB) keeps vg_lite safely above its ~48.2KB need (2x8KB cmd + 32KB
+# power context) while dropping the total to 52+40+10 = ~102KB, leaving ~12KB
+# headroom for the worker stack + heap overhead. 128KB starves pingpong; 32KB
+# OOMs vg_lite's power context (see boot_avi splash path).
+# NOTE: 0x20000 (128KB, SoC default) was A/B tested on 2026-07-14 and did NOT
+# fix the boot_avi JPEG decode failure (every frame still status=0x00010500),
+# so this heap size is NOT the cause of that failure. Kept at 0xD000 (52KB)
+# which is the size the assist-view HSRAM budget (vg_lite + pingpong + worker
+# stack) needs; see the assist-view budget analysis below.
+CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ=0xD000
 CONFIG_PSA_MBEDTLS=y
 CONFIG_SW_CRYPTO=y
 CONFIG_AUD_DRIVER_V2=y
@@ -166,3 +186,6 @@ CONFIG_APP_MAIN_TASK_STACK_SIZE=12288
 CONFIG_SPINLOCK_DYNAMIC_CNT=256
 
 CONFIG_PROJECT_SCOOTER_V2=y
+CONFIG_SUPPORT_WWDT=y
+CONFIG_TASK_WDT=y
+CONFIG_LVGL_MEM_USE_PSRAM=y

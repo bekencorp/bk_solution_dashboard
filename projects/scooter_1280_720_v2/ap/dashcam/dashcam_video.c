@@ -17,7 +17,7 @@
 #include <cache.h>
 #include <driver/aon_rtc.h>
 
-#define TAG "dashcam_video"
+#define TAG "d_video"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)

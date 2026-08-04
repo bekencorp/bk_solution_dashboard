@@ -10,7 +10,7 @@
 #include "driver/gpio.h"
 #include "os/os.h"
 
-#define TAG "dashcam_cam_own"
+#define TAG "d_camera"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
@@ -39,11 +39,11 @@
 #define DASHCAM_CAMERA_SENSOR_HEIGHT  1080
 #define DASHCAM_CAMERA_SENSOR_FPS     25
 
-static dashcam_camera_mode_t s_mode = DASHCAM_CAMERA_MODE_OFF;
+static bool s_open = false;
 static void *s_isp_encode_bond = NULL;
 static bool s_encoder_on = false;
 
-static void dashcam_camera_fill_board(camera_board_config_t *cfg, dashcam_camera_mode_t mode)
+static void dashcam_camera_fill_board(camera_board_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
 
@@ -61,37 +61,15 @@ static void dashcam_camera_fill_board(camera_board_config_t *cfg, dashcam_camera
     cfg->isp.mp_enable = true;
     cfg->isp.mp_format = BK_PIXEL_FORMAT_NV12;
 
-    if (mode == DASHCAM_CAMERA_MODE_RECORD || mode == DASHCAM_CAMERA_MODE_RECORD_ONLY)
-    {
-        /* MP feeds the H264 encoder via flexa. The SP channel (live preview) is
-         * only brought up for RECORD; RECORD_ONLY records headless and leaves SP
-         * off to save its NV12 buffers (req5 §9.1 OOM fix). */
-        cfg->isp.mp_flexa = true;
-        cfg->isp.mp_width = DASHCAM_RECORD_WIDTH;
-        cfg->isp.mp_height = DASHCAM_RECORD_HEIGHT;
-        if (mode == DASHCAM_CAMERA_MODE_RECORD)
-        {
-            cfg->isp.sp_enable = true;
-            cfg->isp.sp_flexa = false;
-            cfg->isp.sp_width = DASHCAM_PREVIEW_WIDTH;
-            cfg->isp.sp_height = DASHCAM_PREVIEW_CAPTURE_HEIGHT;
-            cfg->isp.sp_format = BK_PIXEL_FORMAT_NV12;
-        }
-        else
-        {
-            cfg->isp.sp_enable = false;
-            cfg->isp.sp_flexa = false;
-        }
-    }
-    else
-    {
-        /* Preview-only: read NV12 straight off the MP channel, no encoder. */
-        cfg->isp.mp_flexa = false;
-        cfg->isp.mp_width = DASHCAM_PREVIEW_WIDTH;
-        cfg->isp.mp_height = DASHCAM_PREVIEW_CAPTURE_HEIGHT;
-        cfg->isp.sp_enable = false;
-        cfg->isp.sp_flexa = false;
-    }
+    /* MP streams via flexa, feeding both the H264 encoder (recorder) and, when
+     * the assist view is up, a second MP->GPU bond. The SP (live preview)
+     * channel is never brought up so its NV12 buffers stay free (req5 §9.1 OOM
+     * fix). */
+    cfg->isp.mp_flexa = true;
+    cfg->isp.mp_width = DASHCAM_RECORD_WIDTH;
+    cfg->isp.mp_height = DASHCAM_RECORD_HEIGHT;
+    cfg->isp.sp_enable = false;
+    cfg->isp.sp_flexa = false;
 }
 
 static bk_err_t dashcam_camera_start_encoder_bond(void)
@@ -144,27 +122,18 @@ static void dashcam_camera_stop_encoder_bond(void)
     }
 }
 
-bk_err_t dashcam_camera_open(dashcam_camera_mode_t mode)
+bk_err_t dashcam_camera_open(void)
 {
     camera_board_config_t cfg;
 
-    LOGD("open req mode=%d (cur=%d)\n", (int)mode, (int)s_mode);
+    LOGD("open req (open=%d)\n", (int)s_open);
 
-    if (mode == DASHCAM_CAMERA_MODE_OFF)
+    if (s_open)
     {
-        return BK_ERR_PARAM;
+        return BK_OK;
     }
 
-    if (s_mode != DASHCAM_CAMERA_MODE_OFF)
-    {
-        if (s_mode == mode)
-        {
-            return BK_OK;
-        }
-        dashcam_camera_close();
-    }
-
-    dashcam_camera_fill_board(&cfg, mode);
+    dashcam_camera_fill_board(&cfg);
     if (app_camera_board_config_set(&cfg) != BK_OK)
     {
         LOGE("app_camera_board_config_set failed\n");
@@ -177,84 +146,36 @@ bk_err_t dashcam_camera_open(dashcam_camera_mode_t mode)
         return BK_FAIL;
     }
 
-    if (mode == DASHCAM_CAMERA_MODE_RECORD || mode == DASHCAM_CAMERA_MODE_RECORD_ONLY)
+    if (dashcam_camera_start_encoder_bond() != BK_OK)
     {
-        /* Only RECORD brings up the SP (live preview) channel. */
-        if (mode == DASHCAM_CAMERA_MODE_RECORD)
-        {
-            if (app_isp_camera_sp_channel_turn_on(app_camera_board_config_get()) != BK_OK)
-            {
-                LOGE("app_isp_camera_sp_channel_turn_on failed\n");
-                (void)app_isp_camera_turn_off();
-                return BK_FAIL;
-            }
-        }
-
-        if (dashcam_camera_start_encoder_bond() != BK_OK)
-        {
-            dashcam_camera_stop_encoder_bond();
-            (void)app_isp_camera_turn_off();
-            return BK_FAIL;
-        }
+        dashcam_camera_stop_encoder_bond();
+        (void)app_isp_camera_turn_off();
+        return BK_FAIL;
     }
 
-    s_mode = mode;
-    LOGI("camera open mode=%d record=%ux%u preview=%ux%u sp=%d\n",
-         (int)mode,
+    s_open = true;
+    LOGI("camera open record=%ux%u\n",
          (unsigned)DASHCAM_RECORD_WIDTH,
-         (unsigned)DASHCAM_RECORD_HEIGHT,
-         (unsigned)DASHCAM_PREVIEW_WIDTH,
-         (unsigned)DASHCAM_PREVIEW_HEIGHT,
-         (mode == DASHCAM_CAMERA_MODE_RECORD) ? 1 : 0);
+         (unsigned)DASHCAM_RECORD_HEIGHT);
     return BK_OK;
 }
 
 void dashcam_camera_close(void)
 {
-    LOGD("close (mode=%d)\n", (int)s_mode);
+    LOGD("close (open=%d)\n", (int)s_open);
 
-    if (s_mode == DASHCAM_CAMERA_MODE_OFF)
+    if (!s_open)
     {
         return;
     }
 
     dashcam_camera_stop_encoder_bond();
     (void)app_isp_camera_turn_off();
-    s_mode = DASHCAM_CAMERA_MODE_OFF;
+    s_open = false;
     LOGI("camera closed\n");
 }
 
-dashcam_camera_mode_t dashcam_camera_get_mode(void)
+bool dashcam_camera_is_open(void)
 {
-    return s_mode;
-}
-
-int dashcam_camera_read_preview(uint8_t *frame, uint32_t size, uint32_t timeout_ms)
-{
-    uint8_t channel;
-
-    if (s_mode == DASHCAM_CAMERA_MODE_OFF || frame == NULL)
-    {
-        return BK_FAIL;
-    }
-
-    /* RECORD_ONLY has no readable preview channel (MP is flexa-bonded to the
-     * encoder, SP is off). Callers must not read preview in that mode. */
-    if (s_mode == DASHCAM_CAMERA_MODE_RECORD_ONLY)
-    {
-        return BK_FAIL;
-    }
-
-    channel = (s_mode == DASHCAM_CAMERA_MODE_RECORD) ? APP_ISP_SP_CHN_ID : APP_ISP_MP_CHN_ID;
-    return app_isp_camera_channel_read(channel, frame, size, timeout_ms);
-}
-
-uint32_t dashcam_camera_preview_width(void)
-{
-    return DASHCAM_PREVIEW_WIDTH;
-}
-
-uint32_t dashcam_camera_preview_height(void)
-{
-    return DASHCAM_PREVIEW_HEIGHT;
+    return s_open;
 }

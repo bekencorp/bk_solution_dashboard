@@ -9,8 +9,9 @@
 #include "dashcam_player.h"
 #include "dashcam_storage.h"
 #include "lvgl.h"
+#include "dashcam_assitview.h"
 
-#define TAG "dashcam_ui"
+#define TAG "d_ui"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
@@ -89,7 +90,7 @@ static void dashcam_ui_update_play_info(void)
     char start[16];
     char end[16];
 
-    if (dashcam_app_get_state() != DASHCAM_APP_PLAYBACK)
+    if (!dashcam_app_is_playing())
     {
         return;
     }
@@ -250,12 +251,12 @@ static void dashcam_ui_preview_clicked_cb(lv_event_t *e)
 {
     (void)e;
 
-    if (dashcam_app_get_state() == DASHCAM_APP_PLAYBACK)
+    if (dashcam_app_is_playing())
     {
-        LOGI("preview tap -> resume live\n");
+        LOGI("preview tap -> stop playback\n");
         dashcam_ui_stop_info_timer();
         dashcam_ui_reset_play_info(&bk_lv_tool_ui);
-        dashcam_app_resume_live();
+        dashcam_app_stop_playback();
         dashcam_ui_set_status(&bk_lv_tool_ui);
     }
 }
@@ -347,6 +348,7 @@ void dashcam_ui_boot_start(void)
 {
     LOGD("boot_start\n");
     dashcam_app_boot_start();
+    dashcam_assitview_init();
 }
 
 void dashcam_ui_shutdown(void)
@@ -358,6 +360,31 @@ void dashcam_ui_shutdown(void)
     s_play_info_valid = false;
     memset(s_btns, 0, sizeof(s_btns));
     dashcam_app_shutdown();
+}
+
+/*
+ * Assist-view enter: tear down the dashcam LVGL page state (UI timers, widget
+ * refs) like shutdown, but DO NOT call dashcam_app_shutdown() -> the recorder +
+ * camera (mode=3, MP->H264) must keep running so the assist view can show the
+ * same MP output through a second GPU bond. Only the LVGL segment-rotation tick
+ * is paused (it cannot survive lv_vendor_stop()).
+ */
+void dashcam_ui_suspend_keep_recording(void)
+{
+    LOGD("suspend (keep recording)\n");
+    dashcam_ui_stop_info_timer();
+    s_preview_cb_bound = false;
+    s_list_focused = false;
+    s_play_info_valid = false;
+    memset(s_btns, 0, sizeof(s_btns));
+    dashcam_app_pause_segment_tick();
+}
+
+/* Assist-view leave: LVGL is back, re-arm the paused segment-rotation tick. */
+void dashcam_ui_resume_keep_recording(void)
+{
+    LOGD("resume (keep recording)\n");
+    dashcam_app_resume_segment_tick();
 }
 
 void dashcam_ui_enter(void)
@@ -429,12 +456,12 @@ bool dashcam_ui_handle_key_double(void)
 
     if (s_list_focused)
     {
-        /* Leaving the list: if a clip is playing, fall back to live preview. */
-        if (dashcam_app_get_state() == DASHCAM_APP_PLAYBACK)
+        /* Leaving the list: if a clip is playing, stop playback. */
+        if (dashcam_app_is_playing())
         {
             dashcam_ui_stop_info_timer();
             dashcam_ui_reset_play_info(&bk_lv_tool_ui);
-            dashcam_app_resume_live();
+            dashcam_app_stop_playback();
             dashcam_ui_set_status(&bk_lv_tool_ui);
         }
         dashcam_ui_set_focus(false);

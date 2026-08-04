@@ -10,8 +10,8 @@ extern "C" {
 #include "common/bk_err.h"
 
 /*
- * MP4/H264 muxer. The camera + H264 encoder must already be running in
- * DASHCAM_CAMERA_MODE_RECORD (owned by dashcam_camera); the recorder only pulls
+ * MP4/H264 muxer. The camera + H264 encoder must already be running (opened via
+ * dashcam_camera_open(), owned by dashcam_camera); the recorder only pulls
  * encoded frames from the doorbell encoded-data queue and writes one MP4 file.
  *
  * Continuous/segmented recording is driven by dashcam_app, which calls

@@ -14,7 +14,7 @@
 #include "modules/vcenc/vcenc_types.h"
 #include "os/os.h"
 
-#define TAG "dashcam_rec"
+#define TAG "d_recorder"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
@@ -34,6 +34,31 @@ static bk_video_recorder_handle_t s_recorder = NULL;
 static char s_current_path[DASHCAM_STORAGE_MAX_PATH];
 static uint32_t s_frame_count = 0;
 static uint32_t s_frame_miss_count = 0;
+
+/* One-shot: dump the leading bytes of the first encoded key frame as hex so the
+ * host can parse the H.264 SPS offline (validates encoder output vs. muxing). */
+static bool s_h264_head_dumped = false;
+
+static void dashcam_recorder_dump_h264_head(const uint8_t *data, uint32_t len)
+{
+    static const char hexd[] = "0123456789abcdef";
+    uint32_t n = (len < 128U) ? len : 128U;
+    char line[16 * 2 + 8];
+
+    LOGI("h264 head len=%u:\n", (unsigned)len);
+    for (uint32_t off = 0; off < n; off += 16U)
+    {
+        int p = 0;
+        for (uint32_t i = 0; i < 16U && (off + i) < n; i++)
+        {
+            uint8_t b = data[off + i];
+            line[p++] = hexd[b >> 4];
+            line[p++] = hexd[b & 0x0F];
+        }
+        line[p] = '\0';
+        LOGI("h264[%u]: %s\n", (unsigned)off, line);
+    }
+}
 
 static int dashcam_recorder_get_frame_cb(void *user_data,
                                          video_recorder_frame_data_t *frame_data)
@@ -60,6 +85,16 @@ static int dashcam_recorder_get_frame_cb(void *user_data,
     frame_data->height = frame->height;
     frame_data->frame_buffer = frame;
     frame_data->is_key_frame = (frame->h264_type == (uint32_t)VCENC_OUT_IFRAME);
+
+    if (!s_h264_head_dumped && frame_data->is_key_frame)
+    {
+        s_h264_head_dumped = true;
+        LOGI("h264 keyframe %ux%u type=%u\n",
+             (unsigned)frame->width, (unsigned)frame->height,
+             (unsigned)frame->h264_type);
+        dashcam_recorder_dump_h264_head((const uint8_t *)frame->frame, frame->length);
+    }
+
     s_frame_count++;
     return 0;
 }
@@ -105,6 +140,7 @@ bk_err_t dashcam_recorder_start(const char *path)
     snprintf(s_current_path, sizeof(s_current_path), "%s", path);
     s_frame_count = 0;
     s_frame_miss_count = 0;
+    s_h264_head_dumped = false;
 
     config.record_type = VIDEO_RECORDER_TYPE_MP4;
     config.record_format = VIDEO_RECORDER_FORMAT_H264;

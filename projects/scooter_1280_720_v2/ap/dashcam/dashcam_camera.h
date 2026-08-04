@@ -10,41 +10,23 @@ extern "C" {
 #include "common/bk_err.h"
 
 /*
- * Single owner of the MIPI camera + ISP. Resolves the "preview vs record"
- * contention on the ISP MP channel:
+ * Single owner of the MIPI camera + ISP.
  *
- *   PREVIEW     : ISP MP (no flexa) -> caller reads NV12 frames from MP.
- *   RECORD      : ISP MP (flexa)    -> H264 encoder (record);
- *                 ISP SP            -> caller reads NV12 frames from SP (live view).
- *   RECORD_ONLY : ISP MP (flexa)    -> H264 encoder (record); SP channel NOT
- *                 brought up. Used for headless/background recording (no viewer,
- *                 e.g. power-on continuous recording while the home page is
- *                 shown). Dropping the SP channel frees its 960x540 NV12 buffers,
- *                 which on this memory-tight AP heap is what otherwise starves
- *                 LVGL draw allocations and asserts (req5 §9.1 OOM fix).
+ * There is exactly one camera configuration: ISP MP (flexa) -> H264 encoder.
+ * The SP (live preview) channel is never brought up (dropping its 960x540 NV12
+ * buffers keeps the memory-tight AP heap from starving LVGL draw allocations,
+ * req5 §9.1 OOM fix). The encoded H264 frames are delivered through the
+ * doorbell encoded data queue and consumed by dashcam_recorder.
  *
- * In RECORD mode the same sensor frame feeds both the encoder (MP/flexa) and the
- * preview (SP), so the dashcam can record and show the live stream at once
- * (req5 #3). The encoded H264 frames are delivered through the doorbell encoded
- * data queue, consumed by dashcam_recorder.
+ * The camera is meant to stay open continuously: the recorder keeps it up, and
+ * the assist view reuses the same MP flexa output by adding a second MP->GPU
+ * bond on top. Callers just ensure it is open; open() is idempotent and simply
+ * returns BK_OK when the camera is already running.
  */
-typedef enum
-{
-    DASHCAM_CAMERA_MODE_OFF = 0,
-    DASHCAM_CAMERA_MODE_PREVIEW,
-    DASHCAM_CAMERA_MODE_RECORD,
-    DASHCAM_CAMERA_MODE_RECORD_ONLY,
-} dashcam_camera_mode_t;
 
-bk_err_t dashcam_camera_open(dashcam_camera_mode_t mode);
+bk_err_t dashcam_camera_open(void);
 void dashcam_camera_close(void);
-dashcam_camera_mode_t dashcam_camera_get_mode(void);
-
-/* Read one NV12 preview frame from the channel matching the current mode. */
-int dashcam_camera_read_preview(uint8_t *frame, uint32_t size, uint32_t timeout_ms);
-
-uint32_t dashcam_camera_preview_width(void);
-uint32_t dashcam_camera_preview_height(void);
+bool dashcam_camera_is_open(void);
 
 #ifdef __cplusplus
 }

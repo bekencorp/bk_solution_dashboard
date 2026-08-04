@@ -18,6 +18,13 @@ void dashcam_ui_boot_start(void);
 /* Full stop of dashcam capture (e.g. LVGL teardown before a display cast). */
 void dashcam_ui_shutdown(void);
 
+/* Assist-view enter/leave: suspend the dashcam LVGL page (stop UI timers, pause
+ * the segment tick) but KEEP the background recorder + camera running, so the
+ * assist view shows the live MP output via a GPU bond while recording
+ * continues. resume re-arms the segment tick. */
+void dashcam_ui_suspend_keep_recording(void);
+void dashcam_ui_resume_keep_recording(void);
+
 void dashcam_ui_enter(void);
 void dashcam_ui_leave(void);
 

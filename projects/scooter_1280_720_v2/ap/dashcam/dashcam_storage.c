@@ -10,6 +10,7 @@
 #include "components/log.h"
 #include "dashcam_config.h"
 #include "os/os.h"
+#include "boot_sd_mount.h"
 
 #if DASHCAM_USE_WALL_CLOCK
 #include "components/app_time_intf.h"
@@ -24,8 +25,6 @@
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
-
-extern volatile bool g_boot_sd_pre_mounted;
 
 static bool s_storage_ready = false;
 static bool s_ftp_started = false;
@@ -56,28 +55,9 @@ static bool dashcam_storage_has_video_suffix(const char *name)
 
 static bk_err_t dashcam_storage_mount_sd(void)
 {
-    struct stat st;
-
-    if (g_boot_sd_pre_mounted || bk_vfs_stat(VFS_SD_0_PATITION_0, &st) == 0)
-    {
-        return BK_OK;
-    }
-
-    struct bk_fatfs_partition partition = {0};
-    partition.part_type = FATFS_DEVICE;
-    partition.part_dev.device_name = FATFS_DEV_SDCARD;
-    partition.mount_path = VFS_SD_0_PATITION_0;
-
-    int ret = bk_fatfs_mount(&partition, 1);
-    if (ret != BK_OK)
-    {
-        LOGE("mount %s failed: %d\n", VFS_SD_0_PATITION_0, ret);
-        return BK_FAIL;
-    }
-
-    g_boot_sd_pre_mounted = true;
-    LOGI("mounted SD card at %s\n", VFS_SD_0_PATITION_0);
-    return BK_OK;
+    /* Centralized, idempotent SD mount shared with the boot animation and the
+     * background preloader (boot_sd_mount component). */
+    return boot_sd_mount();
 }
 
 bk_err_t dashcam_storage_init(void)

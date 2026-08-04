@@ -60,25 +60,43 @@ extern "C" {
  * at 960x540. Bump these once the coded-heap budget is reorganized for release.
  */
 #ifndef DASHCAM_RECORD_WIDTH
-#define DASHCAM_RECORD_WIDTH           640
+#define DASHCAM_RECORD_WIDTH           1280
 #endif
 #ifndef DASHCAM_RECORD_HEIGHT
-#define DASHCAM_RECORD_HEIGHT          360
+#define DASHCAM_RECORD_HEIGHT          720
 #endif
 
 #ifndef DASHCAM_RECORD_FPS
 #define DASHCAM_RECORD_FPS             25
 #endif
 
+/*
+ * Playback (scaled) target resolution.
+ *
+ * Recorded clips are H.264 at the record resolution (1280x720). During playback
+ * the H.264 frame controller (decode core + PP) down-scales and converts to
+ * RGB565 in a single hardware pass, writing directly into the player output
+ * buffer; the dashcam LVGL canvas is created at this size. Default 640x360 is a
+ * clean 1/2 of 1280x720, which halves per-frame LVGL redraw + GPU-compress cost
+ * and keeps the RGB565 triple buffer small (~1.35MB) so playback can run
+ * concurrently with recording. Bump toward the panel size for full-screen play.
+ */
+#ifndef DASHCAM_PLAYBACK_WIDTH
+#define DASHCAM_PLAYBACK_WIDTH         960
+#endif
+#ifndef DASHCAM_PLAYBACK_HEIGHT
+#define DASHCAM_PLAYBACK_HEIGHT        540
+#endif
+
 /* Segment length and dev-phase file cap.
  *
  * Review decision (req5 §9.1/§9.4): dev/test build records 1-minute segments and
- * keeps at most 10 clips so the SD card cannot be filled while developing. */
+ * keeps at most 1000 clips so the SD card cannot be filled while developing. */
 #ifndef DASHCAM_SEGMENT_SECONDS
 #define DASHCAM_SEGMENT_SECONDS        60
 #endif
 #ifndef DASHCAM_DEV_MAX_FILES
-#define DASHCAM_DEV_MAX_FILES          100
+#define DASHCAM_DEV_MAX_FILES          1000
 #endif
 
 /*
