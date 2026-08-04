@@ -708,20 +708,17 @@ void beken_ui_kick_after_display_resume(void)
     dashcam_ui_resume_keep_recording();
 }
 
-/* key_app_service.c calls pet_page_toggle() for the GPIO_50 short press. */
-void pet_page_toggle(void)
+void home_menu_key_short_press(void)
 {
     lv_async_call(home_menu_toggle_async_cb, NULL);
 }
 
-/* key_app_service.c calls pet_page_double() for the GPIO_50 double press. */
-void pet_page_double(void)
+void home_menu_key_double_press(void)
 {
     lv_async_call(home_menu_double_async_cb, NULL);
 }
 
-/* key_app_service.c calls pet_page_enter() for the GPIO_50 long press. */
-void pet_page_enter(void)
+void home_menu_key_long_press(void)
 {
     lv_async_call(home_menu_enter_async_cb, NULL);
 }

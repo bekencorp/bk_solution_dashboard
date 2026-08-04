@@ -13,7 +13,7 @@
 #include "dm_gatt.h"
 #include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
-#if CONFIG_BK_BLE_PROVISIONING
+#if CONFIG_BK_BLE_PROVISIONING || CONFIG_BK_NETWORK_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
 #include "network_provisioning.h"
@@ -38,6 +38,7 @@
 #include "boot_avi_play.h"
 #include "boot_bg_preload.h"
 #include "beken_ui.h"
+#include "home_ui.h"
 #include "dashcam_config.h"
 #include "dashcam_storage.h"
 #include "dashcam_app.h"
@@ -56,9 +57,6 @@
 extern void user_app_main(void);
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 extern int bk_cli_init(void);
-extern void pet_page_toggle(void);
-extern void pet_page_double(void);
-extern void pet_page_enter(void);
 
 #define SYS_ANA_REG_BASE    (0x44010000)
 #define LDO_ANA_REG         (0x69)
@@ -307,17 +305,17 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     else if ((argc >= 2) && (os_strcmp(argv[1], "pet_toggle") == 0))
     {
         LOGI("simulate USER_PET_TOGGLE\n");
-        pet_page_toggle();
+        home_menu_key_short_press();
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "pet_double") == 0))
     {
         LOGI("simulate USER_PET_DOUBLE\n");
-        pet_page_double();
+        home_menu_key_double_press();
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "pet_enter") == 0))
     {
         LOGI("simulate USER_PET_ENTER\n");
-        pet_page_enter();
+        home_menu_key_long_press();
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_count") == 0))
     {
@@ -490,10 +488,34 @@ static void app_bt_init(void)
     }
 }
 
-static void app_cli_init(void)
+static void app_key_config_network(void)
+{
+    LOGI("USER_CONFIG_NETWORK\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+    bk_reboot();
+#endif
+}
+
+static void app_key_erase_info(void)
+{
+    LOGI("USER_ERASE_INFO\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+#endif
+}
+
+static void app_key_init(void)
 {
 #if CONFIG_BUTTON
-    bk_key_service_init();
+    static const key_action_cfg_t s_key_actions[] =
+    {
+        { .pin_id = KEY_PIN_UP,     .short_callback = phone_key_answer,             .double_callback = phone_key_hangup, .long_callback = NULL },
+        { .pin_id = KEY_PIN_LEFT,   .short_callback = app_key_config_network,        .double_callback = NULL,             .long_callback = NULL },
+        { .pin_id = KEY_PIN_RIGHT,  .short_callback = app_key_erase_info,            .double_callback = NULL,             .long_callback = NULL },
+        { .pin_id = KEY_PIN_MIDDLE, .short_callback = home_menu_key_short_press,    .double_callback = home_menu_key_double_press, .long_callback = home_menu_key_long_press },
+    };
+    bk_key_service_init(s_key_actions, sizeof(s_key_actions) / sizeof(s_key_actions[0]));
 #endif
 }
 
@@ -510,7 +532,7 @@ int main(void)
     app_board_init();
     app_display_init();
     app_bt_init();
-    app_cli_init();
+    app_key_init();
 
     return 0;
 }

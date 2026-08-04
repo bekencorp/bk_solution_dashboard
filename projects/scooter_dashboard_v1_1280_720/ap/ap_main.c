@@ -14,7 +14,7 @@
 #include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
 #include "ble_cpn_main.h"
-#if CONFIG_BK_BLE_PROVISIONING
+#if CONFIG_BK_BLE_PROVISIONING || CONFIG_BK_NETWORK_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
 #include "network_provisioning.h"
@@ -37,6 +37,7 @@
 #include "media_devices.h"
 #include "display_ui.h"
 #include "boot_avi_play.h"
+#include "beken_ui.h"
 #include "sdkconfig.h"
 #include "headset_user_config.h"
 #include "sdcard_mtp.h"
@@ -368,13 +369,38 @@ static void app_bt_init(void)
 static void app_cli_init(void)
 {
     cli_widgets_init();
-
-    /* Register the `mtp` command (mtp start|stop|status). The USB gadget is only
-     * brought up on `mtp start`; the SD card is exposed to a PC over MTP. */
     sdcard_mtp_init();
+}
 
+static void app_key_config_network(void)
+{
+    LOGI("USER_CONFIG_NETWORK\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+    bk_reboot();
+#endif
+}
+
+static void app_key_erase_info(void)
+{
+    LOGI("USER_ERASE_INFO\r\n");
+#if CONFIG_BK_NETWORK_PROVISIONING
+    erase_network_auto_reconnect_info();
+#endif
+}
+
+static void app_key_init(void)
+{
 #if CONFIG_BUTTON
-    bk_key_service_init();
+    static const key_action_cfg_t s_key_actions[] =
+    {
+        { .pin_id = KEY_PIN_UP,     .short_callback = pet_page_toggle,         .double_callback = NULL, .long_callback = NULL },
+        { .pin_id = KEY_PIN_DOWN,   .short_callback = app_key_config_network, .double_callback = NULL, .long_callback = NULL },
+        { .pin_id = KEY_PIN_LEFT,   .short_callback = NULL,                   .double_callback = NULL, .long_callback = NULL },
+        { .pin_id = KEY_PIN_RIGHT,  .short_callback = NULL,                   .double_callback = NULL, .long_callback = NULL },
+        { .pin_id = KEY_PIN_MIDDLE, .short_callback = app_key_erase_info,     .double_callback = NULL, .long_callback = NULL },
+    };
+    bk_key_service_init(s_key_actions, sizeof(s_key_actions) / sizeof(s_key_actions[0]));
 #endif
 }
 
@@ -396,6 +422,7 @@ int main(void)
     app_display_init();
     app_bt_init();
     app_cli_init();
+    app_key_init();
 
     return 0;
 }

@@ -267,6 +267,9 @@ void init_page_ota_update(bk_lv_ui_t *bk_ui);
 void destroy_page_ota_update(bk_lv_ui_t *bk_ui);
 void beken_ui_nav_to_dashcam(void);
 void beken_ui_nav_to_ota_update(void);
+void home_menu_key_short_press(void);
+void home_menu_key_double_press(void);
+void home_menu_key_long_press(void);
 
 /*
  * Wrap the background bitmap preloaded during the boot animation
