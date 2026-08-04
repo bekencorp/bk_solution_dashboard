@@ -2,6 +2,7 @@
 #define __PHONE_BOOK_UI_H__
 
 #include <stdbool.h>
+#include "lvgl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +19,15 @@ extern "C" {
  */
 void phone_book_ui_enter(void);
 void phone_book_ui_leave(void);
+
+/*
+ * The LVGL group holding both lists' rows (contacts followed by recents) for
+ * key navigation. beken_ui binds the shared KEYPAD indev to it while the
+ * phone_book page is active: UP/DOWN move inside the active list, LEFT/RIGHT
+ * switch directly between lists, and ENTER dials the focused row.
+ * Created lazily; persists for the app.
+ */
+lv_group_t *phone_book_ui_get_group(void);
 
 /*
  * Physical-key handlers (mirror dashcam_ui_handle_key_*). Each returns true when

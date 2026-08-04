@@ -2,6 +2,7 @@
 #define __DASHCAM_UI_H__
 
 #include <stdbool.h>
+#include "lvgl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,13 @@ void dashcam_ui_leave(void);
 bool dashcam_ui_handle_key_double(void);
 bool dashcam_ui_handle_key_single(void);
 bool dashcam_ui_handle_key_long(void);
+
+/*
+ * The LVGL group holding the records-list items. beken_ui binds the shared
+ * KEYPAD indev to it while the dashcam page is active. UP/DOWN and PREV/NEXT
+ * move the focused record; ENTER plays it. The group persists for the app.
+ */
+lv_group_t *dashcam_ui_get_group(void);
 
 #ifdef __cplusplus
 }

@@ -21,6 +21,277 @@
 #include "a2dp_sink_demo.h"
 #include "hfp_hf_demo.h"
 
+static lv_group_t *s_nav_group = NULL;
+static home_ui_nav_callback_t s_nav_focus_cb = NULL;
+static home_ui_nav_callback_t s_nav_activate_cb = NULL;
+
+extern void home_dash_entry_event_cb(lv_event_t *e);
+extern void home_ota_entry_event_cb(lv_event_t *e);
+extern void home_phone_entry_event_cb(lv_event_t *e);
+
+static lv_obj_t *home_ui_nav_entry_for_item(int32_t item)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    switch (item)
+    {
+    case HOME_UI_NAV_DASHCAM:
+        return ui->home_dash_entry;
+    case HOME_UI_NAV_OTA:
+        return ui->home_ota_entry;
+    case HOME_UI_NAV_PHONE_BOOK:
+        return ui->home_phone_entry;
+    default:
+        return NULL;
+    }
+}
+
+static void home_ui_nav_image_set_scale(lv_obj_t *obj, int32_t scale)
+{
+    lv_image_set_scale(obj, (uint32_t)scale);
+}
+
+static void home_ui_nav_image_scale_anim_cb(void *var, int32_t value)
+{
+    home_ui_nav_image_set_scale((lv_obj_t *)var, value);
+}
+
+static void home_ui_nav_image_animate_scale(lv_obj_t *obj, int32_t target_scale)
+{
+    int32_t current_scale;
+    lv_anim_t anim;
+
+    if (obj == NULL || !lv_obj_is_valid(obj))
+    {
+        return;
+    }
+
+    current_scale = lv_image_get_scale(obj);
+    if (current_scale <= 0)
+    {
+        current_scale = 256;
+    }
+
+    if (current_scale == target_scale)
+    {
+        lv_obj_set_style_image_opa(obj,
+                                   target_scale > 256 ? LV_OPA_COVER : LV_OPA_60,
+                                   LV_PART_MAIN | LV_STATE_DEFAULT);
+        return;
+    }
+
+    lv_anim_delete(obj, home_ui_nav_image_scale_anim_cb);
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, obj);
+    lv_anim_set_exec_cb(&anim, home_ui_nav_image_scale_anim_cb);
+    lv_anim_set_values(&anim, current_scale, target_scale);
+    lv_anim_set_duration(&anim, 180);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_start(&anim);
+
+    lv_obj_set_style_image_opa(obj,
+                               target_scale > 256 ? LV_OPA_COVER : LV_OPA_60,
+                               LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+static void home_ui_nav_apply_selection(int32_t selected_item)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    lv_obj_t *entries[] = {
+        ui->home_dash_entry,
+        ui->home_ota_entry,
+        ui->home_phone_entry,
+    };
+    lv_obj_t *icons[] = {
+        ui->home_dash_ic,
+        ui->home_ota_ic,
+        ui->home_phone_ic,
+    };
+    const int32_t items[] = {
+        HOME_UI_NAV_DASHCAM,
+        HOME_UI_NAV_OTA,
+        HOME_UI_NAV_PHONE_BOOK,
+    };
+    const int32_t normal_scale = 256;
+    const int32_t selected_scale = 410;
+    uint32_t i;
+
+    if (ui->home == NULL || !lv_obj_is_valid(ui->home))
+    {
+        return;
+    }
+
+    for (i = 0; i < 3; i++)
+    {
+        if (entries[i] != NULL && lv_obj_is_valid(entries[i]))
+        {
+            lv_obj_set_style_border_width(entries[i], 0,
+                                          LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_shadow_width(entries[i], 0,
+                                          LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_transform_scale_x(entries[i], normal_scale,
+                                               LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_transform_scale_y(entries[i], normal_scale,
+                                               LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+
+        if (icons[i] != NULL && lv_obj_is_valid(icons[i]))
+        {
+            lv_image_set_pivot(icons[i],
+                               lv_obj_get_width(icons[i]) / 2,
+                               lv_obj_get_height(icons[i]) / 2);
+            home_ui_nav_image_animate_scale(
+                icons[i],
+                selected_item == items[i] ? selected_scale : normal_scale);
+        }
+    }
+}
+
+static int32_t home_ui_nav_item_for_entry(lv_obj_t *entry)
+{
+    if (entry == bk_lv_tool_ui.home_dash_entry)
+    {
+        return HOME_UI_NAV_DASHCAM;
+    }
+    if (entry == bk_lv_tool_ui.home_ota_entry)
+    {
+        return HOME_UI_NAV_OTA;
+    }
+    if (entry == bk_lv_tool_ui.home_phone_entry)
+    {
+        return HOME_UI_NAV_PHONE_BOOK;
+    }
+
+    return 0;
+}
+
+static void home_ui_nav_group_focus_cb(lv_group_t *group)
+{
+    int32_t item = home_ui_nav_item_for_entry(lv_group_get_focused(group));
+
+    if (item == 0)
+    {
+        return;
+    }
+
+    home_ui_nav_apply_selection(item);
+    if (s_nav_focus_cb != NULL)
+    {
+        s_nav_focus_cb(item);
+    }
+}
+
+static void home_ui_nav_entry_activate_cb(lv_event_t *e)
+{
+    int32_t item = (int32_t)(intptr_t)lv_event_get_user_data(e);
+
+    if (s_nav_activate_cb != NULL)
+    {
+        s_nav_activate_cb(item);
+    }
+}
+
+static void home_ui_nav_replace_generated_cb(lv_obj_t *entry, int32_t item)
+{
+    switch (item)
+    {
+    case HOME_UI_NAV_DASHCAM:
+        lv_obj_remove_event_cb(entry, home_dash_entry_event_cb);
+        break;
+    case HOME_UI_NAV_OTA:
+        lv_obj_remove_event_cb(entry, home_ota_entry_event_cb);
+        break;
+    case HOME_UI_NAV_PHONE_BOOK:
+        lv_obj_remove_event_cb(entry, home_phone_entry_event_cb);
+        break;
+    default:
+        return;
+    }
+
+    lv_obj_remove_event_cb(entry, home_ui_nav_entry_activate_cb);
+    lv_obj_add_event_cb(entry, home_ui_nav_entry_activate_cb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)item);
+}
+
+void home_ui_nav_group_build(int32_t selected_item,
+                             home_ui_nav_callback_t focus_cb,
+                             home_ui_nav_callback_t activate_cb)
+{
+    lv_obj_t *focus_target;
+    int32_t item;
+
+    if (bk_lv_tool_ui.home == NULL || !lv_obj_is_valid(bk_lv_tool_ui.home))
+    {
+        return;
+    }
+
+    s_nav_focus_cb = focus_cb;
+    s_nav_activate_cb = activate_cb;
+
+    if (s_nav_group == NULL)
+    {
+        s_nav_group = lv_group_create();
+        if (s_nav_group == NULL)
+        {
+            return;
+        }
+        lv_group_set_wrap(s_nav_group, true);
+        lv_group_set_focus_cb(s_nav_group, home_ui_nav_group_focus_cb);
+    }
+
+    lv_group_remove_all_objs(s_nav_group);
+
+    for (item = HOME_UI_NAV_DASHCAM; item <= HOME_UI_NAV_PHONE_BOOK; item++)
+    {
+        lv_obj_t *entry = home_ui_nav_entry_for_item(item);
+
+        if (entry != NULL && lv_obj_is_valid(entry))
+        {
+            lv_group_add_obj(s_nav_group, entry);
+            home_ui_nav_replace_generated_cb(entry, item);
+        }
+    }
+
+    focus_target = home_ui_nav_entry_for_item(selected_item);
+    if (focus_target == NULL || !lv_obj_is_valid(focus_target))
+    {
+        selected_item = HOME_UI_NAV_DASHCAM;
+        focus_target = home_ui_nav_entry_for_item(selected_item);
+    }
+
+    if (focus_target != NULL && lv_obj_is_valid(focus_target))
+    {
+        lv_group_focus_obj(focus_target);
+    }
+    else
+    {
+        home_ui_nav_apply_selection(selected_item);
+    }
+}
+
+bool home_ui_nav_group_ready(void)
+{
+    return s_nav_group != NULL && lv_group_get_obj_count(s_nav_group) > 0;
+}
+
+bool home_ui_nav_focus(int32_t item)
+{
+    lv_obj_t *entry = home_ui_nav_entry_for_item(item);
+
+    if (!home_ui_nav_group_ready() || entry == NULL || !lv_obj_is_valid(entry))
+    {
+        return false;
+    }
+
+    lv_group_focus_obj(entry);
+    return true;
+}
+
+lv_group_t *home_ui_get_group(void)
+{
+    return s_nav_group;
+}
+
 /* Chinese track metadata (song title/artist) is rendered from a TrueType font
  * via LVGL's tiny_ttf engine, so arbitrary Chinese displays without baking a
  * CJK bitmap font into flash. On first home entry the whole .ttf is read once
@@ -350,6 +621,160 @@ static bool home_music_obj_valid(lv_obj_t *obj)
 static bool home_call_is_active(void)
 {
     return s_home_music.call_state != HFP_HF_CALL_NONE;
+}
+
+/* ------------------------------------------------------------------ */
+/* Method-A call control: keypad/group over the existing call buttons  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The incoming popup, outgoing popup and on-call card expose existing lv_btn
+ * controls. Instead of a dedicated phone key, drive them through the shared
+ * KEYPAD indev: while a call rings, dials or is active, push a small modal group
+ * up to beken_ui so LEFT/RIGHT move between available actions and ENTER
+ * confirms. The buttons live on HOME, so this engages while HOME is resident.
+ */
+static lv_group_t *s_call_group = NULL;
+
+static void home_cp_answer_event_cb(lv_event_t *e)
+{
+    (void)e;
+    hfp_demo_answer(1);
+}
+
+static void home_cp_hangup_event_cb(lv_event_t *e)
+{
+    (void)e;
+    hfp_demo_answer(0);
+}
+
+static void home_call_button_add_focus_style(lv_obj_t *button)
+{
+    lv_obj_set_style_border_color(button, lv_color_hex(0xffffff),
+                                  LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_border_width(button, 3,
+                                  LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_color(button, lv_color_hex(0x1e7fcf),
+                                   LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_width(button, 3,
+                                   LV_PART_MAIN | LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_pad(button, 2,
+                                 LV_PART_MAIN | LV_STATE_FOCUSED);
+}
+
+static void home_call_group_ensure(void)
+{
+    if (s_call_group == NULL)
+    {
+        s_call_group = lv_group_create();
+        if (s_call_group != NULL)
+        {
+            lv_group_set_wrap(s_call_group, true);
+        }
+    }
+}
+
+/* (Re)attach the CLICKED handlers to the (possibly rebuilt) call buttons.
+ * Idempotent: remove any prior binding first so a home re-enter cannot stack
+ * duplicate handlers (which would answer/hang up twice). */
+static void home_call_bind_buttons(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (home_music_obj_valid(ui->home_cp_answer))
+    {
+        home_call_button_add_focus_style(ui->home_cp_answer);
+        lv_obj_remove_event_cb(ui->home_cp_answer, home_cp_answer_event_cb);
+        lv_obj_add_event_cb(ui->home_cp_answer, home_cp_answer_event_cb, LV_EVENT_CLICKED, NULL);
+    }
+    if (home_music_obj_valid(ui->home_cp_hangup))
+    {
+        home_call_button_add_focus_style(ui->home_cp_hangup);
+        lv_obj_remove_event_cb(ui->home_cp_hangup, home_cp_hangup_event_cb);
+        lv_obj_add_event_cb(ui->home_cp_hangup, home_cp_hangup_event_cb, LV_EVENT_CLICKED, NULL);
+    }
+    if (home_music_obj_valid(ui->home_oc_hangup))
+    {
+        home_call_button_add_focus_style(ui->home_oc_hangup);
+        lv_obj_remove_event_cb(ui->home_oc_hangup, home_cp_hangup_event_cb);
+        lv_obj_add_event_cb(ui->home_oc_hangup, home_cp_hangup_event_cb, LV_EVENT_CLICKED, NULL);
+    }
+    if (home_music_obj_valid(ui->home_op_hangup))
+    {
+        home_call_button_add_focus_style(ui->home_op_hangup);
+        lv_obj_remove_event_cb(ui->home_op_hangup, home_cp_hangup_event_cb);
+        lv_obj_add_event_cb(ui->home_op_hangup, home_cp_hangup_event_cb, LV_EVENT_CLICKED, NULL);
+    }
+}
+
+static void home_call_focus_modal_button(lv_obj_t *button)
+{
+    if (s_call_group == NULL || !home_music_obj_valid(button))
+    {
+        return;
+    }
+
+    /*
+     * Bind the group before focusing so LVGL associates the focus event with
+     * the keypad indev and applies both FOCUSED and FOCUS_KEY states.
+     */
+    beken_ui_keypad_set_modal_group(s_call_group);
+    lv_group_focus_obj(button);
+
+    if (lv_group_get_focused(s_call_group) != button)
+    {
+        BK_LOGI("home_ui", "call modal focus failed: target=%p focused=%p\n",
+                button, lv_group_get_focused(s_call_group));
+        return;
+    }
+
+    lv_obj_add_state(button, LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY);
+    lv_obj_invalidate(button);
+}
+
+/*
+ * Rebuild the call modal group from the current call state and (un)install it as
+ * the keypad modal override. Call after home_music_apply() has updated popup /
+ * card visibility, and on home_ui_enter (to re-engage after a page rebuild).
+ */
+static void home_call_nav_sync(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    hfp_hf_call_state_t st = s_home_music.call_state;
+
+    home_call_group_ensure();
+    if (s_call_group == NULL)
+    {
+        return;
+    }
+
+    lv_group_remove_all_objs(s_call_group);
+
+    if (st == HFP_HF_CALL_INCOMING &&
+        home_music_obj_valid(ui->home_cp_answer) &&
+        home_music_obj_valid(ui->home_cp_hangup))
+    {
+        lv_group_add_obj(s_call_group, ui->home_cp_answer);
+        lv_group_add_obj(s_call_group, ui->home_cp_hangup);
+        home_call_focus_modal_button(ui->home_cp_answer);
+    }
+    else if (st == HFP_HF_CALL_ACTIVE &&
+             home_music_obj_valid(ui->home_oc_hangup))
+    {
+        lv_group_add_obj(s_call_group, ui->home_oc_hangup);
+        home_call_focus_modal_button(ui->home_oc_hangup);
+    }
+    else if (st == HFP_HF_CALL_OUTGOING &&
+             home_music_obj_valid(ui->home_op_hangup))
+    {
+        lv_group_add_obj(s_call_group, ui->home_op_hangup);
+        home_call_focus_modal_button(ui->home_op_hangup);
+    }
+    else
+    {
+        /* No call (or dialing): drop the modal so keys return to the page. */
+        beken_ui_keypad_set_modal_group(NULL);
+    }
 }
 
 /*
@@ -948,6 +1373,7 @@ static void home_music_phone_async_cb(void *user_data)
     home_call_blink_sync();
     home_music_sync_timer();
     home_music_apply();
+    home_call_nav_sync();
     os_free(update);
 }
 
@@ -1419,6 +1845,11 @@ void home_ui_enter(void)
     home_music_apply();
     home_music_sync_timer();
     home_call_blink_sync();
+
+    /* Bind the call buttons on the freshly-built page and re-engage the keypad
+     * call modal if we re-entered mid-call. */
+    home_call_bind_buttons();
+    home_call_nav_sync();
 }
 
 /* Delete the gauge + hazard timers. */
@@ -1436,6 +1867,11 @@ void home_ui_leave(void)
     }
     home_music_stop_timer();
     home_call_blink_stop();
+
+    /* Drop any call modal so it cannot hijack the next page's keypad. The call
+     * buttons belong to the home tree (freed on unload); a re-enter re-engages
+     * the modal via home_ui_enter when the call is still up. */
+    beken_ui_keypad_set_modal_group(NULL);
 }
 
 /*
@@ -1453,6 +1889,11 @@ void home_ui_leave(void)
 void home_ui_unload(void)
 {
     home_ui_leave();
+
+    if (s_nav_group != NULL)
+    {
+        lv_group_remove_all_objs(s_nav_group);
+    }
 
     s_bg_canvas = NULL;
     if (s_bg_canvas_buf != NULL)

@@ -40,6 +40,15 @@ static int        s_recent_sel;
 static int        s_contact_rows;   /* real (selectable) contact rows */
 static int        s_recent_rows;    /* real (selectable) recent rows */
 
+/*
+ * Every selectable row belongs to one keypad group. UP/DOWN move inside the
+ * active list, LEFT/RIGHT switch directly between Contacts and Recents, and
+ * ENTER dials the focused row.
+ */
+static lv_group_t *s_phone_book_group = NULL;
+
+static void pb_refresh_focus(void);
+
 static bool phone_book_bt_connected(void)
 {
 #if CONFIG_PBAP_CONTACTS
@@ -250,6 +259,235 @@ static void pb_set_focus(pb_focus_t f)
 }
 
 /* ------------------------------------------------------------------ */
+/* Method-A navigation group                                          */
+/* ------------------------------------------------------------------ */
+
+/* Dial the selected entry of a list by index (re-snapshot: row order matches
+ * snapshot order, so the index maps directly to the entry). */
+static void phone_book_dial_selection(pb_focus_t focus, int sel)
+{
+#if CONFIG_PBAP_CONTACTS
+    char number[32] = {0};
+
+    if (focus == PB_FOCUS_CONTACTS)
+    {
+        static pbap_contact_info_t snap[PB_MAX_ROWS];
+        int n = pbap_contacts_snapshot(snap, PB_MAX_ROWS);
+        if (sel >= 0 && sel < n)
+        {
+            snprintf(number, sizeof(number), "%s", snap[sel].number);
+        }
+    }
+    else if (focus == PB_FOCUS_RECENTS)
+    {
+        static pbap_recent_info_t snap[PB_MAX_ROWS];
+        int n = pbap_recents_snapshot(snap, PB_MAX_ROWS);
+        if (sel >= 0 && sel < n)
+        {
+            snprintf(number, sizeof(number), "%s", snap[sel].number);
+        }
+    }
+
+    if (number[0] != '\0')
+    {
+        LOGI("dial %s\n", number);
+        hfp_demo_dial(1, (uint8_t *)number);
+    }
+    else
+    {
+        LOGI("dial ignored: no number for sel\n");
+    }
+#else
+    (void)focus;
+    (void)sel;
+#endif
+}
+
+/* ENTER / click on a focused row: dial it. The row carries its (list, index) as
+ * user_data so we can re-snapshot the number without caching it. */
+static void phone_book_row_enter_cb(lv_event_t *e)
+{
+    uintptr_t tag = (uintptr_t)lv_event_get_user_data(e);
+    pb_focus_t focus = (pb_focus_t)(tag >> 16);
+    int sel = (int)(tag & 0xffffu);
+
+    phone_book_dial_selection(focus, sel);
+}
+
+static bool phone_book_focus_row(pb_focus_t focus, int sel)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    lv_obj_t *list;
+    lv_obj_t *row;
+    int count;
+
+    if (focus == PB_FOCUS_CONTACTS)
+    {
+        list = ui->phone_book_contacts_list;
+        count = s_contact_rows;
+    }
+    else if (focus == PB_FOCUS_RECENTS)
+    {
+        list = ui->phone_book_recents_list;
+        count = s_recent_rows;
+    }
+    else
+    {
+        return false;
+    }
+
+    if (list == NULL || !lv_obj_is_valid(list) || count <= 0)
+    {
+        return false;
+    }
+
+    if (sel < 0 || sel >= count)
+    {
+        sel = 0;
+    }
+
+    row = lv_obj_get_child(list, sel);
+    if (row == NULL || !lv_obj_is_valid(row))
+    {
+        return false;
+    }
+
+    lv_group_focus_obj(row);
+    return true;
+}
+
+static void phone_book_row_key_cb(lv_event_t *e)
+{
+    uint32_t key = lv_event_get_key(e);
+    int *sel;
+    int count;
+
+    if (key == LV_KEY_LEFT)
+    {
+        phone_book_focus_row(PB_FOCUS_CONTACTS, s_contact_sel);
+        return;
+    }
+
+    if (key == LV_KEY_RIGHT)
+    {
+        phone_book_focus_row(PB_FOCUS_RECENTS, s_recent_sel);
+        return;
+    }
+
+    if (s_focus == PB_FOCUS_CONTACTS)
+    {
+        sel = &s_contact_sel;
+        count = s_contact_rows;
+    }
+    else if (s_focus == PB_FOCUS_RECENTS)
+    {
+        sel = &s_recent_sel;
+        count = s_recent_rows;
+    }
+    else
+    {
+        return;
+    }
+
+    if (count <= 0)
+    {
+        return;
+    }
+
+    if (key == LV_KEY_UP)
+    {
+        *sel = (*sel + count - 1) % count;
+    }
+    else if (key == LV_KEY_DOWN)
+    {
+        *sel = (*sel + 1) % count;
+    }
+    else
+    {
+        return;
+    }
+
+    phone_book_focus_row(s_focus, *sel);
+}
+
+/* Keep the visible selection/focus in sync with the group focus (keypad nav). */
+static void phone_book_ui_group_focus_cb(lv_group_t *group)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    lv_obj_t *focused = lv_group_get_focused(group);
+    lv_obj_t *parent;
+
+    if (focused == NULL)
+    {
+        return;
+    }
+
+    parent = lv_obj_get_parent(focused);
+    if (parent == ui->phone_book_contacts_list)
+    {
+        s_focus = PB_FOCUS_CONTACTS;
+        s_contact_sel = (int)lv_obj_get_index(focused);
+    }
+    else if (parent == ui->phone_book_recents_list)
+    {
+        s_focus = PB_FOCUS_RECENTS;
+        s_recent_sel = (int)lv_obj_get_index(focused);
+    }
+    else
+    {
+        return;
+    }
+
+    pb_refresh_focus();
+}
+
+static void phone_book_ui_group_ensure(void)
+{
+    if (s_phone_book_group == NULL)
+    {
+        s_phone_book_group = lv_group_create();
+        if (s_phone_book_group != NULL)
+        {
+            lv_group_set_wrap(s_phone_book_group, true);
+            lv_group_set_focus_cb(s_phone_book_group, phone_book_ui_group_focus_cb);
+        }
+    }
+}
+
+lv_group_t *phone_book_ui_get_group(void)
+{
+    phone_book_ui_group_ensure();
+    return s_phone_book_group;
+}
+
+/* Make a freshly-created row focusable/clickable and add it to the nav group,
+ * tagging it with (list, index) so ENTER can dial it. */
+static void phone_book_group_add_row(lv_obj_t *row, pb_focus_t focus)
+{
+    uintptr_t tag;
+    int idx;
+
+    if (row == NULL || !lv_obj_is_valid(row))
+    {
+        return;
+    }
+
+    phone_book_ui_group_ensure();
+    if (s_phone_book_group == NULL)
+    {
+        return;
+    }
+
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    idx = (int)lv_obj_get_index(row);
+    tag = ((uintptr_t)focus << 16) | (uintptr_t)(idx & 0xffff);
+
+    lv_group_add_obj(s_phone_book_group, row);
+    lv_obj_add_event_cb(row, phone_book_row_enter_cb, LV_EVENT_CLICKED, (void *)tag);
+    lv_obj_add_event_cb(row, phone_book_row_key_cb, LV_EVENT_KEY, NULL);
+}
+
+/* ------------------------------------------------------------------ */
 /* Contacts                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -285,6 +523,8 @@ static void phone_book_add_contact_row(lv_obj_t *list, const char *name,
     lv_image_set_src(call, &oncall_sm_44x44_RGB565A8_NONE);
     lv_obj_set_pos(call, 532, 26);
     lv_obj_set_size(call, 44, 44);
+
+    phone_book_group_add_row(row, PB_FOCUS_CONTACTS);
 }
 
 static void phone_book_fill_contacts(void)
@@ -412,6 +652,8 @@ static void phone_book_add_recent_row(lv_obj_t *list, const pbap_recent_info_t *
     lv_image_set_src(call, &oncall_sm_44x44_RGB565A8_NONE);
     lv_obj_set_pos(call, 536, 24);
     lv_obj_set_size(call, 44, 44);
+
+    phone_book_group_add_row(row, PB_FOCUS_RECENTS);
 }
 #endif /* CONFIG_PBAP_CONTACTS */
 
@@ -607,14 +849,42 @@ static void phone_book_contacts_updated_cb(void *user_data)
 
 void phone_book_ui_enter(void)
 {
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    lv_obj_t *first = NULL;
+
     s_focus       = PB_FOCUS_NONE;
     s_contact_sel = 0;
     s_recent_sel  = 0;
+    /* Clear stale row counts up front: if phone_book_refresh() bails early
+     * (page/list not valid yet) it will not touch these, and we must not trust a
+     * previous session's value below (that would dereference a freed list). */
+    s_contact_rows = 0;
+    s_recent_rows  = 0;
 
 #if CONFIG_PBAP_CONTACTS
     pbap_contacts_set_updated_cb(phone_book_contacts_updated_cb, NULL);
 #endif
     phone_book_refresh();
+
+    /* Focus the first available row so the KEYPAD indev (bound to this group by
+     * beken_ui once the page is active) drives it right away; the focus_cb sets
+     * s_focus / the selection index and repaints the highlight. Validate the
+     * list object (not just non-NULL) since the handle may be stale. */
+    if (s_contact_rows > 0 && ui->phone_book_contacts_list != NULL &&
+        lv_obj_is_valid(ui->phone_book_contacts_list))
+    {
+        first = lv_obj_get_child(ui->phone_book_contacts_list, 0);
+    }
+    else if (s_recent_rows > 0 && ui->phone_book_recents_list != NULL &&
+             lv_obj_is_valid(ui->phone_book_recents_list))
+    {
+        first = lv_obj_get_child(ui->phone_book_recents_list, 0);
+    }
+
+    if (first != NULL && lv_obj_is_valid(first) && s_phone_book_group != NULL)
+    {
+        lv_group_focus_obj(first);
+    }
 }
 
 void phone_book_ui_leave(void)

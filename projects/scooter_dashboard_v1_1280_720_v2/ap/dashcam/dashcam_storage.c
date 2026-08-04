@@ -153,18 +153,45 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
     while ((entry = bk_vfs_readdir(dir)) != NULL)
     {
         dashcam_file_info_t item = {0};
-        struct stat st;
 
         if (!dashcam_storage_has_video_suffix(entry->d_name))
         {
             continue;
         }
 
+        /*
+         * files[] is kept newest-first. Once it is full, entries no newer than
+         * the current tail cannot enter the result set, so avoid formatting and
+         * parsing metadata for them. The directory still has to be traversed,
+         * but the work per old clip stays minimal.
+         */
+        if (*file_count == max_files &&
+            strcmp(entry->d_name, files[max_files - 1].name) <= 0)
+        {
+            continue;
+        }
+
         snprintf(item.name, sizeof(item.name), "%s", entry->d_name);
         snprintf(item.path, sizeof(item.path), "%s/%s", DASHCAM_STORAGE_DIR, entry->d_name);
-        if (bk_vfs_stat(item.path, &st) == 0)
+
+        /*
+         * FatFs readdir already returns the file size in struct dirent. Calling
+         * bk_vfs_stat() here performs another path lookup for every clip and is
+         * prohibitively slow when the release ring contains many files.
+         * Retain a stat fallback for VFS backends that do not provide metadata.
+         */
+        if (entry->d_stat_valid)
         {
-            item.size_bytes = (uint32_t)st.st_size;
+            item.size_bytes = (uint32_t)entry->d_size;
+        }
+        else
+        {
+            struct stat st;
+
+            if (bk_vfs_stat(item.path, &st) == 0)
+            {
+                item.size_bytes = (uint32_t)st.st_size;
+            }
         }
 
 #if DASHCAM_USE_WALL_CLOCK

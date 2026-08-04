@@ -292,7 +292,7 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
 
 static const struct cli_command s_widgets_commands[] =
 {
-    {"widgets", "widgets", cli_widgets_cmd},
+    {"dashboard", "dashboard <command>", cli_widgets_cmd},
 };
 
 #define CMDS_COUNT  (sizeof(s_widgets_commands) / sizeof(struct cli_command))
@@ -319,6 +319,12 @@ static void app_board_init(void)
 
 static void app_display_init(void)
 {
+    if (display_ui_register_init_callback(beken_ui_init) != BK_OK)
+    {
+        LOGE("register UI init callback failed\n");
+        return;
+    }
+
 #if defined(CONFIG_SCOOTER_LVGL_HOR_RES) && defined(CONFIG_SCOOTER_UI_CANVAS_WIDTH)
     LOGI("profile 1280_720: LVGL %dx%d rot=%d canvas %dx%d\n",
          CONFIG_SCOOTER_LVGL_HOR_RES, CONFIG_SCOOTER_LVGL_VER_RES,

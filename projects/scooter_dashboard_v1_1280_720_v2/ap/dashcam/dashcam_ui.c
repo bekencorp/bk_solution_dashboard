@@ -9,7 +9,10 @@
 #include "dashcam_player.h"
 #include "dashcam_storage.h"
 #include "lvgl.h"
+#include "lv_port_indev.h"
 #include "dashcam_assitview.h"
+#include "os/mem.h"
+#include "os/os.h"
 
 #define TAG "d_ui"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -26,15 +29,67 @@
 
 /* Playback info overlay refresh period (req6 #4). */
 #define DASHCAM_UI_INFO_PERIOD_MS   500
+#define DASHCAM_UI_LOAD_PRIO        4
+#define DASHCAM_UI_LOAD_STACK       4096
 
 static dashcam_file_info_t s_files[DASHCAM_UI_MAX_ITEMS];
 static lv_obj_t *s_btns[DASHCAM_UI_MAX_ITEMS];
 static uint32_t s_file_count = 0;
 static bool s_preview_cb_bound = false;
 
+typedef struct
+{
+    uint32_t generation;
+    uint32_t file_count;
+    bk_err_t scan_result;
+    dashcam_file_info_t files[DASHCAM_UI_MAX_ITEMS];
+} dashcam_ui_load_result_t;
+
+static beken_thread_t s_load_thread = NULL;
+static beken_mutex_t s_load_state_mutex = NULL;
+static bool s_load_worker_running = false;
+static bool s_page_active = false;
+static uint32_t s_load_generation = 0;
+
+static bk_err_t dashcam_ui_load_state_init(void)
+{
+    if (s_load_state_mutex != NULL)
+    {
+        return BK_OK;
+    }
+
+    return rtos_init_mutex(&s_load_state_mutex);
+}
+
+static void dashcam_ui_load_state_lock(void)
+{
+    if (rtos_lock_mutex(&s_load_state_mutex) != BK_OK)
+    {
+        LOGE("lock load state mutex failed\n");
+    }
+}
+
+static void dashcam_ui_load_state_unlock(void)
+{
+    if (rtos_unlock_mutex(&s_load_state_mutex) != BK_OK)
+    {
+        LOGE("unlock load state mutex failed\n");
+    }
+}
+
 /* req6 #3 list-navigation state. */
 static bool s_list_focused = false;
 static int32_t s_sel_index = 0;
+
+/*
+ * Method-A list navigation: the records list items live in a persistent LVGL
+ * group driven by the shared KEYPAD indev (lv_port_keypad_*). While the
+ * dashcam page is active beken_ui binds the indev to this group, so the same
+ * physical LEFT/RIGHT keys that move the home menu now move the list selection,
+ * and ENTER (routed to the focused item) plays it via its existing CLICKED cb.
+ * The group is created once; its member items are rebuilt on every populate.
+ */
+static lv_group_t *s_dashcam_group = NULL;
 
 /* req6 #4 playback info overlay. */
 static lv_timer_t *s_info_timer = NULL;
@@ -222,6 +277,68 @@ static void dashcam_ui_set_focus(bool focused)
          (int)focused, (int)s_sel_index, (unsigned)s_file_count);
 }
 
+/* ---------- Method-A: records list group ---------- */
+
+static void dashcam_ui_group_focus_cb(lv_group_t *group)
+{
+    lv_obj_t *focused = lv_group_get_focused(group);
+    uint32_t i;
+
+    if (focused == NULL)
+    {
+        return;
+    }
+
+    for (i = 0; i < s_file_count; i++)
+    {
+        if (s_btns[i] == focused)
+        {
+            s_sel_index = (int32_t)i;
+            s_list_focused = true;
+            dashcam_ui_apply_selection();
+            return;
+        }
+    }
+}
+
+static void dashcam_ui_item_key_cb(lv_event_t *e)
+{
+    uint32_t key = lv_event_get_key(e);
+
+    if (s_dashcam_group == NULL)
+    {
+        return;
+    }
+
+    if (key == LV_KEY_UP)
+    {
+        lv_group_focus_prev(s_dashcam_group);
+    }
+    else if (key == LV_KEY_DOWN)
+    {
+        lv_group_focus_next(s_dashcam_group);
+    }
+}
+
+static void dashcam_ui_group_ensure(void)
+{
+    if (s_dashcam_group == NULL)
+    {
+        s_dashcam_group = lv_group_create();
+        if (s_dashcam_group != NULL)
+        {
+            lv_group_set_wrap(s_dashcam_group, true);
+            lv_group_set_focus_cb(s_dashcam_group, dashcam_ui_group_focus_cb);
+        }
+    }
+}
+
+lv_group_t *dashcam_ui_get_group(void)
+{
+    dashcam_ui_group_ensure();
+    return s_dashcam_group;
+}
+
 /* ---------- list population (req2 colors) ---------- */
 
 static void dashcam_ui_item_clicked_cb(lv_event_t *e)
@@ -326,34 +443,65 @@ static void dashcam_ui_add_item_labels(lv_obj_t *btn,
     lv_obj_set_style_text_align(size_label, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
 }
 
-static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
+static lv_obj_t *dashcam_ui_reset_list(bk_lv_ui_t *ui)
 {
     lv_obj_t *list = ui->dashcam_rec_list;
-    uint32_t i;
 
     if (list == NULL || !lv_obj_is_valid(list))
     {
-        return;
+        return NULL;
     }
 
-    /*
-     * Drop the designer placeholder items and rebuild from the SD card. The
-     * placeholder item_0..9 handles in bk_lv_ui_t become stale here, but they
-     * are only used by the generated init and the page is recreated wholesale
-     * on next entry, so they are never dereferenced after this point.
-     */
     lv_obj_clean(list);
     memset(s_btns, 0, sizeof(s_btns));
+
+    dashcam_ui_group_ensure();
+    if (s_dashcam_group != NULL)
+    {
+        lv_group_remove_all_objs(s_dashcam_group);
+    }
 
     /* Keep the list background on the original (dark) design color (req6 #2). */
     lv_obj_set_style_bg_color(list, DASHCAM_UI_LIST_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(list, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(list, DASHCAM_UI_ITEM_TEXT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    s_file_count = 0;
-    if (dashcam_storage_scan(s_files, DASHCAM_UI_MAX_ITEMS, &s_file_count) != BK_OK)
+    return list;
+}
+
+static void dashcam_ui_show_list_message(bk_lv_ui_t *ui, const char *message)
+{
+    lv_obj_t *list = dashcam_ui_reset_list(ui);
+    lv_obj_t *text;
+
+    if (list == NULL)
     {
-        LOGW("scan records failed\n");
+        return;
+    }
+
+    text = lv_list_add_text(list, message);
+    if (text != NULL)
+    {
+        lv_obj_set_style_text_color(text, DASHCAM_UI_ITEM_TEXT,
+                                    LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
+static void dashcam_ui_populate_list(bk_lv_ui_t *ui, bk_err_t scan_result)
+{
+    lv_obj_t *list = dashcam_ui_reset_list(ui);
+    uint32_t i;
+
+    if (list == NULL)
+    {
+        return;
+    }
+
+    if (scan_result != BK_OK)
+    {
+        dashcam_ui_show_list_message(ui, "Load failed");
+        LOGW("scan records failed: %d\n", scan_result);
+        return;
     }
 
     /*
@@ -379,11 +527,7 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
 
     if (s_file_count == 0)
     {
-        lv_obj_t *txt = lv_list_add_text(list, "No records");
-        if (txt != NULL)
-        {
-            lv_obj_set_style_text_color(txt, DASHCAM_UI_ITEM_TEXT, LV_PART_MAIN | LV_STATE_DEFAULT);
-        }
+        dashcam_ui_show_list_message(ui, "No records");
         s_sel_index = 0;
         LOGI("records list empty\n");
         return;
@@ -401,7 +545,13 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
             dashcam_ui_style_item(btn);
             dashcam_ui_add_item_labels(btn, label, &s_files[i]);
             lv_obj_add_event_cb(btn, dashcam_ui_item_clicked_cb, LV_EVENT_CLICKED, &s_files[i]);
+            lv_obj_add_event_cb(btn, dashcam_ui_item_key_cb, LV_EVENT_KEY, NULL);
             s_btns[i] = btn;
+
+            if (s_dashcam_group != NULL)
+            {
+                lv_group_add_obj(s_dashcam_group, btn);
+            }
         }
     }
 
@@ -413,9 +563,168 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
     LOGI("records list populated: %u\n", (unsigned)s_file_count);
 }
 
+static void dashcam_ui_focus_current_item(void)
+{
+    if (s_dashcam_group == NULL || s_file_count == 0)
+    {
+        return;
+    }
+
+    if (s_sel_index < 0 || s_sel_index >= (int32_t)s_file_count)
+    {
+        s_sel_index = 0;
+    }
+    if (s_btns[s_sel_index] != NULL && lv_obj_is_valid(s_btns[s_sel_index]))
+    {
+        lv_group_focus_obj(s_btns[s_sel_index]);
+    }
+}
+
+static void dashcam_ui_load_complete_cb(void *user_data)
+{
+    dashcam_ui_load_result_t *result = (dashcam_ui_load_result_t *)user_data;
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    bool result_is_current;
+
+    if (result == NULL)
+    {
+        return;
+    }
+
+    dashcam_ui_load_state_lock();
+    result_is_current = s_page_active && result->generation == s_load_generation;
+    dashcam_ui_load_state_unlock();
+
+    if (!result_is_current ||
+        ui->dashcam == NULL || !lv_obj_is_valid(ui->dashcam))
+    {
+        os_free(result);
+        return;
+    }
+
+    s_file_count = result->file_count;
+    memcpy(s_files, result->files, sizeof(s_files));
+    dashcam_ui_populate_list(ui, result->scan_result);
+    dashcam_app_attach(ui->dashcam_sky_area);
+    dashcam_ui_focus_current_item();
+    dashcam_ui_set_status(ui);
+    os_free(result);
+}
+
+static void dashcam_ui_load_failed_cb(void *user_data)
+{
+    uint32_t generation = (uint32_t)(uintptr_t)user_data;
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+    bool result_is_current;
+
+    dashcam_ui_load_state_lock();
+    result_is_current = s_page_active && generation == s_load_generation;
+    dashcam_ui_load_state_unlock();
+
+    if (!result_is_current ||
+        ui->dashcam == NULL || !lv_obj_is_valid(ui->dashcam))
+    {
+        return;
+    }
+
+    dashcam_ui_show_list_message(ui, "Load failed");
+    dashcam_app_attach(ui->dashcam_sky_area);
+    dashcam_ui_set_status(ui);
+}
+
+static void dashcam_ui_load_worker(void *arg)
+{
+    dashcam_ui_load_result_t *result;
+    uint32_t generation;
+    bool page_active;
+
+    (void)arg;
+    result = os_malloc(sizeof(*result));
+    if (result != NULL)
+    {
+        memset(result, 0, sizeof(*result));
+    }
+
+    dashcam_app_record_stop();
+    if (result != NULL)
+    {
+        result->scan_result = dashcam_storage_scan(result->files,
+                                                   DASHCAM_UI_MAX_ITEMS,
+                                                   &result->file_count);
+    }
+
+    dashcam_ui_load_state_lock();
+    s_load_worker_running = false;
+    page_active = s_page_active;
+    generation = s_load_generation;
+    dashcam_ui_load_state_unlock();
+
+    if (page_active && result != NULL)
+    {
+        result->generation = generation;
+        if (lv_async_call(dashcam_ui_load_complete_cb, result) != LV_RESULT_OK)
+        {
+            os_free(result);
+        }
+    }
+    else if (page_active)
+    {
+        (void)lv_async_call(dashcam_ui_load_failed_cb,
+                            (void *)(uintptr_t)generation);
+    }
+    else
+    {
+        if (result != NULL)
+        {
+            os_free(result);
+        }
+        if (!page_active)
+        {
+            (void)dashcam_app_record_start();
+        }
+    }
+
+    s_load_thread = NULL;
+    rtos_delete_thread(NULL);
+}
+
+static void dashcam_ui_start_async_load(void)
+{
+    bk_err_t ret;
+
+    dashcam_ui_load_state_lock();
+    if (!s_page_active || s_load_worker_running)
+    {
+        dashcam_ui_load_state_unlock();
+        return;
+    }
+    s_load_worker_running = true;
+
+    ret = rtos_create_thread(&s_load_thread,
+                             DASHCAM_UI_LOAD_PRIO,
+                             "dcam_load",
+                             dashcam_ui_load_worker,
+                             DASHCAM_UI_LOAD_STACK,
+                             NULL);
+    if (ret != BK_OK)
+    {
+        s_load_thread = NULL;
+        s_load_worker_running = false;
+        dashcam_ui_load_state_unlock();
+        dashcam_ui_show_list_message(&bk_lv_tool_ui, "Load failed");
+        LOGE("create load worker failed: %d\n", ret);
+        return;
+    }
+    dashcam_ui_load_state_unlock();
+}
+
 void dashcam_ui_boot_start(void)
 {
     LOGD("boot_start\n");
+    if (dashcam_ui_load_state_init() != BK_OK)
+    {
+        LOGE("init load state mutex failed\n");
+    }
     dashcam_app_boot_start();
     dashcam_assitview_init();
 }
@@ -423,6 +732,10 @@ void dashcam_ui_boot_start(void)
 void dashcam_ui_shutdown(void)
 {
     LOGD("shutdown\n");
+    dashcam_ui_load_state_lock();
+    s_page_active = false;
+    s_load_generation++;
+    dashcam_ui_load_state_unlock();
     dashcam_ui_stop_info_timer();
     s_preview_cb_bound = false;
     s_list_focused = false;
@@ -447,6 +760,10 @@ void dashcam_ui_shutdown(void)
 void dashcam_ui_suspend_keep_recording(void)
 {
     LOGD("suspend (keep recording)\n");
+    dashcam_ui_load_state_lock();
+    s_page_active = false;
+    s_load_generation++;
+    dashcam_ui_load_state_unlock();
     dashcam_ui_stop_info_timer();
     s_preview_cb_bound = false;
     s_list_focused = false;
@@ -482,15 +799,24 @@ void dashcam_ui_enter(void)
         return;
     }
 
+    if (dashcam_ui_load_state_init() != BK_OK)
+    {
+        dashcam_ui_show_list_message(ui, "Load failed");
+        LOGE("load state mutex unavailable\n");
+        return;
+    }
+
     s_list_focused = false;
     s_sel_index = 0;
     s_play_info_valid = false;
+    s_file_count = 0;
+    dashcam_ui_load_state_lock();
+    s_page_active = true;
+    s_load_generation++;
+    dashcam_ui_load_state_unlock();
 
-    /* Playback and recording share the same SDIO card. Stop and finalize the
-     * recorder before this page can start reading recorded clips. */
-    dashcam_app_record_stop();
-    dashcam_app_attach(ui->dashcam_sky_area);
-    dashcam_ui_populate_list(ui);
+    /* Render first, then stop/finalize recording and scan SD on the worker. */
+    dashcam_ui_show_list_message(ui, "Loading...");
     dashcam_ui_reset_play_info(ui);
 
     if (!s_preview_cb_bound &&
@@ -504,13 +830,20 @@ void dashcam_ui_enter(void)
     }
 
     dashcam_ui_set_status(ui);
+    dashcam_ui_start_async_load();
 }
 
 void dashcam_ui_leave(void)
 {
     bk_err_t ret;
+    bool restart_recording;
 
     LOGD("leave\n");
+    dashcam_ui_load_state_lock();
+    s_page_active = false;
+    s_load_generation++;
+    restart_recording = !s_load_worker_running;
+    dashcam_ui_load_state_unlock();
 
     /* The page (and its widgets) may be freed after this; the event callback
      * is destroyed with the panel, so just drop our bound flag. */
@@ -521,11 +854,15 @@ void dashcam_ui_leave(void)
     memset(s_btns, 0, sizeof(s_btns));
     dashcam_app_detach();
 
-    /* Playback is fully detached, so SDIO can safely return to recording. */
-    ret = dashcam_app_record_start();
-    if (ret != BK_OK)
+    /* If loading is still running it owns SDIO and restarts recording when the
+     * scan returns. Otherwise recording can resume immediately. */
+    if (restart_recording)
     {
-        LOGW("restart recording after page leave failed: %d\n", ret);
+        ret = dashcam_app_record_start();
+        if (ret != BK_OK)
+        {
+            LOGW("restart recording after page leave failed: %d\n", ret);
+        }
     }
 }
 
@@ -581,8 +918,17 @@ bool dashcam_ui_handle_key_single(void)
         return true;
     }
 
-    s_sel_index = (s_sel_index + 1) % (int32_t)s_file_count;
-    dashcam_ui_apply_selection();
+    /* Advance the selection through the group so it stays in sync with the
+     * LEFT/RIGHT keypad navigation (focus_cb writes back s_sel_index). */
+    if (s_dashcam_group != NULL)
+    {
+        lv_group_focus_next(s_dashcam_group);
+    }
+    else
+    {
+        s_sel_index = (s_sel_index + 1) % (int32_t)s_file_count;
+        dashcam_ui_apply_selection();
+    }
     LOGI("key single -> sel=%d\n", (int)s_sel_index);
     return true;
 }
@@ -597,6 +943,19 @@ bool dashcam_ui_handle_key_long(void)
     if (s_file_count == 0 || s_sel_index < 0 || s_sel_index >= (int32_t)s_file_count)
     {
         LOGI("key long ignored, no selection\n");
+        return true;
+    }
+
+    /*
+     * Prefer routing "confirm" through the group: send ENTER to the focused
+     * item so LVGL fires its CLICKED cb (dashcam_ui_item_clicked_cb) and plays
+     * it - the same path a touch tap takes. Fall back to a direct play if the
+     * group / focus is somehow unavailable so long-press never becomes a no-op.
+     */
+    if (s_dashcam_group != NULL && lv_group_get_focused(s_dashcam_group) != NULL)
+    {
+        LOGI("key long -> ENTER focused sel=%d\n", (int)s_sel_index);
+        lv_port_keypad_send_key(LV_KEY_ENTER);
         return true;
     }
 

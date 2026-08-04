@@ -5,7 +5,18 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "lvgl.h"
+
+typedef enum
+{
+    HOME_UI_NAV_DASHCAM = 1,
+    HOME_UI_NAV_OTA,
+    HOME_UI_NAV_PHONE_BOOK,
+} home_ui_nav_item_t;
+
+typedef void (*home_ui_nav_callback_t)(int32_t item);
 
 /*
  * Home page logic, split out of the generated beken_ui.c.
@@ -34,6 +45,12 @@ void home_ui_enter(void);
 void home_ui_leave(void);
 void home_ui_unload(void);
 void home_ui_register_bt_callbacks(void);
+void home_ui_nav_group_build(int32_t selected_item,
+                             home_ui_nav_callback_t focus_cb,
+                             home_ui_nav_callback_t activate_cb);
+bool home_ui_nav_group_ready(void);
+bool home_ui_nav_focus(int32_t item);
+lv_group_t *home_ui_get_group(void);
 void phone_key_answer(void);
 void phone_key_hangup(void);
 

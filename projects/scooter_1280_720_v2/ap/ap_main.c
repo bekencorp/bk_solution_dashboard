@@ -407,24 +407,24 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else
     {
-        LOGI("usage: widgets np_erase [reboot] | np_start_advertise | dashcam | pet_toggle | pet_double | pet_enter | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
+        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | pet_toggle | pet_double | pet_enter | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
     }
 }
 
 /*
- * Register "widgets" through the .cli_cmdtabl linker section instead of a
+ * Register "dashboard" through the .cli_cmdtabl linker section instead of a
  * one-shot cli_register_commands() call at boot.
  *
  * bk_cli_init() rebuilds pCli->commands from built_ins + this section every
  * time the CLI core (re)initialises, and the CLI task frees pCli on exit. A
  * single early cli_register_commands() therefore gets dropped (observed: the
- * device reports "cmd NOT found: widgets"). Anything placed in .cli_cmdtabl is
+ * device reports "cmd NOT found: dashboard"). Anything placed in .cli_cmdtabl is
  * picked up by cli_commands_init() unconditionally, so the command survives.
  */
 __attribute__((used, section(".cli_cmdtabl")))
 static const struct cli_command s_widgets_cmd_export =
 {
-    "widgets", "widgets", cli_widgets_cmd
+    "dashboard", "dashboard <command>", cli_widgets_cmd
 };
 
 /* ==================== Modular Init Functions ==================== */
@@ -444,6 +444,12 @@ static void app_board_init(void)
 
 static void app_display_init(void)
 {
+    if (display_ui_register_init_callback(beken_ui_init) != BK_OK)
+    {
+        LOGE("register UI init callback failed\n");
+        return;
+    }
+
 #if defined(CONFIG_SCOOTER_LVGL_HOR_RES) && defined(CONFIG_SCOOTER_UI_CANVAS_WIDTH)
     LOGI("profile 1280_720: LVGL %dx%d rot=%d canvas %dx%d\n",
          CONFIG_SCOOTER_LVGL_HOR_RES, CONFIG_SCOOTER_LVGL_VER_RES,

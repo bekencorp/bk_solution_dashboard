@@ -308,20 +308,25 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
         LOGI("navigate to phone_book page\n");
         beken_ui_nav_to_phone_book();
     }
-    else if ((argc >= 2) && (os_strcmp(argv[1], "pet_toggle") == 0))
+    else if ((argc >= 2) && (os_strcmp(argv[1], "key_enter") == 0))
     {
-        LOGI("simulate USER_PET_TOGGLE\n");
-        home_menu_key_short_press();
+        LOGI("simulate MIDDLE (ENTER)\n");
+        beken_ui_key_enter();
     }
-    else if ((argc >= 2) && (os_strcmp(argv[1], "pet_double") == 0))
+    else if ((argc >= 2) && (os_strcmp(argv[1], "key_prev") == 0))
     {
-        LOGI("simulate USER_PET_DOUBLE\n");
-        home_menu_key_double_press();
+        LOGI("simulate LEFT (PREV)\n");
+        beken_ui_key_left();
     }
-    else if ((argc >= 2) && (os_strcmp(argv[1], "pet_enter") == 0))
+    else if ((argc >= 2) && (os_strcmp(argv[1], "key_next") == 0))
     {
-        LOGI("simulate USER_PET_ENTER\n");
-        home_menu_key_long_press();
+        LOGI("simulate RIGHT (NEXT)\n");
+        beken_ui_key_right();
+    }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "key_home") == 0))
+    {
+        LOGI("simulate UP (HOME)\n");
+        beken_ui_key_home();
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_count") == 0))
     {
@@ -408,7 +413,7 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else
     {
-        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | pet_toggle | pet_double | pet_enter | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
+        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
     }
 }
 
@@ -441,6 +446,12 @@ static void app_board_init(void)
 
 static void app_display_init(void)
 {
+    if (display_ui_register_init_callback(beken_ui_init) != BK_OK)
+    {
+        LOGE("register UI init callback failed\n");
+        return;
+    }
+
 #if defined(CONFIG_SCOOTER_LVGL_HOR_RES) && defined(CONFIG_SCOOTER_UI_CANVAS_WIDTH)
     LOGI("profile 1280_720: LVGL %dx%d rot=%d canvas %dx%d\n",
          CONFIG_SCOOTER_LVGL_HOR_RES, CONFIG_SCOOTER_LVGL_VER_RES,
@@ -492,6 +503,11 @@ static void app_bt_init(void)
 
 static void app_key_config_network(void)
 {
+    if (!beken_ui_is_home_active())
+    {
+        return;
+    }
+
     LOGI("USER_CONFIG_NETWORK\r\n");
 #if CONFIG_BK_NETWORK_PROVISIONING
     erase_network_auto_reconnect_info();
@@ -499,18 +515,160 @@ static void app_key_config_network(void)
 #endif
 }
 
+#define APP_EVENT_QUEUE_COUNT  16
+#define APP_EVENT_STACK_SIZE   (8 * 1024)
+#define APP_EVENT_PRIORITY     4
+
+typedef enum
+{
+    APP_EVENT_KEY_UP = 0,
+    APP_EVENT_KEY_DOWN,
+    APP_EVENT_KEY_LEFT,
+    APP_EVENT_KEY_RIGHT,
+    APP_EVENT_KEY_ENTER,
+    APP_EVENT_KEY_HOME,
+    APP_EVENT_CONFIG_NETWORK,
+    APP_EVENT_OPEN_ASSIST_VIEW,
+} app_event_t;
+
+static beken_queue_t s_app_event_queue = NULL;
+static beken_thread_t s_app_event_thread = NULL;
+
+static void app_event_thread(void *param)
+{
+    app_event_t event;
+
+    (void)param;
+
+    while (1)
+    {
+        if (rtos_pop_from_queue(&s_app_event_queue,
+                                &event,
+                                BEKEN_WAIT_FOREVER) != BK_OK)
+        {
+            continue;
+        }
+
+        switch (event)
+        {
+            case APP_EVENT_KEY_UP:
+                beken_ui_key_up();
+                break;
+            case APP_EVENT_KEY_DOWN:
+                beken_ui_key_down();
+                break;
+            case APP_EVENT_KEY_LEFT:
+                beken_ui_key_left();
+                break;
+            case APP_EVENT_KEY_RIGHT:
+                beken_ui_key_right();
+                break;
+            case APP_EVENT_KEY_ENTER:
+                beken_ui_key_enter();
+                break;
+            case APP_EVENT_KEY_HOME:
+                beken_ui_key_home();
+                break;
+            case APP_EVENT_CONFIG_NETWORK:
+                app_key_config_network();
+                break;
+            case APP_EVENT_OPEN_ASSIST_VIEW:
+                beken_ui_key_open_assist_view();
+                break;
+            default:
+                LOGW("unknown app event: %d\n", (int)event);
+                break;
+        }
+    }
+}
+
+static void app_event_post(app_event_t event)
+{
+    if (s_app_event_queue == NULL)
+    {
+        LOGE("app event queue is not initialized\n");
+        return;
+    }
+
+    if (rtos_push_to_queue(&s_app_event_queue, &event, BEKEN_NO_WAIT) != BK_OK)
+    {
+        LOGW("app event queue full, drop event: %d\n", (int)event);
+    }
+}
+
+#if CONFIG_BUTTON
+#define APP_EVENT_CALLBACK(name, event_value) \
+    static void name(void) \
+    { \
+        app_event_post(event_value); \
+    }
+
+APP_EVENT_CALLBACK(app_event_key_up, APP_EVENT_KEY_UP)
+APP_EVENT_CALLBACK(app_event_key_down, APP_EVENT_KEY_DOWN)
+APP_EVENT_CALLBACK(app_event_key_left, APP_EVENT_KEY_LEFT)
+APP_EVENT_CALLBACK(app_event_key_right, APP_EVENT_KEY_RIGHT)
+APP_EVENT_CALLBACK(app_event_key_enter, APP_EVENT_KEY_ENTER)
+APP_EVENT_CALLBACK(app_event_key_home, APP_EVENT_KEY_HOME)
+APP_EVENT_CALLBACK(app_event_config_network, APP_EVENT_CONFIG_NETWORK)
+APP_EVENT_CALLBACK(app_event_open_assist_view, APP_EVENT_OPEN_ASSIST_VIEW)
+
+#undef APP_EVENT_CALLBACK
+#endif
+
+static bk_err_t app_event_init(void)
+{
+    bk_err_t ret;
+
+    ret = rtos_init_queue(&s_app_event_queue,
+                          "app_event",
+                          sizeof(app_event_t),
+                          APP_EVENT_QUEUE_COUNT);
+    if (ret != BK_OK)
+    {
+        LOGE("init app event queue failed: %d\n", ret);
+        return ret;
+    }
+
+    ret = rtos_create_thread(&s_app_event_thread,
+                             APP_EVENT_PRIORITY,
+                             "app_event",
+                             app_event_thread,
+                             APP_EVENT_STACK_SIZE,
+                             NULL);
+    if (ret != BK_OK)
+    {
+        LOGE("create app event thread failed: %d\n", ret);
+        rtos_deinit_queue(&s_app_event_queue);
+        return ret;
+    }
+
+    return BK_OK;
+}
+
 static void app_key_init(void)
 {
 #if CONFIG_BUTTON
+    /*
+     * Key callbacks only post to the common app-event worker; no UI/GPU action
+     * runs in key_thread.
+     *   UP     short : UP
+     *   DOWN   short : DOWN | long : network provisioning (HOME only)
+     *   LEFT   short : PREV, or LEFT in phone book | long : assist view
+     *   RIGHT  short : NEXT, or RIGHT in phone book | long : assist view
+     *   MIDDLE short : ENTER | double : HOME
+     * Telephony no longer uses a dedicated key: answer/hangup are group buttons
+     * on the incoming/active-call popup, driven by PREV/NEXT + ENTER.
+     */
     static const key_action_cfg_t s_key_actions[] =
     {
-        { .pin_id = KEY_PIN_UP,     .short_callback = phone_key_answer,             .double_callback = phone_key_hangup, .long_callback = NULL},
-        { .pin_id = KEY_PIN_DOWN,   .short_callback = NULL,                         .double_callback = NULL, .long_callback = app_key_config_network },
-        { .pin_id = KEY_PIN_LEFT,   .short_callback = NULL,                         .double_callback = NULL, .long_callback = home_menu_key_open_assitview },
-        { .pin_id = KEY_PIN_RIGHT,  .short_callback = NULL,                         .double_callback = NULL, .long_callback = home_menu_key_open_assitview },
-        { .pin_id = KEY_PIN_MIDDLE, .short_callback = home_menu_key_short_press,    .double_callback = home_menu_key_double_press, .long_callback = home_menu_key_long_press },
+        { .pin_id = KEY_PIN_UP,     .short_callback = app_event_key_up,    .double_callback = NULL,              .long_callback = NULL },
+        { .pin_id = KEY_PIN_DOWN,   .short_callback = app_event_key_down,  .double_callback = NULL,              .long_callback = app_event_config_network },
+        { .pin_id = KEY_PIN_LEFT,   .short_callback = app_event_key_left,  .double_callback = NULL,              .long_callback = app_event_open_assist_view },
+        { .pin_id = KEY_PIN_RIGHT,  .short_callback = app_event_key_right, .double_callback = NULL,              .long_callback = app_event_open_assist_view },
+        { .pin_id = KEY_PIN_MIDDLE, .short_callback = app_event_key_enter, .double_callback = app_event_key_home, .long_callback = NULL },
     };
-    bk_key_service_init(s_key_actions, sizeof(s_key_actions) / sizeof(s_key_actions[0]));
+    bk_key_service_init(s_key_actions,
+                        sizeof(s_key_actions) / sizeof(s_key_actions[0]));
 #endif
 }
 
@@ -534,7 +692,10 @@ int main(void)
     app_display_init();
     app_bt_init();
     app_cli_init();
-    app_key_init();
+    if (app_event_init() == BK_OK)
+    {
+        app_key_init();
+    }
 
     return 0;
 }

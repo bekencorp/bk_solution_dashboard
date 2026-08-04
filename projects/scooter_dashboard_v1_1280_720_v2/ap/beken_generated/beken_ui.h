@@ -356,10 +356,20 @@ void init_page_ota_update(bk_lv_ui_t *bk_ui);
 void destroy_page_ota_update(bk_lv_ui_t *bk_ui);
 void beken_ui_nav_to_dashcam(void);
 void beken_ui_nav_to_ota_update(void);
-void home_menu_key_short_press(void);
-void home_menu_key_open_assitview(void);
-void home_menu_key_double_press(void);
-void home_menu_key_long_press(void);
+void beken_ui_key_enter(void);
+void beken_ui_key_open_assist_view(void);
+void beken_ui_key_home(void);
+void beken_ui_key_up(void);
+void beken_ui_key_down(void);
+void beken_ui_key_left(void);
+void beken_ui_key_right(void);
+
+/*
+ * Modal override for the shared KEYPAD indev. The call-state machine in
+ * home_ui.c pushes its answer/hangup group here while a call popup/card owns the
+ * keys, and clears it (NULL) when the call ends to fall back to the page group.
+ */
+void beken_ui_keypad_set_modal_group(lv_group_t *group);
 void beken_ui_nav_to_phone_book(void);
 void init_page_phone_book(bk_lv_ui_t *bk_ui);
 void destroy_page_phone_book(bk_lv_ui_t *bk_ui);
@@ -452,6 +462,7 @@ int beken_get_screen_width(void);
  * @return Screen height in pixels
  */
 int beken_get_screen_height(void);
+bool beken_ui_is_home_active(void);
 
 extern bk_lv_ui_t bk_lv_tool_ui;
 

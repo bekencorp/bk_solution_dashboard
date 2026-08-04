@@ -26,21 +26,21 @@ Before powering on, verify that the following jumpers are connected:
 
 ## Feature Overview
 
-This project targets Dashboard V1.0 hardware and provides home-page navigation, Dashcam loop recording and playback, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
+This project targets Dashboard V1.0 hardware and provides home-page navigation, Dashcam loop recording and playback, a phone book, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
 
 - Recording files are stored in `/sd0/dashcam`.
-- Entering the Dashcam page stops and finalizes the active recording, preventing SD-card contention between recording and playback.
+- After entering the Dashcam page, the active recording is stopped and finalized asynchronously before the SD-card recording list is loaded, preventing SD-card contention between recording and playback.
 - Recording automatically resumes after leaving the Dashcam page.
-- All mapped key events use 500 ms debounce/throttling; events triggered less than 500 ms apart are ignored.
 
 ## Pages
 
 | Page | Purpose | How to enter |
 | --- | --- | --- |
-| Home | Default page for selecting Dashcam or OTA | Shown after boot; long-press the middle key in a feature page to return |
-| Dashcam | Browse completed SD-card recordings and play a selected clip; the list shows recording time and file size | Select Dashcam on the Home page, then long-press the middle key |
-| OTA | Displays OTA upgrade status and progress | Select OTA on the Home page, then long-press the middle key |
-| Assist View | Full-screen live camera view; recording continues while active | Long-press the left or right key; short-press the middle key to exit to Home |
+| Home | Default page for selecting Dashcam, OTA, or Phone Book | Shown after boot; double-press the middle key on a feature page to return |
+| Dashcam | Browse completed SD-card recordings and play a selected clip; the list shows recording time and file size | Select Dashcam with the left/right key on Home, then short-press the middle key |
+| OTA | Displays OTA upgrade status and progress | Select OTA with the left/right key on Home, then short-press the middle key |
+| Phone Book | Browse contacts and recent calls, and place calls through Bluetooth HFP | Select Phone Book with the left/right key on Home, then short-press the middle key |
+| Assist View | Full-screen live camera view; recording continues while active | Long-press the left or right key on Home; double-press the middle key to exit to Home |
 
 ## Keys
 
@@ -48,37 +48,37 @@ The Dashboard V1.0 key-to-GPIO mapping is:
 
 | Key | GPIO | Action | Function |
 | --- | --- | --- | --- |
-| Up | GPIO32 | Short press | Answer an incoming Bluetooth HFP call |
-| Up | GPIO32 | Double press | Hang up a Bluetooth HFP call |
-| Down | GPIO27 | Long press | Clear saved network provisioning information and reboot |
-| Left | GPIO31 | Long press | Open Assist View |
-| Right | GPIO29 | Long press | Open Assist View |
-| Middle | GPIO30 | Short press | Switch the Dashcam/OTA selection on Home; select the next recording when the Dashcam list is focused; exit Assist View to Home |
-| Middle | GPIO30 | Double press | Enter or exit Dashcam recording-list focus mode |
-| Middle | GPIO30 | Long press | Open the currently selected page on Home; play the selected recording when the Dashcam list is focused |
+| Up | GPIO32 | Short press | Select the previous item in the active Phone Book list |
+| Down | GPIO27 | Short press | Select the next item in the active Phone Book list |
+| Down | GPIO27 | Long press | Clear saved network provisioning information and reboot; Home only |
+| Left | GPIO31 | Short press | Select the previous item; switch to Contacts in Phone Book |
+| Left | GPIO31 | Long press | Open Assist View; Home only |
+| Right | GPIO29 | Short press | Select the next item; switch to Recent Calls in Phone Book |
+| Right | GPIO29 | Long press | Open Assist View; Home only |
+| Middle | GPIO30 | Short press | Confirm the focused item: open a page, play a recording, dial a number, or perform a call action |
+| Middle | GPIO30 | Double press | Return to Home from a feature page; exit Assist View to Home |
 
-### Middle-Key State Logic
+### Page Key Behavior
 
-The middle-key behavior depends on the active page and Dashcam list state:
-
-| Current state | Short press | Double press | Long press |
+| Current page or state | Direction keys | Middle short press | Middle double press |
 | --- | --- | --- | --- |
-| Home | Switch selection between Dashcam and OTA | No action | Enter the selected Dashcam or OTA page |
-| Dashcam, recording list not focused | Return to Home | Enter recording-list focus mode | Return to Home |
-| Dashcam, recording list focused | Select the next recording; wraps to the first item | Exit recording-list focus mode | Play the selected recording |
-| OTA | Return to Home | No action | Return to Home |
-| Assist View | Exit Assist View and return to Home | No action | No action |
+| Home | Left/right selects Dashcam, OTA, or Phone Book | Open the selected page | Stay on or return to Home |
+| Dashcam | Left/right selects the previous or next recording, with wraparound | Play the selected recording | Return to Home |
+| OTA | No in-page direction-key action | No action | Return to Home |
+| Phone Book | Left/right switches Contacts/Recent Calls; up/down selects a list item | Dial the selected number | Return to Home |
+| Incoming HFP call | Left/right selects Answer or Hang Up | Perform the selected action | Return to Home |
+| Outgoing or active HFP call | The current call action receives focus automatically | Hang up | Return to Home |
+| Assist View | No action | No action | Exit Assist View and return to Home |
 
-Entering the Dashcam page stops and finalizes the active recording, then loads the completed recordings from the SD card.
+After entering Dashcam, the page first shows a loading state while a worker stops and finalizes the active recording and scans completed recordings on the SD card. Recording resumes automatically after leaving the page.
 
 ### Dashcam Playback
 
-1. Short-press the middle key to select Dashcam on the Home page.
-2. Long-press the middle key to enter the Dashcam page. Recording stops after entering the page.
-3. Double-press the middle key to focus the recording list.
-4. Short-press the middle key to select the next recording.
-5. Long-press the middle key to play the selected recording.
-6. Double-press to leave list-focus mode. Long-press to return to Home. Recording resumes after leaving the Dashcam page.
+1. Short-press the left or right key on Home to select Dashcam.
+2. Short-press the middle key to enter Dashcam and wait for the recording list to load.
+3. Short-press the left or right key to select the previous or next recording.
+4. Short-press the middle key to play the selected recording.
+5. Double-press the middle key to return to Home. Recording resumes after leaving Dashcam.
 
 The first line of each recording-list item shows the recording time; the second line shows the file size in MB.
 
@@ -89,6 +89,11 @@ Use `ap_cmd dashboard <command>` through the serial CLI:
 | Command | Description |
 | --- | --- |
 | `ap_cmd dashboard dashcam` | Enter the Dashcam page directly |
+| `ap_cmd dashboard phone_book` | Enter the Phone Book page directly |
+| `ap_cmd dashboard key_prev` | Simulate a short press of the left key to select the previous item |
+| `ap_cmd dashboard key_next` | Simulate a short press of the right key to select the next item |
+| `ap_cmd dashboard key_enter` | Simulate a short press of the middle key to confirm the focused item |
+| `ap_cmd dashboard key_home` | Simulate a double press of the middle key to return to Home |
 | `ap_cmd dashboard dashcam_count` | Show the recording count and free SD-card space |
 | `ap_cmd dashboard dashcam_trim [target]` | Delete the oldest recordings until no more than `target` recordings remain |
 | `ap_cmd dashboard dashcam_rec_start` | Start recording manually |

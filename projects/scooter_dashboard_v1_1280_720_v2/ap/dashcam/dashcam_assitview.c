@@ -240,18 +240,17 @@ void dashcam_assitview_stop(void)
      * the LVGL task, otherwise LVGL's first compressed flush faults on the freed
      * context. */
     dashcam_assitview_lvgl_gpu_acquire();
-    /* DPU stays ARGB8888 + decompress the whole time now (LVGL renders through
-     * the same GPU-compress path), so there is no pixel-format to restore when
-     * leaving assist -- just bring LVGL back up. */
-    lv_vendor_start();
-    rtos_delay_milliseconds(50);
+    /*
+     * Restore the HOME screen while the LVGL task is still stopped. Starting
+     * LVGL first leaves a window where stale focus/input can activate Dashcam
+     * before the delayed HOME restore runs.
+     */
+    lv_vendor_keypad_reset();
     lv_vendor_disp_lock();
     extern void beken_ui_kick_after_display_resume(void);
     beken_ui_kick_after_display_resume();
     lv_vendor_disp_unlock();
 
-    /* Recording was never stopped while assisting; LVGL is back now, so re-arm
-     * the paused segment-rotation tick. */
-    dashcam_ui_resume_keep_recording();
     s_assitview_active = false;
+    lv_vendor_start();
 }
