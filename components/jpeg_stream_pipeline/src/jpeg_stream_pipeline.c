@@ -557,9 +557,6 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 			 LOGW("[cast] drop %u stale frame(s) for low-latency\n", (unsigned)dropped);
 	 }
 
-	 flush_dcache((void *)jpeg_stream, jpeg_len);
-	 __DSB();
-
 	 bk_err_t ret = rtos_push_to_queue(&ctx->frame_queue, &entry, BEKEN_NO_WAIT);
 	 if (ret != BK_OK)
 	 {
