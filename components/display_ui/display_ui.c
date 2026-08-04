@@ -124,8 +124,8 @@ static bk_err_t display_hw_init_internal(void)
 
     display_board_config_t display_board = {0};
     display_board.mipi.enable = true;
-    display_board.mipi.pin_reset = GPIO_60;
-    display_board.mipi.pin_backlight = GPIO_7;
+    display_board.mipi.pin_reset = CONFIG_PROJECT_LCD_RESET_PIN;
+    display_board.mipi.pin_backlight = ((uint8_t)-1);
     display_board.mipi.panel = s_panel_desc;
     display_board.dpu_video.enable = true;
     /* LVGL outputs GPU-compressed ARGB8888 (VG_LITE_DEC_HV_SAMPLE tiles), so the
