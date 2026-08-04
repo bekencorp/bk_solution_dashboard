@@ -319,6 +319,7 @@ LV_FONT_DECLARE(lv_font_pingfang_SC_22);
 LV_FONT_DECLARE(lv_font_pingfang_SC_20);
 LV_FONT_DECLARE(lv_font_montserrat_regular_16);
 LV_FONT_DECLARE(lv_font_montserrat_regular_24);
+LV_FONT_DECLARE(lv_font_montserrat_regular_30);
 LV_FONT_DECLARE(lv_font_montserrat_regular_20);
 LV_FONT_DECLARE(lv_font_pingfang_SC_30);
 LV_FONT_DECLARE(lv_font_pingfang_SC_12);

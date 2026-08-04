@@ -705,22 +705,14 @@ static void home_oncall_card_apply(void)
     }
 
     elapsed_s = lv_tick_elaps(s_home_music.call_start_tick) / 1000U;
-    if (elapsed_s >= 3600U)
-    {
-        snprintf(timer_text, sizeof(timer_text), "%lu:%02lu:%02lu",
-                 (unsigned long)(elapsed_s / 3600U),
-                 (unsigned long)((elapsed_s % 3600U) / 60U),
-                 (unsigned long)(elapsed_s % 60U));
-    }
-    else
-    {
-        snprintf(timer_text, sizeof(timer_text), "%02lu:%02lu",
-                 (unsigned long)(elapsed_s / 60U),
-                 (unsigned long)(elapsed_s % 60U));
-    }
+    /* Always show HH:MM:SS so the hour field is present from the start. */
+    snprintf(timer_text, sizeof(timer_text), "%02lu:%02lu:%02lu",
+             (unsigned long)(elapsed_s / 3600U),
+             (unsigned long)((elapsed_s % 3600U) / 60U),
+             (unsigned long)(elapsed_s % 60U));
 
-    home_music_set_label(ui->home_oc_title,
-                         s_home_music.phone_number[0] ? s_home_music.phone_number : HOME_MUSIC_ACTIVE_TAG);
+    /* Answered call: show a generic status, not the remote number. */
+    home_music_set_label(ui->home_oc_title, HOME_MUSIC_ACTIVE_TAG);
     home_music_set_label(ui->home_oc_timer, timer_text);
     lv_obj_remove_flag(ui->home_oncall_card, LV_OBJ_FLAG_HIDDEN);
 }
