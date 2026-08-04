@@ -11,6 +11,11 @@ menu "Bluetooth_Dual"
         depends on BT
         default n
 
+    config PBAP_CONTACTS
+        bool "pbap contact name resolution for incoming calls"
+        depends on BT
+        default n
+
     config BLUETOOTH_BSC_UART_ID
         int "bluetooth secondary controller uart id, see UART_ID_0 == 0"
         range 0 2

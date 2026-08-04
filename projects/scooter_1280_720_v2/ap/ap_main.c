@@ -201,6 +201,11 @@ static void ap_bt_app_init(void)
     hfp_hf_demo_init(0);
 #endif
 
+#if CONFIG_PBAP_CONTACTS
+    extern void pbap_contacts_init(void);
+    pbap_contacts_init();
+#endif
+
     extern int cli_headset_demo_init(void);
     cli_headset_demo_init();
 #endif

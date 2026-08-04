@@ -12,6 +12,9 @@
 
 #include "hfp_hf_audio.h"
 #include "bk_hfp_hf_service.h"
+#if CONFIG_PBAP_CONTACTS
+#include "pbap_contacts.h"
+#endif
 
 #define TAG "hfp_client"
 
@@ -121,12 +124,27 @@ static void hfp_ui_sync_phone_state(void)
 {
     hfp_hf_call_state_t state = hfp_derive_call_state();
     const char *number = (state == HFP_HF_CALL_NONE || s_call_number[0] == '\0') ? NULL : s_call_number;
+    const char *display = number;
 
-    LOGI("hfp ui state=%d number=%s\n", state, number ? number : "");
+#if CONFIG_PBAP_CONTACTS
+    /* Resolve the remote number to a cached PBAP contact name when possible;
+     * fall back to the raw number if there is no match. */
+    if (number != NULL)
+    {
+        const char *name = pbap_contacts_lookup(number);
+        if (name != NULL)
+        {
+            display = name;
+        }
+    }
+#endif
+
+    LOGI("hfp ui state=%d number=%s display=%s\n", state,
+         number ? number : "", display ? display : "");
 
     if (s_ui_callback.phone_update != NULL)
     {
-        s_ui_callback.phone_update(state, number, s_ui_callback.user_data);
+        s_ui_callback.phone_update(state, display, s_ui_callback.user_data);
     }
 
     if (state == HFP_HF_CALL_NONE)

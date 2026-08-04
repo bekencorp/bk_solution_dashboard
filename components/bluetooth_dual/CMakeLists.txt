@@ -64,6 +64,13 @@ if (CONFIG_BT)
             hfp_hf/hfp_hf_demo.c
         )
     endif()
+
+    if (CONFIG_PBAP_CONTACTS)
+        list(APPEND incs pbap_pce)
+        list(APPEND srcs
+            pbap_pce/pbap_contacts.c
+        )
+    endif()
 endif()
 
 if (CONFIG_BLE OR CONFIG_BT)

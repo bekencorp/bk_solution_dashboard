@@ -203,8 +203,8 @@ static int32_t s_speed_dir = 1;
 static lv_timer_t *s_speed_timer = NULL;
 static lv_timer_t *s_music_timer = NULL;
 
-#define HOME_MUSIC_DEFAULT_TITLE       "Electric Dreams"
-#define HOME_MUSIC_DEFAULT_ARTIST      "Neon Rider"
+#define HOME_MUSIC_DEFAULT_TITLE       "No Title"
+#define HOME_MUSIC_DEFAULT_ARTIST      "No Artist"
 #define HOME_MUSIC_INCOMING_TAG        "INCOMING CALL"
 #define HOME_MUSIC_OUTGOING_TAG        "DIALING"
 #define HOME_MUSIC_ACTIVE_TAG          "IN CALL"
@@ -258,8 +258,8 @@ typedef struct
 } home_music_phone_async_t;
 
 static home_music_state_t s_home_music = {
-    .title = HOME_MUSIC_DEFAULT_TITLE,
-    .artist = HOME_MUSIC_DEFAULT_ARTIST,
+    .title = "",
+    .artist = "",
 };
 static lv_obj_t *s_home_beat_canvas = NULL;
 static void *s_home_beat_canvas_buf = NULL;
@@ -876,7 +876,6 @@ static void home_music_update_async_cb(void *user_data)
     }
 
     s_home_music.progress_accum_ms = 0;
-    s_home_music.call_state = HFP_HF_CALL_NONE;
     home_call_blink_sync();
 
     home_music_sync_timer();
@@ -1361,6 +1360,13 @@ void home_ui_enter(void)
         if (home_music_obj_valid(ui->home_song_artist))
         {
             lv_obj_set_style_text_font(ui->home_song_artist, s_cn_font,
+                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        /* Incoming-call caller name may be Chinese (resolved via PBAP), so it
+         * needs the CJK TTF too; the generated Montserrat has no CJK glyphs. */
+        if (home_music_obj_valid(ui->home_cp_num))
+        {
+            lv_obj_set_style_text_font(ui->home_cp_num, s_cn_font,
                                        LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }
