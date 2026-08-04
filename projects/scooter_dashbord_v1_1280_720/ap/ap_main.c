@@ -369,7 +369,7 @@ static void app_cli_init(void)
     cli_widgets_init();
 
 #if CONFIG_BUTTON
-    // bk_key_service_init();
+    bk_key_service_init();
 #endif
 }
 
