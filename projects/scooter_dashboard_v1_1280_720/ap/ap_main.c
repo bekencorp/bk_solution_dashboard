@@ -39,6 +39,7 @@
 #include "boot_avi_play.h"
 #include "sdkconfig.h"
 #include "headset_user_config.h"
+#include "sdcard_mtp.h"
 
 #define TAG "scooter_1280_720"
 
@@ -367,6 +368,10 @@ static void app_bt_init(void)
 static void app_cli_init(void)
 {
     cli_widgets_init();
+
+    /* Register the `mtp` command (mtp start|stop|status). The USB gadget is only
+     * brought up on `mtp start`; the SD card is exposed to a PC over MTP. */
+    sdcard_mtp_init();
 
 #if CONFIG_BUTTON
     bk_key_service_init();

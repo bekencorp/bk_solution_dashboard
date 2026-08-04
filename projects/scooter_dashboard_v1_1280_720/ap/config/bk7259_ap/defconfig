@@ -140,3 +140,31 @@ CONFIG_LITTLEFS=y
 CONFIG_VFS_TEST=y
 CONFIG_SDCARD_HOST_ID=1
 CONFIG_SDCARD_BUSWIDTH_4LINE=y
+
+# USB device MTP: expose the SD card to a PC over MTP. Protocol engine lives in
+# the SDK (bk_usb/bk_mtp/bk_usbd_mtp.c); the runtime start/stop control layer is
+# solution/components/sdcard_mtp. Toggle at runtime via the `mtp start|stop` CLI.
+#
+# NOTE 1: USB_HOST is required even though MTP is a device-only gadget.
+# usb_driver.c::bk_analog_layer_usb_sys_related_ops() (called from MTP bring-up to
+# power the USB PHY/clock/OTG) and usb_dc_low_level_init() reference
+# sys_ana_usb_phy_op / usb_clk_config / spitrig_toggle / usb_hc_riscv_ipi_enable,
+# which are only defined in the host port file usb_hc_beken_musb.c (compiled under
+# CONFIG_USB_HOST). The host stack stays dormant; only the device (MTP) path is
+# ever brought up at runtime.
+#
+# NOTE 2: CONFIG_USB_RISCV_BRIDGE is deliberately OFF. Its device path is
+# immature: usb_dc_riscv_device_prepare() now returns 0 (not the -1 stub the SDK
+# comment claims), so the bridge takes over the USBD IRQ and the CP relays USB
+# events to the AP via IPI -> usb_dc_riscv_poll_events() -> usbd_event_*_handler,
+# which MemFaults on the first SUSPEND (bad pointer). With the bridge off,
+# usb_dc_low_level_init() falls back to registering the mature M55-resident
+# USBD_IRQHandler on INT_SRC_USB_HS -- the same path BK7259 uses for MSC U-disk.
+CONFIG_USB=y
+CONFIG_BK_USB_CHERRYUSB_V1_6=y
+CONFIG_USB_DEVICE=y
+CONFIG_USB_HOST=y
+# CONFIG_USB_RISCV_BRIDGE is not set
+CONFIG_USBD_MTP=y
+CONFIG_USBD_MTP_PRODUCT_NAME="BekenMTP"
+CONFIG_USBD_MTP_DEVICE_TYPE="1"
