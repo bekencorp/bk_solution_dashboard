@@ -1988,7 +1988,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
 
     bk_ui->home_ic_right = lv_image_create(bk_ui->home);
     lv_image_set_src(bk_ui->home_ic_right, &light_grey_80x77_RGB565A8_NONE);
-    lv_image_set_pivot(bk_ui->home_ic_right, 32, 32);
+    lv_image_set_pivot(bk_ui->home_ic_right, 40, 38);
     lv_image_set_rotation(bk_ui->home_ic_right, 1800);
     lv_obj_set_x(bk_ui->home_ic_right, 766);
     lv_obj_set_y(bk_ui->home_ic_right, 102);

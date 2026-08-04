@@ -301,9 +301,9 @@ static void speed_gauge_timer_cb(lv_timer_t *timer)
     speed_gauge_apply();
 }
 
-/* ---------- Hazard (double-flash): blink both turn indicators together ----------
+/* ---------- Hazard blink: only the left turn indicator flashes ----------
  * scooter_1280_720 blinks a turn light by toggling image opacity on a 500ms timer.
- * Hazard = left + right flashing in sync, so toggle both home_ic_left/right opa.
+ * Only home_ic_left flashes; home_ic_right stays steady at its designer opacity.
  */
 #define HAZARD_BLINK_PERIOD_MS  500
 static bool s_hazard_on = true;
@@ -322,10 +322,6 @@ static void hazard_blink_apply(void)
     if (ui->home_ic_left && lv_obj_is_valid(ui->home_ic_left))
     {
         lv_obj_set_style_image_opa(ui->home_ic_left, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-    if (ui->home_ic_right && lv_obj_is_valid(ui->home_ic_right))
-    {
-        lv_obj_set_style_image_opa(ui->home_ic_right, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
 }
 
