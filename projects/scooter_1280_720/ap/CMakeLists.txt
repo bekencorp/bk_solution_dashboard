@@ -4,7 +4,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/beken_generated/beken_generated.cmake)
 # (app_mipi_lcd_turn_on), so this project must compile app_display.c and expose
 # its header, mirroring scooter_1280_720_v2.
 set(MULTIMEDIA_DEVICE_SERVICE_DIR
-    $ENV{ARMINO_TOOLS_PATH}/../projects/common_components/multimedia_device_service
+    ${CMAKE_CURRENT_LIST_DIR}/../../../components/multimedia_device_service
 )
 
 set(incs .

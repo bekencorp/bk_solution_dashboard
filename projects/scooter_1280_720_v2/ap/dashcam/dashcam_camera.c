@@ -57,6 +57,8 @@ static void dashcam_camera_fill_board(camera_board_config_t *cfg)
     cfg->mipi.sensor_max_width = DASHCAM_CAMERA_SENSOR_WIDTH;
     cfg->mipi.sensor_max_height = DASHCAM_CAMERA_SENSOR_HEIGHT;
     cfg->mipi.sensor_fps = DASHCAM_CAMERA_SENSOR_FPS;
+    cfg->mipi.hmirror = 1;
+    cfg->mipi.vflip = 0;
 
     cfg->isp.mp_enable = true;
     cfg->isp.mp_format = BK_PIXEL_FORMAT_NV12;
