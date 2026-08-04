@@ -22,7 +22,7 @@ extern "C" {
 
 /* 1 = release behaviour (circular overwrite), 0 = dev/test behaviour (file cap). */
 #ifndef DASHCAM_RELEASE_BUILD
-#define DASHCAM_RELEASE_BUILD          0
+#define DASHCAM_RELEASE_BUILD          1
 #endif
 
 /* Live preview resolution (matches dashcam_sky_area canvas).

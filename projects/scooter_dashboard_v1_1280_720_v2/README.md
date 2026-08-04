@@ -20,7 +20,7 @@ Before powering on, verify that the following jumpers are connected:
 
 - Use the **USB-UART** interface for BK7259 flashing and serial logs.
 - Use the **USB-UART** interface for BK3515NS flashing. Switch the related jumpers as listed above, and disconnect the flashing connection after flashing is complete.
-- Use the board's **USB** interface for MTP. After connecting to a PC, run `mtp start` through the serial CLI to expose the SD card as a media device.
+- Use the board's **USB** interface for MTP. After connecting to a PC, run `ap_cmd mtp start` through the serial CLI to expose the SD card as a media device.
 
 ## Feature Overview
 
@@ -82,21 +82,21 @@ The first line of each recording-list item shows the recording time; the second 
 
 ## CLI Commands
 
-Use `dashboard <command>` through the serial CLI:
+Use `ap_cmd dashboard <command>` through the serial CLI:
 
 | Command | Description |
 | --- | --- |
-| `dashboard dashcam` | Enter the Dashcam page directly |
-| `dashboard dashcam_count` | Show the recording count and free SD-card space |
-| `dashboard dashcam_trim [target]` | Delete the oldest recordings until no more than `target` recordings remain |
-| `dashboard dashcam_rec_start` | Start recording manually |
-| `dashboard dashcam_rec_stop` | Stop and finalize recording manually |
-| `dashboard dashcam_turn_left` | Open Assist View |
-| `dashboard dashcam_turn_off` | Close Assist View |
-| `dashboard np_erase [reboot]` | Clear network provisioning information; add `reboot` to reboot immediately |
-| `dashboard np_start_advertise` | Restart BLE provisioning advertising |
+| `ap_cmd dashboard dashcam` | Enter the Dashcam page directly |
+| `ap_cmd dashboard dashcam_count` | Show the recording count and free SD-card space |
+| `ap_cmd dashboard dashcam_trim [target]` | Delete the oldest recordings until no more than `target` recordings remain |
+| `ap_cmd dashboard dashcam_rec_start` | Start recording manually |
+| `ap_cmd dashboard dashcam_rec_stop` | Stop and finalize recording manually |
+| `ap_cmd dashboard dashcam_turn_left` | Open Assist View |
+| `ap_cmd dashboard dashcam_turn_off` | Close Assist View |
+| `ap_cmd dashboard np_erase [reboot]` | Clear network provisioning information; add `reboot` to reboot immediately |
+| `ap_cmd dashboard np_start_advertise` | Restart BLE provisioning advertising |
 
-> Before running `dashboard dashcam_trim [target]`, stop recording with `dashboard dashcam_rec_stop` to avoid concurrent SD-card access while files are deleted.
+> Before running `ap_cmd dashboard dashcam_trim [target]`, stop recording with `ap_cmd dashboard dashcam_rec_stop` to avoid concurrent SD-card access while files are deleted.
 
 ## FTP Server
 
@@ -119,17 +119,17 @@ Use directory browsing or file download to retrieve recordings. FTP uses clear-t
 The `mtp` CLI is registered during startup, but the USB MTP device is not started automatically.
 
 1. Insert a formatted SD card and connect the board to a PC through USB.
-2. Run `mtp start` in the serial CLI.
+2. Run `ap_cmd mtp start` in the serial CLI.
 3. The PC enumerates the board as an MTP media device. Browse or copy files under `/sd0`, including recordings in `/sd0/dashcam`.
-4. Run `mtp stop` when finished.
+4. Run `ap_cmd mtp stop` when finished.
 
 Supported MTP commands:
 
 | Command | Description |
 | --- | --- |
-| `mtp start` | Mount the SD card and start the MTP USB device |
-| `mtp stop` | Stop the MTP USB device |
-| `mtp status` | Show the MTP state |
-| `mtp ls [path]` | List SD-card files through the serial CLI; the default path is `/sd0` |
+| `ap_cmd mtp start` | Mount the SD card and start the MTP USB device |
+| `ap_cmd mtp stop` | Stop the MTP USB device |
+| `ap_cmd mtp status` | Show the MTP state |
+| `ap_cmd mtp ls [path]` | List SD-card files through the serial CLI; the default path is `/sd0` |
 
 > Stop MTP only after copying files on the PC is complete, otherwise the USB transfer is interrupted.

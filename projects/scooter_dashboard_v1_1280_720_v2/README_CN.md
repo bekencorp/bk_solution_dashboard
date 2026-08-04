@@ -20,7 +20,7 @@
 
 - BK7259 下载和串口日志均使用 **USB-UART** 接口。
 - BK3515NS 下载使用 **USB-UART** 接口，需按上表切换对应跳线，仅下载连接，下载完成请拔掉。
-- MTP 使用开发板的 **USB** 接口；连接 PC 后，在串口 CLI 执行 `mtp start` 以启用 SD 卡媒体设备。
+- MTP 使用开发板的 **USB** 接口；连接 PC 后，在串口 CLI 执行 `ap_cmd mtp start` 以启用 SD 卡媒体设备。
 
 ## 功能概览
 
@@ -82,21 +82,21 @@ Dashboard V1.0 按键 GPIO 定义如下：
 
 ## CLI 命令
 
-串口 CLI 中可使用 `dashboard <command>`：
+串口 CLI 中可使用 `ap_cmd dashboard <command>`：
 
 | 命令 | 说明 |
 | --- | --- |
-| `dashboard dashcam` | 直接进入 Dashcam 页面 |
-| `dashboard dashcam_count` | 查询录像数量与 SD 卡剩余空间 |
-| `dashboard dashcam_trim [target]` | 删除最旧录像，直到剩余录像数量不大于 `target` |
-| `dashboard dashcam_rec_start` | 手动启动录像 |
-| `dashboard dashcam_rec_stop` | 手动停止并完成录像 |
-| `dashboard dashcam_turn_left` | 打开 Assist View |
-| `dashboard dashcam_turn_off` | 关闭 Assist View |
-| `dashboard np_erase [reboot]` | 清除网络配网信息；追加 `reboot` 后立即重启 |
-| `dashboard np_start_advertise` | 重新开启 BLE 配网广播 |
+| `ap_cmd dashboard dashcam` | 直接进入 Dashcam 页面 |
+| `ap_cmd dashboard dashcam_count` | 查询录像数量与 SD 卡剩余空间 |
+| `ap_cmd dashboard dashcam_trim [target]` | 删除最旧录像，直到剩余录像数量不大于 `target` |
+| `ap_cmd dashboard dashcam_rec_start` | 手动启动录像 |
+| `ap_cmd dashboard dashcam_rec_stop` | 手动停止并完成录像 |
+| `ap_cmd dashboard dashcam_turn_left` | 打开 Assist View |
+| `ap_cmd dashboard dashcam_turn_off` | 关闭 Assist View |
+| `ap_cmd dashboard np_erase [reboot]` | 清除网络配网信息；追加 `reboot` 后立即重启 |
+| `ap_cmd dashboard np_start_advertise` | 重新开启 BLE 配网广播 |
 
-> 注意：执行 `dashboard dashcam_trim [target]` 前，先使用 `dashboard dashcam_rec_stop` 停止录像，避免删除文件时与录像写入同时访问 SD 卡。
+> 注意：执行 `ap_cmd dashboard dashcam_trim [target]` 前，先使用 `ap_cmd dashboard dashcam_rec_stop` 停止录像，避免删除文件时与录像写入同时访问 SD 卡。
 
 ## FTP Server
 
@@ -119,17 +119,17 @@ Dashboard V1.0 按键 GPIO 定义如下：
 工程启动时已注册 `mtp` CLI，但不会自动开启 USB MTP 设备。
 
 1. 插入已格式化的 SD 卡，并使用 USB 连接设备与 PC。
-2. 在串口执行 `mtp start`。
+2. 在串口执行 `ap_cmd mtp start`。
 3. PC 会将设备枚举为 MTP 媒体设备，可浏览和拷贝 `/sd0` 中的文件，包括 `/sd0/dashcam` 录像。
-4. 使用结束后执行 `mtp stop`。
+4. 使用结束后执行 `ap_cmd mtp stop`。
 
 支持的 MTP 命令：
 
 | 命令 | 说明 |
 | --- | --- |
-| `mtp start` | 挂载 SD 卡并启动 MTP USB 设备 |
-| `mtp stop` | 停止 MTP USB 设备 |
-| `mtp status` | 查询 MTP 当前状态 |
-| `mtp ls [path]` | 通过串口列出 SD 卡目录；默认路径为 `/sd0` |
+| `ap_cmd mtp start` | 挂载 SD 卡并启动 MTP USB 设备 |
+| `ap_cmd mtp stop` | 停止 MTP USB 设备 |
+| `ap_cmd mtp status` | 查询 MTP 当前状态 |
+| `ap_cmd mtp ls [path]` | 通过串口列出 SD 卡目录；默认路径为 `/sd0` |
 
-> 建议在 PC 复制录像文件完成后再执行 `mtp stop`，避免 USB 传输被中断。
+> 建议在 PC 复制录像文件完成后再执行 `ap_cmd mtp stop`，避免 USB 传输被中断。
