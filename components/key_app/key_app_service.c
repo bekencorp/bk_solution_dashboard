@@ -1,19 +1,8 @@
 #include <common/sys_config.h>
 #include <components/log.h>
+#include <stdbool.h>
 #include "key_app_service.h"
 #include "key_app_config.h"
-#if CONFIG_BK_NETWORK_PROVISIONING
-#include "bk_network_provisioning.h"
-#endif
-
-extern void pet_page_toggle(void);
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
-extern void pet_page_enter(void);
-extern void pet_page_double(void);
-/* Phone-scenario control (GPIO_51), implemented in the scooter V2 app layer. */
-extern void phone_key_answer(void);
-extern void phone_key_hangup(void);
-#endif
 
 #define TAG "key_service"
 
@@ -22,99 +11,114 @@ extern void phone_key_hangup(void);
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
-/* Debounce rapid presses on the pet-page toggle key (all boards). */
-#define USER_PET_TOGGLE_THROTTLE_MS 500
-
-
-static void config_network(void)
-{
-    LOGI("USER_CONFIG_NETWORK\r\n");
-#if CONFIG_BK_NETWORK_PROVISIONING
-    erase_network_auto_reconnect_info();
-    bk_reboot();
-#endif
-}
-
-static void release_info(void)
-{
-    LOGI("USER_ERASE_INFO\r\n");
-#if CONFIG_BK_NETWORK_PROVISIONING
-    erase_network_auto_reconnect_info();
-#endif
-}
+#define KEY_EVENT_THROTTLE_MS 500
 
 static KeyConfig_t key_configs[] = KEY_DEFAULT_CONFIG_TABLE;
-static uint32_t s_last_pet_toggle_ms = 0;
+
+static const key_action_cfg_t *s_actions = NULL;
+static uint16_t s_action_count = 0;
+static uint32_t s_last_event_ms = 0;
 
 static void key_event_handler(uint8_t event)
 {
     uint32_t now_ms = 0;
+    uint8_t pin_id = 0;
+    key_action_t action = SHORT_PRESS;
+    bool event_found = false;
 
     if (IS_INVALID_EVENT(event))
     {
         LOGI("Invalid event: %d\r\n", event);
         return;
     }
-    
-    switch(event) {
-        case USER_CONFIG_NETWORK:
-            config_network();
-            break;
-        case USER_ERASE_INFO:
-            release_info();
-            break;
-        case USER_PET_TOGGLE:
-            now_ms = rtos_get_time();
-            if (s_last_pet_toggle_ms != 0 &&
-                (now_ms - s_last_pet_toggle_ms) < USER_PET_TOGGLE_THROTTLE_MS)
-            {
-                LOGI("USER_PET_TOGGLE throttled, delta=%u ms\r\n",
-                     (unsigned)(now_ms - s_last_pet_toggle_ms));
-                break;
-            }
 
-            s_last_pet_toggle_ms = now_ms;
-            LOGI("USER_PET_TOGGLE\r\n");
-            pet_page_toggle();
+    for (uint16_t i = 0; i < sizeof(key_configs) / sizeof(key_configs[0]); i++)
+    {
+        if (key_configs[i].short_event == event)
+        {
+            pin_id = key_configs[i].gpio_id;
+            action = SHORT_PRESS;
+            event_found = true;
             break;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
-        case USER_PET_ENTER:
-            LOGI("USER_PET_ENTER\r\n");
-            pet_page_enter();
+        }
+        if (key_configs[i].double_event == event)
+        {
+            pin_id = key_configs[i].gpio_id;
+            action = DOUBLE_PRESS;
+            event_found = true;
             break;
-#endif
-#if defined(CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0) && CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0
-        case USER_KEY4_PLACEHOLDER:
-            LOGI("USER_KEY4_PLACEHOLDER (GPIO_31)\r\n");
+        }
+        if (key_configs[i].long_event == event)
+        {
+            pin_id = key_configs[i].gpio_id;
+            action = LONG_PRESS;
+            event_found = true;
             break;
-        case USER_KEY5_PLACEHOLDER:
-            LOGI("USER_KEY5_PLACEHOLDER (GPIO_29)\r\n");
-            break;
-#endif
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
-        case USER_PET_DOUBLE:
-            LOGI("USER_PET_DOUBLE\r\n");
-            pet_page_double();
-            break;
-        case USER_PHONE_ANSWER:
-            LOGI("USER_PHONE_ANSWER\r\n");
-            phone_key_answer();
-            break;
-        case USER_PHONE_HANGUP:
-            LOGI("USER_PHONE_HANGUP\r\n");
-            phone_key_hangup();
-            break;
-#endif
-        default:
-            break;
+        }
     }
+
+    if (!event_found)
+    {
+        LOGI("event %d is not mapped to a key\r\n", event);
+        return;
+    }
+
+    now_ms = rtos_get_time();
+    if ((s_last_event_ms != 0) &&
+        ((now_ms - s_last_event_ms) < KEY_EVENT_THROTTLE_MS))
+    {
+        LOGI("key event %d throttled, delta=%u ms\r\n",
+             event, (unsigned)(now_ms - s_last_event_ms));
+        return;
+    }
+    s_last_event_ms = now_ms;
+
+    for (uint16_t i = 0; i < s_action_count; i++)
+    {
+        key_action_cb_t callback = NULL;
+
+        if (s_actions[i].pin_id != pin_id)
+        {
+            continue;
+        }
+
+        switch (action)
+        {
+            case SHORT_PRESS:
+                callback = s_actions[i].short_callback;
+                break;
+            case DOUBLE_PRESS:
+                callback = s_actions[i].double_callback;
+                break;
+            case LONG_PRESS:
+                callback = s_actions[i].long_callback;
+                break;
+            default:
+                break;
+        }
+
+        if (callback != NULL)
+        {
+            callback();
+        }
+        else
+        {
+            LOGI("GPIO_%d action %d has no registered callback\r\n",
+                 pin_id, action);
+        }
+        return;
+    }
+
+    LOGI("GPIO_%d has no registered action table\r\n", pin_id);
 }
 
-
-void bk_key_service_init(void)
+void bk_key_service_init(const key_action_cfg_t *actions, uint16_t num_actions)
 {
+    s_actions = actions;
+    s_action_count = num_actions;
+    s_last_event_ms = 0;
 
-    bk_key_driver_init(key_configs, sizeof(key_configs)/sizeof(KeyConfig_t));
+    bk_key_driver_init(key_configs, sizeof(key_configs) / sizeof(KeyConfig_t));
     rtos_delay_milliseconds(200);
     bk_key_register_event_handler(key_event_handler);
 }

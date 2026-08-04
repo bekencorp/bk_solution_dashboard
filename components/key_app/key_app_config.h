@@ -10,126 +10,88 @@ extern "C" {
 #include <key_adapter.h>
 
 
-#define USER_CONFIG_NETWORK     (USER_EVENT_START + 0)
-#define USER_ERASE_INFO        (USER_EVENT_START + 1)
-#define USER_PET_TOGGLE        (USER_EVENT_START + 2)
-#define USER_PET_ENTER         (USER_EVENT_START + 3)
+/* ==================== Directional key events ==================== */
+
+/*
+ * Keys are modeled purely as directions (up/down/left/right/middle). Every key
+ * registers its short/double/long presses as directional events. This header
+ * stays generic: it knows nothing about what each event does. The project
+ * provides one action-table entry per pin with short/double/long callbacks.
+ */
+#define USER_KEY_UP_SHORT       (USER_EVENT_START + 0)
+#define USER_KEY_UP_DOUBLE      (USER_EVENT_START + 1)
+#define USER_KEY_UP_LONG        (USER_EVENT_START + 2)
+#define USER_KEY_DOWN_SHORT     (USER_EVENT_START + 3)
+#define USER_KEY_DOWN_DOUBLE    (USER_EVENT_START + 4)
+#define USER_KEY_DOWN_LONG      (USER_EVENT_START + 5)
+#define USER_KEY_LEFT_SHORT     (USER_EVENT_START + 6)
+#define USER_KEY_LEFT_DOUBLE    (USER_EVENT_START + 7)
+#define USER_KEY_LEFT_LONG      (USER_EVENT_START + 8)
+#define USER_KEY_RIGHT_SHORT    (USER_EVENT_START + 9)
+#define USER_KEY_RIGHT_DOUBLE   (USER_EVENT_START + 10)
+#define USER_KEY_RIGHT_LONG     (USER_EVENT_START + 11)
+#define USER_KEY_MIDDLE_SHORT   (USER_EVENT_START + 12)
+#define USER_KEY_MIDDLE_DOUBLE  (USER_EVENT_START + 13)
+#define USER_KEY_MIDDLE_LONG    (USER_EVENT_START + 14)
+
+
+/* ==================== Action registration types ==================== */
+
+typedef void (*key_action_cb_t)(void);
+
+typedef struct
+{
+    uint8_t         pin_id;
+    key_action_cb_t short_callback;
+    key_action_cb_t double_callback;
+    key_action_cb_t long_callback;
+} key_action_cfg_t;
+
+
+/* ==================== Board pin tables ==================== */
+
+/* One config-table entry that registers all three presses for a key. */
+#define KEY_DIR_ENTRY(pin, sev, dev, lev) \
+    { \
+        .gpio_id = (pin), \
+        .active_level = LOW_LEVEL_TRIGGER, \
+        .short_event = (key_event_t)(sev), \
+        .double_event = (key_event_t)(dev), \
+        .long_event = (key_event_t)(lev) \
+    }
 
 #if defined(CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0) && CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0
 
-/* V1.0 board: P27_KEY1 / P30_KEY2 / P32_KEY3 / P31_KEY4 / P29_KEY5 */
-#define KEY_GPIO_27   GPIO_27
-#define KEY_GPIO_29   GPIO_29
-#define KEY_GPIO_30   GPIO_30
-#define KEY_GPIO_31   GPIO_31
-#define KEY_GPIO_32   GPIO_32
-
-/*
- * V1.0-only placeholder events. Start at +10 to avoid colliding with the
- * shared/V2 events (USER_PET_ENTER=+3, USER_PET_DOUBLE=+4, USER_PHONE_*=+5/+6),
- * even though V1.0 and V2 are mutually exclusive builds today.
- */
-#define USER_KEY4_PLACEHOLDER  (USER_EVENT_START + 10)
-#define USER_KEY5_PLACEHOLDER  (USER_EVENT_START + 11)
+/* DASHBOARD_V_1_0 board: 5 directional keys. */
+#define KEY_PIN_UP      GPIO_32
+#define KEY_PIN_DOWN    GPIO_27
+#define KEY_PIN_LEFT    GPIO_31
+#define KEY_PIN_RIGHT   GPIO_29
+#define KEY_PIN_MIDDLE  GPIO_30
 
 #define KEY_DEFAULT_CONFIG_TABLE \
 { \
-    { \
-        .gpio_id = KEY_GPIO_27, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_CONFIG_NETWORK, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    }, \
-    { \
-        .gpio_id = KEY_GPIO_30, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_ERASE_INFO, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    }, \
-    { \
-        .gpio_id = KEY_GPIO_32, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_PET_TOGGLE, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    }, \
-    { \
-        .gpio_id = KEY_GPIO_31, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_KEY4_PLACEHOLDER, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    }, \
-    { \
-        .gpio_id = KEY_GPIO_29, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_KEY5_PLACEHOLDER, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    } \
+    KEY_DIR_ENTRY(KEY_PIN_UP,     USER_KEY_UP_SHORT,     USER_KEY_UP_DOUBLE,     USER_KEY_UP_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_DOWN,   USER_KEY_DOWN_SHORT,   USER_KEY_DOWN_DOUBLE,   USER_KEY_DOWN_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_LEFT,   USER_KEY_LEFT_SHORT,   USER_KEY_LEFT_DOUBLE,   USER_KEY_LEFT_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_RIGHT,  USER_KEY_RIGHT_SHORT,  USER_KEY_RIGHT_DOUBLE,  USER_KEY_RIGHT_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_MIDDLE, USER_KEY_MIDDLE_SHORT, USER_KEY_MIDDLE_DOUBLE, USER_KEY_MIDDLE_LONG) \
 }
 
 #else /* !CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0 */
 
-#define KEY_GPIO_48   GPIO_48
-#define KEY_GPIO_49   GPIO_49
-#define KEY_GPIO_50   GPIO_50
-#define KEY_GPIO_5    GPIO_5
-
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
-#define USER_PET_DOUBLE        (USER_EVENT_START + 4)
-#define USER_PET_DOUBLE_EVENT  ((key_event_t)USER_PET_DOUBLE)
-/* Phone-scenario control button (GPIO_5): short=answer, double=hang up/reject. */
-#define USER_PHONE_ANSWER      (USER_EVENT_START + 5)
-#define USER_PHONE_HANGUP      (USER_EVENT_START + 6)
-#else
-#define USER_PET_DOUBLE_EVENT  EVENT_NONE
-#endif
-
-/*
- * Optional phone-control button on GPIO_5 (scooter V2 only). Kept as a separate
- * macro because a preprocessor #if cannot live inside the table initializer
- * macro below. Expands to a leading-comma table entry, or to nothing elsewhere.
- */
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
-#define KEY_PHONE_CONFIG_ENTRY \
-    , { \
-        .gpio_id = KEY_GPIO_5, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_PHONE_ANSWER, \
-        .double_event = (key_event_t)USER_PHONE_HANGUP, \
-        .long_event = EVENT_NONE \
-    }
-#else
-#define KEY_PHONE_CONFIG_ENTRY
-#endif
+/* non-DASHBOARD board: 4 directional keys (no down). */
+#define KEY_PIN_UP      GPIO_5
+#define KEY_PIN_LEFT    GPIO_48
+#define KEY_PIN_RIGHT   GPIO_49
+#define KEY_PIN_MIDDLE  GPIO_50
 
 #define KEY_DEFAULT_CONFIG_TABLE \
 { \
-    { \
-        .gpio_id = KEY_GPIO_48, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_CONFIG_NETWORK, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    }, \
-    { \
-        .gpio_id = KEY_GPIO_49, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_ERASE_INFO, \
-        .double_event = EVENT_NONE, \
-        .long_event = EVENT_NONE \
-    },\
-    { \
-        .gpio_id = KEY_GPIO_50, \
-        .active_level = LOW_LEVEL_TRIGGER, \
-        .short_event = (key_event_t)USER_PET_TOGGLE, \
-        .double_event = USER_PET_DOUBLE_EVENT, \
-        .long_event = (key_event_t)USER_PET_ENTER \
-    } \
-    KEY_PHONE_CONFIG_ENTRY \
+    KEY_DIR_ENTRY(KEY_PIN_UP,     USER_KEY_UP_SHORT,     USER_KEY_UP_DOUBLE,     USER_KEY_UP_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_LEFT,   USER_KEY_LEFT_SHORT,   USER_KEY_LEFT_DOUBLE,   USER_KEY_LEFT_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_RIGHT,  USER_KEY_RIGHT_SHORT,  USER_KEY_RIGHT_DOUBLE,  USER_KEY_RIGHT_LONG), \
+    KEY_DIR_ENTRY(KEY_PIN_MIDDLE, USER_KEY_MIDDLE_SHORT, USER_KEY_MIDDLE_DOUBLE, USER_KEY_MIDDLE_LONG) \
 }
 
 #endif /* CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0 */

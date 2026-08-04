@@ -27,6 +27,7 @@ extern void beken_ui_kick_after_display_resume(void);
  * short-circuits ("already initialized") and bk_gpu_driver_init is a bool guard.
  */
 extern void lv_gpu_init(uint32_t tess_width, uint32_t tess_height);
+extern void lv_gpu_deinit(void);
 
 /*
  * Before casting/CMD path starts LVGL teardown: the product (e.g. scooter_1280_720 beken_ui.c)
@@ -190,6 +191,7 @@ static void display_ui_cast_pre_start(void)
     }
 
     lv_vendor_stop();
+    lv_gpu_deinit();
     s_cast_lvgl_was_stopped = 1;
 
     lvgl_app_dpu_apply_casting_config();
