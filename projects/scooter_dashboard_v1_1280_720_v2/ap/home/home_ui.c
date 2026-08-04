@@ -98,6 +98,16 @@ static lv_font_t *home_cn_font_load(void)
 }
 
 /*
+ * Expose the loaded CJK TTF so other pages (e.g. phone_book) can render Chinese
+ * contact names with the same single PSRAM-resident font. The home page loads it
+ * in home_ui_enter(), which always runs before any page can be navigated to.
+ */
+lv_font_t *home_ui_get_cn_font(void)
+{
+    return s_cn_font;
+}
+
+/*
  * The home background is a 1280x720 image. Two paths render it as a plain
  * PSRAM bitmap (a fast blit, no per-frame work):
  *
@@ -717,6 +727,33 @@ static void home_oncall_card_apply(void)
     lv_obj_remove_flag(ui->home_oncall_card, LV_OBJ_FLAG_HIDDEN);
 }
 
+/*
+ * Out-call popup: shown ONLY while an outgoing call is dialing/alerting. The
+ * state text goes to home_op_title and the remote name/number to home_op_num.
+ * Once the call is answered it moves to home_oncall_card; every other state
+ * hides this popup.
+ */
+static void home_outcall_popup_apply(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (!home_music_obj_valid(ui->home_outcall_popup))
+    {
+        return;
+    }
+
+    if (s_home_music.call_state != HFP_HF_CALL_OUTGOING)
+    {
+        lv_obj_add_flag(ui->home_outcall_popup, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    home_music_set_label(ui->home_op_title, HOME_MUSIC_OUTGOING_TAG);
+    home_music_set_label(ui->home_op_num,
+                         s_home_music.phone_number[0] ? s_home_music.phone_number : "UNKNOWN");
+    lv_obj_remove_flag(ui->home_outcall_popup, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void home_music_apply(void)
 {
     bk_lv_ui_t *ui = &bk_lv_tool_ui;
@@ -732,6 +769,7 @@ static void home_music_apply(void)
     home_np_panel_sync();
     home_call_popup_apply();
     home_oncall_card_apply();
+    home_outcall_popup_apply();
 
     home_music_set_label(ui->home_song_title, title);
     home_music_set_label(ui->home_song_artist, artist);
@@ -1367,6 +1405,12 @@ void home_ui_enter(void)
         if (home_music_obj_valid(ui->home_cp_num))
         {
             lv_obj_set_style_text_font(ui->home_cp_num, s_cn_font,
+                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        /* Out-call callee name may likewise be a Chinese PBAP contact name. */
+        if (home_music_obj_valid(ui->home_op_num))
+        {
+            lv_obj_set_style_text_font(ui->home_op_num, s_cn_font,
                                        LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }

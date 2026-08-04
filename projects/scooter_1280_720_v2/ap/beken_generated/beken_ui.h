@@ -118,6 +118,9 @@ typedef struct
     lv_obj_t *home_ota_entry;
     lv_obj_t *home_ota_ic;
     lv_obj_t *home_ota_lbl;
+    lv_obj_t *home_phone_entry;
+    lv_obj_t *home_phone_ic;
+    lv_obj_t *home_phone_lbl;
     lv_obj_t *home_np_panel;
     lv_obj_t *home_music_ic;
     lv_obj_t *home_song_title;
@@ -136,6 +139,12 @@ typedef struct
     lv_obj_t *home_oc_timer;
     lv_obj_t *home_oc_hangup;
     lv_obj_t *home_oc_hangup_label;
+    lv_obj_t *home_outcall_popup;
+    lv_obj_t *home_op_phone;
+    lv_obj_t *home_op_title;
+    lv_obj_t *home_op_num;
+    lv_obj_t *home_op_hangup;
+    lv_obj_t *home_op_hangup_label;
     /* Page: 1 objects */
     lv_obj_t *nav_cast;
     lv_obj_t *nav_cast_bg_img;
@@ -255,6 +264,86 @@ typedef struct
     lv_obj_t *ota_update_pct_sym;
     lv_obj_t *ota_update_stat_lbl;
     lv_obj_t *ota_update_eta_lbl;
+    /* Page: 4 objects */
+    lv_obj_t *phone_book;
+    lv_obj_t *phone_book_status_lbl;
+    lv_obj_t *phone_book_batt_lbl;
+    lv_obj_t *phone_book_hdiv;
+    lv_obj_t *phone_book_vdiv;
+    lv_obj_t *phone_book_c_title;
+    lv_obj_t *phone_book_r_title;
+    lv_obj_t *phone_book_batt_body;
+    lv_obj_t *phone_book_batt_fill;
+    lv_obj_t *phone_book_batt_cap;
+    lv_obj_t *phone_book_contacts_list;
+    lv_obj_t *phone_book_c_row1;
+    lv_obj_t *phone_book_c_iav1;
+    lv_obj_t *phone_book_c_nm1;
+    lv_obj_t *phone_book_c_no1;
+    lv_obj_t *phone_book_c_call1;
+    lv_obj_t *phone_book_c_row2;
+    lv_obj_t *phone_book_c_iav2;
+    lv_obj_t *phone_book_c_nm2;
+    lv_obj_t *phone_book_c_no2;
+    lv_obj_t *phone_book_c_call2;
+    lv_obj_t *phone_book_c_row3;
+    lv_obj_t *phone_book_c_iav3;
+    lv_obj_t *phone_book_c_nm3;
+    lv_obj_t *phone_book_c_no3;
+    lv_obj_t *phone_book_c_call3;
+    lv_obj_t *phone_book_c_row4;
+    lv_obj_t *phone_book_c_iav4;
+    lv_obj_t *phone_book_c_nm4;
+    lv_obj_t *phone_book_c_no4;
+    lv_obj_t *phone_book_c_call4;
+    lv_obj_t *phone_book_c_row5;
+    lv_obj_t *phone_book_c_iav5;
+    lv_obj_t *phone_book_c_nm5;
+    lv_obj_t *phone_book_c_no5;
+    lv_obj_t *phone_book_c_call5;
+    lv_obj_t *phone_book_c_row6;
+    lv_obj_t *phone_book_c_iav6;
+    lv_obj_t *phone_book_c_nm6;
+    lv_obj_t *phone_book_c_no6;
+    lv_obj_t *phone_book_c_call6;
+    lv_obj_t *phone_book_recents_list;
+    lv_obj_t *phone_book_r_row1;
+    lv_obj_t *phone_book_r_ar1;
+    lv_obj_t *phone_book_r_nm1;
+    lv_obj_t *phone_book_r_tp1;
+    lv_obj_t *phone_book_r_call1;
+    lv_obj_t *phone_book_r_tm1;
+    lv_obj_t *phone_book_r_row2;
+    lv_obj_t *phone_book_r_ar2;
+    lv_obj_t *phone_book_r_nm2;
+    lv_obj_t *phone_book_r_tp2;
+    lv_obj_t *phone_book_r_call2;
+    lv_obj_t *phone_book_r_tm2;
+    lv_obj_t *phone_book_r_row3;
+    lv_obj_t *phone_book_r_ar3;
+    lv_obj_t *phone_book_r_nm3;
+    lv_obj_t *phone_book_r_tp3;
+    lv_obj_t *phone_book_r_call3;
+    lv_obj_t *phone_book_r_tm3;
+    lv_obj_t *phone_book_r_row4;
+    lv_obj_t *phone_book_r_ar4;
+    lv_obj_t *phone_book_r_nm4;
+    lv_obj_t *phone_book_r_tp4;
+    lv_obj_t *phone_book_r_call4;
+    lv_obj_t *phone_book_r_tm4;
+    lv_obj_t *phone_book_r_row5;
+    lv_obj_t *phone_book_r_ar5;
+    lv_obj_t *phone_book_r_nm5;
+    lv_obj_t *phone_book_r_tp5;
+    lv_obj_t *phone_book_r_call5;
+    lv_obj_t *phone_book_r_tm5;
+    lv_obj_t *phone_book_r_row6;
+    lv_obj_t *phone_book_r_ar6;
+    lv_obj_t *phone_book_r_nm6;
+    lv_obj_t *phone_book_r_tp6;
+    lv_obj_t *phone_book_r_call6;
+    lv_obj_t *phone_book_r_tm6;
+    lv_obj_t *phone_book_bt_ic;
 } bk_lv_ui_t;
 
 void init_page_home(bk_lv_ui_t *bk_ui);
@@ -270,6 +359,9 @@ void beken_ui_nav_to_ota_update(void);
 void home_menu_key_short_press(void);
 void home_menu_key_double_press(void);
 void home_menu_key_long_press(void);
+void beken_ui_nav_to_phone_book(void);
+void init_page_phone_book(bk_lv_ui_t *bk_ui);
+void destroy_page_phone_book(bk_lv_ui_t *bk_ui);
 
 /*
  * Wrap the background bitmap preloaded during the boot animation
@@ -280,10 +372,18 @@ void home_menu_key_long_press(void);
 bool beken_ui_install_preloaded_bg(lv_obj_t *bg_img);
 
 /* declare image */
+LV_IMAGE_DECLARE(arrow_in_sm_30x30_RGB565A8_NONE);
+LV_IMAGE_DECLARE(arrow_miss_sm_30x30_RGB565A8_NONE);
+LV_IMAGE_DECLARE(arrow_out_sm_30x30_RGB565A8_NONE);
+LV_IMAGE_DECLARE(avatar_sm_52x52_RGB565A8_NONE);
+LV_IMAGE_DECLARE(bt_gray_sm_28x28_RGB565A8_NONE);
+LV_IMAGE_DECLARE(bt_sm_28x28_RGB565A8_NONE);
+LV_IMAGE_DECLARE(contacts_ic2_tp_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(dash_bg_clean_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(entry_dashcam_status_copy_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(entry_ota_status_copy_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(home_bg_tech_1280x720_RGB565A8_NONE);
+LV_IMAGE_DECLARE(incall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(light_grey_80x77_RGB565A8_NONE);
 LV_IMAGE_DECLARE(light_left_80x77_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_note_tp_139x76_RGB565A8_NONE);
@@ -301,8 +401,9 @@ LV_IMAGE_DECLARE(nav_ic_tire_33x31_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_ic_turn_l_copy2_33x31_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_ic_turn_r_copy2_33x31_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_ic_warn_33x31_RGB565A8_NONE);
+LV_IMAGE_DECLARE(oncall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(ota_bg_pure_black_copy_1280x720_RGB565A8_NONE);
-LV_IMAGE_DECLARE(phone_sm_44x44_RGB565A8_NONE);
+LV_IMAGE_DECLARE(outcall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(play_btn_trans_ARGB8888);
 
 /* declare fonts */
@@ -329,6 +430,7 @@ LV_FONT_DECLARE(lv_font_pingfang_SC_12);
 LV_FONT_DECLARE(lv_font_pingfang_SC_28);
 LV_FONT_DECLARE(lv_font_pingfang_SC_11);
 LV_FONT_DECLARE(lv_font_pingfang_SC_80);
+LV_FONT_DECLARE(lv_font_montserrat_regular_32);
 
 /**
  * @brief Initialize the Beken UI system

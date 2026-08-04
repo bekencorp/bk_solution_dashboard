@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include "lvgl.h"
+
 /*
  * Home page logic, split out of the generated beken_ui.c.
  *
@@ -34,6 +36,11 @@ void home_ui_unload(void);
 void home_ui_register_bt_callbacks(void);
 void phone_key_answer(void);
 void phone_key_hangup(void);
+
+/* CJK TrueType font loaded by the home page; shared with other pages so Chinese
+ * text (e.g. PBAP contact names) renders without baking a bitmap CJK font.
+ * Returns NULL if the font has not been loaded yet. */
+lv_font_t *home_ui_get_cn_font(void);
 
 #ifdef __cplusplus
 }

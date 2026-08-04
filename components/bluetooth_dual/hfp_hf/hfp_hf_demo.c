@@ -462,6 +462,28 @@ static void hfp_demo_event_cb(bk_hfp_hf_evt_t evt, void *arg, void *user_data)
             LOGI("+CALL_SETUP_IND: HFP call setup indicator: %d\n", call_setup->status);
             s_call_setup = call_setup->status;
             hfp_ui_sync_phone_state();
+            /* Outgoing call started while the SLC was already up: +CLIP is
+             * incoming-only, so query the call list to learn the dialed number.
+             * The number arrives asynchronously via BK_HFP_HF_EVT_CLCC. */
+            if (hfp_derive_call_state() == HFP_HF_CALL_OUTGOING && s_call_number[0] == '\0')
+            {
+                bk_hfp_hf_query_current_calls();
+            }
+        }
+        break;
+        case BK_HFP_HF_EVT_CLCC:
+        {
+            bk_hfp_hf_clcc_info_t *clcc = (bk_hfp_hf_clcc_info_t *)arg;
+            LOGI("+CLCC result dir:%d status:%d number:%s\n", clcc->dir, clcc->status,
+                 clcc->number ? clcc->number : "");
+            /* Fill the dialed number from the outgoing (MO, dir==0) leg only. */
+            if (clcc->dir == 0 && clcc->number != NULL && clcc->number[0] != '\0' &&
+                s_call_number[0] == '\0')
+            {
+                os_strncpy(s_call_number, clcc->number, sizeof(s_call_number) - 1);
+                s_call_number[sizeof(s_call_number) - 1] = '\0';
+                hfp_ui_sync_phone_state();
+            }
         }
         break;
         case BK_HFP_HF_EVT_CLIP:

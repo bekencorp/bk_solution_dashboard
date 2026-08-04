@@ -302,6 +302,11 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
         LOGI("navigate to dashcam page\n");
         beken_ui_nav_to_dashcam();
     }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "phone_book") == 0))
+    {
+        LOGI("navigate to phone_book page\n");
+        beken_ui_nav_to_phone_book();
+    }
     else if ((argc >= 2) && (os_strcmp(argv[1], "pet_toggle") == 0))
     {
         LOGI("simulate USER_PET_TOGGLE\n");

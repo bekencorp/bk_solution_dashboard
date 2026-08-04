@@ -8,6 +8,7 @@ set(incs .
     dashcam
     ota
     home
+    phone_book
     ${BEKEN_GENERATOR_INCLUDE_DIRS}
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/include
 )
@@ -31,6 +32,7 @@ set(srcs
     dashcam/dashcam_assitview.c
     ota/ota_ui.c
     home/home_ui.c
+    phone_book/phone_book_ui.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_camera.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_codec.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_gpu.c

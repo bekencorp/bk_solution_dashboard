@@ -24,6 +24,7 @@
 #include "pbap_contacts.h"
 #include "components/bluetooth/bk_dm_bluetooth_types.h"
 #include "components/bluetooth/bk_dm_pbap_pce.h"
+#include "components/bluetooth/bk_dm_gap_bt.h"
 #include "bt_manager.h"
 
 #define TAG "pbap_contacts"
@@ -36,13 +37,24 @@
 /* -------------------------------------------------------------------------- */
 
 #define PBAP_CONTACTS_MAX      500          /* Max cached contacts (PSRAM bound) */
+#define PBAP_RECENTS_MAX       100          /* Max cached call-history entries */
+#define PBAP_PEER_NAME_MAX     64           /* Remote device friendly name */
 #define PBAP_NAME_MAX          40           /* Display name (UTF-8; ~13 CJK) */
 #define PBAP_KEY_DIGITS        9            /* Compare last N digits only */
 #define PBAP_TEL_RAW_MAX       32           /* Raw TEL value length */
+#define PBAP_DATETIME_MAX      16           /* "YYYYMMDDThhmmss" + NUL */
 #define PBAP_CARD_TEL_MAX      3            /* TELs kept per vCard */
 
-#define PBAP_PB_OBJECT_NAME    "telecom/pb.vcf"
+#define PBAP_PB_OBJECT_NAME    "telecom/pb.vcf"    /* main phonebook */
+#define PBAP_CCH_OBJECT_NAME   "telecom/cch.vcf"   /* combined call history */
 #define PBAP_CONNECT_DELAY_MS  1500         /* Let SLC/authorization settle first */
+
+/* Which object the current pull is fetching (drives parser routing + chaining). */
+typedef enum {
+    PULL_STAGE_NONE = 0,
+    PULL_STAGE_PB,      /* pb.vcf  -> contacts cache */
+    PULL_STAGE_CCH,     /* cch.vcf -> recents cache */
+} pull_stage_t;
 
 #define PBAP_EVT_QUEUE_LEN     64
 #define PBAP_EVT_TASK_STACK    (1024 * 6)
@@ -64,7 +76,15 @@
 typedef struct {
     char key[PBAP_KEY_DIGITS + 1];   /* normalized (last N digits) */
     char name[PBAP_NAME_MAX];        /* FN preferred, else N */
+    char number[PBAP_TEL_RAW_MAX];   /* raw TEL, kept for list display */
 } pbap_contact_t;
+
+typedef struct {
+    char    name[PBAP_NAME_MAX];
+    char    number[PBAP_TEL_RAW_MAX];
+    char    datetime[PBAP_DATETIME_MAX];
+    uint8_t type;                    /* pbap_call_type_t */
+} pbap_recent_t;
 
 typedef struct {
     bk_pbap_pce_cb_event_t event;
@@ -87,6 +107,15 @@ static uint16_t        s_contact_cnt;
 static uint8_t         s_cached_addr[BK_BD_ADDR_LEN];  /* addr the cache belongs to */
 static uint8_t         s_cache_valid;
 
+static pbap_recent_t  *s_recents;         /* PSRAM array [PBAP_RECENTS_MAX] */
+static uint16_t        s_recent_cnt;
+static uint8_t         s_recents_valid;
+
+static uint8_t         s_pull_stage;      /* pull_stage_t: current pull object */
+
+static uint8_t         s_connected;                    /* remote ACL up */
+static char            s_peer_name[PBAP_PEER_NAME_MAX];/* remote friendly name */
+
 /* Pending connect target (set on ACL up, checked by worker). */
 static uint8_t         s_target_addr[BK_BD_ADDR_LEN];
 static uint8_t         s_want_connect;
@@ -100,9 +129,16 @@ static char     s_combined[PBAP_COMBINED_MAX];
 static char     s_cur_name[PBAP_NAME_MAX];
 static char     s_cur_tel[PBAP_CARD_TEL_MAX][PBAP_TEL_RAW_MAX];
 static uint8_t  s_cur_tel_cnt;
+static uint8_t  s_cur_calltype;                 /* pbap_call_type_t (recents) */
+static char     s_cur_datetime[PBAP_DATETIME_MAX];
+static uint8_t  s_parse_recents;                /* 1 while parsing cch.vcf */
 
 /* Lookup result buffer (single caller: HFP CLIP handler). */
 static char     s_lookup_buf[PBAP_NAME_MAX];
+
+/* Notified once a phonebook pull completes and the cache is refreshed. */
+static pbap_contacts_updated_cb_t s_updated_cb;
+static void                      *s_updated_user;
 
 /* -------------------------------------------------------------------------- */
 /* Number normalization + cache                                                */
@@ -133,6 +169,26 @@ static void cache_clear_locked(void)
 {
     s_contact_cnt = 0;
     s_cache_valid = 0;
+    s_recent_cnt  = 0;
+    s_recents_valid = 0;
+}
+
+static void recents_add(const char *name, const char *tel, uint8_t type, const char *dt)
+{
+    if ((name == NULL || name[0] == '\0') && (tel == NULL || tel[0] == '\0')) {
+        return;
+    }
+
+    rtos_lock_mutex(&s_cache_lock);
+    if (s_recents != NULL && s_recent_cnt < PBAP_RECENTS_MAX) {
+        pbap_recent_t *r = &s_recents[s_recent_cnt++];
+        snprintf(r->name, sizeof(r->name), "%s",
+                 (name && name[0]) ? name : (tel ? tel : ""));
+        snprintf(r->number, sizeof(r->number), "%s", tel ? tel : "");
+        snprintf(r->datetime, sizeof(r->datetime), "%s", dt ? dt : "");
+        r->type = type;
+    }
+    rtos_unlock_mutex(&s_cache_lock);
 }
 
 static void cache_add(const char *name, const char *tel)
@@ -150,8 +206,93 @@ static void cache_add(const char *name, const char *tel)
         os_strncpy(c->key, key, PBAP_KEY_DIGITS);
         c->key[PBAP_KEY_DIGITS] = '\0';
         snprintf(c->name, sizeof(c->name), "%s", (name && name[0]) ? name : tel);
+        snprintf(c->number, sizeof(c->number), "%s", tel ? tel : "");
     }
     rtos_unlock_mutex(&s_cache_lock);
+}
+
+int pbap_contacts_count(void)
+{
+    int cnt;
+
+    if (!s_inited || !s_contacts) {
+        return 0;
+    }
+    rtos_lock_mutex(&s_cache_lock);
+    cnt = s_cache_valid ? (int)s_contact_cnt : 0;
+    rtos_unlock_mutex(&s_cache_lock);
+    return cnt;
+}
+
+int pbap_contacts_snapshot(pbap_contact_info_t *out, int max)
+{
+    int n = 0;
+
+    if (!s_inited || !s_contacts || !out || max <= 0) {
+        return 0;
+    }
+
+    rtos_lock_mutex(&s_cache_lock);
+    if (s_cache_valid) {
+        for (uint16_t i = 0; i < s_contact_cnt && n < max; i++) {
+            snprintf(out[n].name, sizeof(out[n].name), "%s", s_contacts[i].name);
+            snprintf(out[n].number, sizeof(out[n].number), "%s", s_contacts[i].number);
+            n++;
+        }
+    }
+    rtos_unlock_mutex(&s_cache_lock);
+    return n;
+}
+
+int pbap_recents_count(void)
+{
+    int cnt;
+
+    if (!s_inited || !s_recents) {
+        return 0;
+    }
+    rtos_lock_mutex(&s_cache_lock);
+    cnt = s_recents_valid ? (int)s_recent_cnt : 0;
+    rtos_unlock_mutex(&s_cache_lock);
+    return cnt;
+}
+
+int pbap_recents_snapshot(pbap_recent_info_t *out, int max)
+{
+    int n = 0;
+
+    if (!s_inited || !s_recents || !out || max <= 0) {
+        return 0;
+    }
+
+    rtos_lock_mutex(&s_cache_lock);
+    if (s_recents_valid) {
+        for (uint16_t i = 0; i < s_recent_cnt && n < max; i++) {
+            snprintf(out[n].name, sizeof(out[n].name), "%s", s_recents[i].name);
+            snprintf(out[n].number, sizeof(out[n].number), "%s", s_recents[i].number);
+            snprintf(out[n].datetime, sizeof(out[n].datetime), "%s", s_recents[i].datetime);
+            out[n].type = s_recents[i].type;
+            n++;
+        }
+    }
+    rtos_unlock_mutex(&s_cache_lock);
+    return n;
+}
+
+int pbap_contacts_is_connected(void)
+{
+    return s_connected ? 1 : 0;
+}
+
+const char *pbap_contacts_peer_name(void)
+{
+    return s_peer_name;
+}
+
+void pbap_contacts_set_updated_cb(pbap_contacts_updated_cb_t cb, void *user_data)
+{
+    s_updated_cb   = cb;
+    s_updated_user = user_data;
 }
 
 const char *pbap_contacts_lookup(const char *number)
@@ -191,6 +332,29 @@ static void parser_card_reset(void)
 {
     s_cur_name[0] = '\0';
     s_cur_tel_cnt = 0;
+    s_cur_calltype = PBAP_CALL_UNKNOWN;
+    s_cur_datetime[0] = '\0';
+}
+
+/* Case-insensitive search for @needle within [hay, hay+hay_len). */
+static int mem_find_ci(const char *hay, size_t hay_len, const char *needle)
+{
+    size_t nlen = os_strlen(needle);
+    if (nlen == 0 || hay_len < nlen) {
+        return 0;
+    }
+    for (size_t i = 0; i + nlen <= hay_len; i++) {
+        size_t j = 0;
+        for (; j < nlen; j++) {
+            if ((hay[i + j] | 0x20) != (needle[j] | 0x20)) {
+                break;
+            }
+        }
+        if (j == nlen) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static void parser_reset(void)
@@ -245,8 +409,14 @@ static void build_name_from_n(const char *val, size_t val_len)
 
 static void parser_commit_card(void)
 {
-    for (uint8_t i = 0; i < s_cur_tel_cnt; i++) {
-        cache_add(s_cur_name, s_cur_tel[i]);
+    if (s_parse_recents) {
+        /* One call-history entry per vCard; use the first TEL. */
+        const char *tel = (s_cur_tel_cnt > 0) ? s_cur_tel[0] : "";
+        recents_add(s_cur_name, tel, s_cur_calltype, s_cur_datetime);
+    } else {
+        for (uint8_t i = 0; i < s_cur_tel_cnt; i++) {
+            cache_add(s_cur_name, s_cur_tel[i]);
+        }
     }
     parser_card_reset();
 }
@@ -295,6 +465,21 @@ static void parser_handle_line(const char *line, const char *line_end)
                 s_cur_tel_cnt++;
             }
         }
+    } else if (type_is(line, type_len, "X-IRMC-CALL-DATETIME")) {
+        /* Call type lives in the parameter region between the type token and the
+         * ':' value separator, e.g. "X-IRMC-CALL-DATETIME;MISSED:20240101T0941..".
+         * The value after ':' is the timestamp. */
+        const char *param     = type_end;
+        size_t      param_len = (size_t)(colon - type_end);
+
+        if (mem_find_ci(param, param_len, "MISSED")) {
+            s_cur_calltype = PBAP_CALL_MISSED;
+        } else if (mem_find_ci(param, param_len, "DIALED")) {
+            s_cur_calltype = PBAP_CALL_DIALED;
+        } else if (mem_find_ci(param, param_len, "RECEIVED")) {
+            s_cur_calltype = PBAP_CALL_RECEIVED;
+        }
+        copy_trim(s_cur_datetime, sizeof(s_cur_datetime), val, val_len);
     }
 }
 
@@ -366,29 +551,41 @@ static void parser_flush(void)
 /* Worker                                                                      */
 /* -------------------------------------------------------------------------- */
 
-static void start_phonebook_pull(const uint8_t *bd_addr)
+static void start_pull(const uint8_t *bd_addr, const char *object,
+                       uint64_t filter, uint8_t stage)
 {
     bk_pbap_pce_get_param_t get_param = {0};
     bt_err_t ret;
 
     parser_reset();
+    s_pull_stage    = stage;
+    s_parse_recents = (stage == PULL_STAGE_CCH) ? 1 : 0;
+
+    get_param.get_phonebook_param.object_name    = object;
+    get_param.get_phonebook_param.format         = BK_PBAP_PCE_FORMAT_3_0;
+    get_param.get_phonebook_param.filter         = filter;
+    get_param.get_phonebook_param.max_list_count =
+        (stage == PULL_STAGE_CCH) ? PBAP_RECENTS_MAX : PBAP_CONTACTS_MAX;
+
+    ret = bk_bt_pbap_pce_get_phonebook(bd_addr, &get_param);
+    if (ret != BK_OK) {
+        LOGE("get_phonebook(%s) failed %d\n", object, ret);
+    } else {
+        LOGI("pulling %s ...\n", object);
+    }
+}
+
+/* Begin the pull sequence: clear both caches, then pull contacts (pb.vcf).
+ * Call history (cch.vcf) is chained once the contacts pull completes. */
+static void start_phonebook_pull(const uint8_t *bd_addr)
+{
     rtos_lock_mutex(&s_cache_lock);
     cache_clear_locked();
     rtos_unlock_mutex(&s_cache_lock);
 
-    get_param.get_phonebook_param.object_name    = PBAP_PB_OBJECT_NAME;
-    get_param.get_phonebook_param.format         = BK_PBAP_PCE_FORMAT_3_0;
-    get_param.get_phonebook_param.filter         = BK_PBAP_PCE_FILTER_FN |
-                                                   BK_PBAP_PCE_FILTER_N  |
-                                                   BK_PBAP_PCE_FILTER_TEL;
-    get_param.get_phonebook_param.max_list_count = PBAP_CONTACTS_MAX;
-
-    ret = bk_bt_pbap_pce_get_phonebook(bd_addr, &get_param);
-    if (ret != BK_OK) {
-        LOGE("get_phonebook failed %d\n", ret);
-    } else {
-        LOGI("pulling phonebook %s ...\n", PBAP_PB_OBJECT_NAME);
-    }
+    start_pull(bd_addr, PBAP_PB_OBJECT_NAME,
+               BK_PBAP_PCE_FILTER_FN | BK_PBAP_PCE_FILTER_N | BK_PBAP_PCE_FILTER_TEL,
+               PULL_STAGE_PB);
 }
 
 static void worker_handle_connect_req(const uint8_t *bd_addr)
@@ -441,13 +638,35 @@ static void worker_handle_event(pbap_msg_t *msg)
         }
         if (msg->status != BK_PBAP_PCE_CONTINUE) {
             parser_flush();
-            rtos_lock_mutex(&s_cache_lock);
-            os_memcpy(s_cached_addr, msg->bd_addr, BK_BD_ADDR_LEN);
-            s_cache_valid = 1;
-            LOGI("phonebook cached: %u contacts\n", s_contact_cnt);
-            rtos_unlock_mutex(&s_cache_lock);
-            /* Session done; we only need the pull, so free the PBAP link. */
-            bk_bt_pbap_pce_disconnect(msg->bd_addr);
+
+            if (s_pull_stage == PULL_STAGE_CCH) {
+                rtos_lock_mutex(&s_cache_lock);
+                s_recents_valid = 1;
+                LOGI("call history cached: %u entries\n", s_recent_cnt);
+                rtos_unlock_mutex(&s_cache_lock);
+                if (s_updated_cb) {
+                    s_updated_cb(s_updated_user);
+                }
+                s_pull_stage    = PULL_STAGE_NONE;
+                s_parse_recents = 0;
+                /* Whole sequence done; we only need the pull, free the link. */
+                bk_bt_pbap_pce_disconnect(msg->bd_addr);
+            } else {
+                rtos_lock_mutex(&s_cache_lock);
+                os_memcpy(s_cached_addr, msg->bd_addr, BK_BD_ADDR_LEN);
+                s_cache_valid = 1;
+                LOGI("phonebook cached: %u contacts\n", s_contact_cnt);
+                rtos_unlock_mutex(&s_cache_lock);
+                if (s_updated_cb) {
+                    s_updated_cb(s_updated_user);
+                }
+                /* Chain the call-history pull on the same PBAP session. */
+                start_pull(msg->bd_addr, PBAP_CCH_OBJECT_NAME,
+                           BK_PBAP_PCE_FILTER_FN | BK_PBAP_PCE_FILTER_N |
+                           BK_PBAP_PCE_FILTER_TEL |
+                           BK_PBAP_PCE_FILTER_X_IRMC_CALL_DATETIME,
+                           PULL_STAGE_CCH);
+            }
         }
         break;
 
@@ -564,6 +783,15 @@ void pbap_contacts_init(void)
         }
     }
 
+    if (s_recents == NULL) {
+        s_recents = (pbap_recent_t *)psram_zalloc(sizeof(pbap_recent_t) * PBAP_RECENTS_MAX);
+        if (s_recents == NULL) {
+            LOGE("psram alloc %u bytes failed (recents)\n",
+                 (unsigned)(sizeof(pbap_recent_t) * PBAP_RECENTS_MAX));
+            return;
+        }
+    }
+
     if (s_cache_lock == NULL) {
         if (rtos_init_mutex(&s_cache_lock) != kNoErr) {
             LOGE("mutex init failed\n");
@@ -620,6 +848,15 @@ static void pbap_on_acl_connected(const uint8_t *bd_addr)
         return;
     }
 
+    /* Update connection status for UI (header). The friendly name arrives later
+     * via BK_BT_GAP_READ_REMOTE_NAME_EVT; show "connected" without a name first. */
+    s_connected = 1;
+    s_peer_name[0] = '\0';
+    bk_bt_gap_read_remote_name((uint8_t *)bd_addr);
+    if (s_updated_cb) {
+        s_updated_cb(s_updated_user);
+    }
+
     /* Already have contacts for this exact device: no need to pull again. */
     rtos_lock_mutex(&s_cache_lock);
     uint8_t have = (s_cache_valid && s_contact_cnt > 0 &&
@@ -655,6 +892,14 @@ static void pbap_on_acl_disconnected(const uint8_t *bd_addr)
         cache_clear_locked();
     }
     rtos_unlock_mutex(&s_cache_lock);
+
+    /* Reflect the disconnect in the UI regardless of whether a cache existed. */
+    s_connected = 0;
+    s_peer_name[0] = '\0';
+
+    if (s_updated_cb) {
+        s_updated_cb(s_updated_user);
+    }
 }
 
 /* bt_manager GAP callback: PBAP lifecycle is driven purely by ACL up/down, so
@@ -674,6 +919,17 @@ static void pbap_gap_event_cb(bk_gap_bt_cb_event_t event, bk_bt_gap_cb_param_t *
 
     case BK_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
         pbap_on_acl_disconnected(param->acl_disconn_cmpl_stat.bda);
+        break;
+
+    case BK_BT_GAP_READ_REMOTE_NAME_EVT:
+        if (s_connected && param->read_rmt_name.stat == BK_BT_STATUS_SUCCESS) {
+            snprintf(s_peer_name, sizeof(s_peer_name), "%s",
+                     (const char *)param->read_rmt_name.rmt_name);
+            LOGI("remote name: %s\n", s_peer_name);
+            if (s_updated_cb) {
+                s_updated_cb(s_updated_user);
+            }
+        }
         break;
 
     default:

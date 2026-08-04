@@ -39,6 +39,7 @@
 #include "dashcam_assitview.h"
 #include "ota_ui.h"
 #include "home_ui.h"
+#include "phone_book_ui.h"
 
 bk_lv_ui_t bk_lv_tool_ui = {0};
 
@@ -69,6 +70,7 @@ typedef enum
     HOME_MENU_HOME = 0,
     HOME_MENU_DASHCAM,
     HOME_MENU_OTA,
+    HOME_MENU_PHONE_BOOK,
     HOME_MENU_COUNT,
 } home_menu_item_t;
 
@@ -133,8 +135,10 @@ static void home_menu_apply_selection(void)
     bk_lv_ui_t *ui = &bk_lv_tool_ui;
     lv_obj_t *dash = ui->home_dash_entry;
     lv_obj_t *ota = ui->home_ota_entry;
+    lv_obj_t *phone = ui->home_phone_entry;
     lv_obj_t *dash_ic = ui->home_dash_ic;
     lv_obj_t *ota_ic = ui->home_ota_ic;
+    lv_obj_t *phone_ic = ui->home_phone_ic;
     const int32_t normal_scale = 256;
     const int32_t selected_scale = 410;
 
@@ -157,6 +161,13 @@ static void home_menu_apply_selection(void)
         home_nav_entry_set_scale(ota, normal_scale);
     }
 
+    if (phone != NULL && lv_obj_is_valid(phone))
+    {
+        lv_obj_set_style_border_width(phone, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_shadow_width(phone, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        home_nav_entry_set_scale(phone, normal_scale);
+    }
+
     if (dash_ic != NULL && lv_obj_is_valid(dash_ic))
     {
         lv_image_set_pivot(dash_ic, lv_obj_get_width(dash_ic) / 2, lv_obj_get_height(dash_ic) / 2);
@@ -169,6 +180,13 @@ static void home_menu_apply_selection(void)
         lv_image_set_pivot(ota_ic, lv_obj_get_width(ota_ic) / 2, lv_obj_get_height(ota_ic) / 2);
         home_nav_image_animate_scale(ota_ic,
                                      s_home_menu_selected == HOME_MENU_OTA ? selected_scale : normal_scale);
+    }
+
+    if (phone_ic != NULL && lv_obj_is_valid(phone_ic))
+    {
+        lv_image_set_pivot(phone_ic, lv_obj_get_width(phone_ic) / 2, lv_obj_get_height(phone_ic) / 2);
+        home_nav_image_animate_scale(phone_ic,
+                                     s_home_menu_selected == HOME_MENU_PHONE_BOOK ? selected_scale : normal_scale);
     }
 }
 
@@ -200,6 +218,10 @@ static void beken_ui_free_heavy_page(bk_lv_ui_t *ui, int32_t page)
     else if (page == HOME_MENU_OTA)
     {
         slot = &ui->ota_update;
+    }
+    else if (page == HOME_MENU_PHONE_BOOK)
+    {
+        slot = &ui->phone_book;
     }
     else if (page == HOME_MENU_HOME)
     {
@@ -247,6 +269,10 @@ static void home_menu_free_inactive_heavy_pages(int32_t active_page)
     {
         beken_ui_free_heavy_page(ui, HOME_MENU_OTA);
     }
+    if (active_page != HOME_MENU_PHONE_BOOK)
+    {
+        beken_ui_free_heavy_page(ui, HOME_MENU_PHONE_BOOK);
+    }
     if (active_page != HOME_MENU_HOME)
     {
         beken_ui_free_heavy_page(ui, HOME_MENU_HOME);
@@ -273,6 +299,10 @@ static void home_menu_load_selected_page(void)
         else if (old_page == HOME_MENU_DASHCAM)
         {
             beken_ui_stop_dashcam_video();
+        }
+        else if (old_page == HOME_MENU_PHONE_BOOK)
+        {
+            phone_book_ui_leave();
         }
     }
 
@@ -302,6 +332,13 @@ static void home_menu_load_selected_page(void)
         }
         target = ui->ota_update;
         break;
+    case HOME_MENU_PHONE_BOOK:
+        if (ui->phone_book == NULL)
+        {
+            init_page_phone_book(ui);
+        }
+        target = ui->phone_book;
+        break;
     default:
         break;
     }
@@ -330,6 +367,10 @@ static void home_menu_load_selected_page(void)
     {
         ota_ui_enter();
     }
+    else if (s_home_menu_active == HOME_MENU_PHONE_BOOK)
+    {
+        phone_book_ui_enter();
+    }
 }
 
 static void home_menu_open(home_menu_item_t item)
@@ -350,6 +391,10 @@ static void home_menu_return_home(void)
     else if (old_page == HOME_MENU_DASHCAM)
     {
         beken_ui_stop_dashcam_video();
+    }
+    else if (old_page == HOME_MENU_PHONE_BOOK)
+    {
+        phone_book_ui_leave();
     }
 
     if (ui->home == NULL || !lv_obj_is_valid(ui->home))
@@ -395,7 +440,7 @@ static void home_menu_select_delta(int32_t delta)
     s_home_menu_selected += delta;
     if (s_home_menu_selected <= HOME_MENU_HOME)
     {
-        s_home_menu_selected = HOME_MENU_OTA;
+        s_home_menu_selected = HOME_MENU_PHONE_BOOK;
     }
     else if (s_home_menu_selected >= HOME_MENU_COUNT)
     {
@@ -462,6 +507,16 @@ void beken_ui_nav_to_ota_update(void)
     lv_async_call(home_menu_entry_press_async_cb, (void *)(uintptr_t)HOME_MENU_OTA);
 }
 
+static void home_menu_open_async_cb(void *user_data)
+{
+    home_menu_open((home_menu_item_t)(uintptr_t)user_data);
+}
+
+void beken_ui_nav_to_phone_book(void)
+{
+    lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)HOME_MENU_PHONE_BOOK);
+}
+
 /*
  * Heap probe for the OOM (LV_ASSERT_MALLOC) investigation. Logs the free and
  * lowest-ever-free bytes of the three heaps LVGL can draw from. Compare the
@@ -500,6 +555,14 @@ static void home_menu_toggle_async_cb(void *user_data)
         return;
     }
 
+    /* On the phone_book page, when a list is focused a single press advances the
+     * row selection (scrolling); at page focus it falls through to return home. */
+    if (phone_book_ui_handle_key_single())
+    {
+        beken_ui_log_heap("toggle-out");
+        return;
+    }
+
     if (s_home_menu_active != HOME_MENU_HOME)
     {
         home_menu_return_home();
@@ -508,12 +571,16 @@ static void home_menu_toggle_async_cb(void *user_data)
     {
         home_menu_item_t selected = (home_menu_item_t)s_home_menu_selected;
 
-        if (selected != HOME_MENU_DASHCAM && selected != HOME_MENU_OTA)
+        if (selected != HOME_MENU_DASHCAM && selected != HOME_MENU_OTA &&
+            selected != HOME_MENU_PHONE_BOOK)
         {
             selected = s_home_menu_next_candidate;
         }
 
-        selected = selected == HOME_MENU_DASHCAM ? HOME_MENU_OTA : HOME_MENU_DASHCAM;
+        /* Cycle DASHCAM -> OTA -> PHONE_BOOK -> DASHCAM on each short press. */
+        selected = (selected >= HOME_MENU_PHONE_BOOK)
+                       ? HOME_MENU_DASHCAM
+                       : (home_menu_item_t)(selected + 1);
         s_home_menu_next_candidate = selected;
         home_menu_select(selected);
     }
@@ -525,8 +592,15 @@ static void home_menu_double_async_cb(void *user_data)
 {
     (void)user_data;
 
-    /* Double press toggles dashcam list focus (req6 #3); ignored elsewhere. */
-    (void)dashcam_ui_handle_key_double();
+    /* Double press toggles dashcam list focus (req6 #3). */
+    if (dashcam_ui_handle_key_double())
+    {
+        return;
+    }
+
+    /* On the phone_book page, double press cycles focus across the whole page,
+     * the contacts list and the recents list. */
+    (void)phone_book_ui_handle_key_double();
 }
 
 static void home_menu_enter_async_cb(void *user_data)
@@ -540,13 +614,19 @@ static void home_menu_enter_async_cb(void *user_data)
         return;
     }
 
+    /* On the phone_book page with a list focused, a long press dials the
+     * selected contact / recent, then falls through to return to the home
+     * page below (like ending any other page). */
+    (void)phone_book_ui_handle_key_long();
+
     if (s_home_menu_active != HOME_MENU_HOME)
     {
         home_menu_return_home();
         return;
     }
 
-    if (s_home_menu_selected != HOME_MENU_DASHCAM && s_home_menu_selected != HOME_MENU_OTA)
+    if (s_home_menu_selected != HOME_MENU_DASHCAM && s_home_menu_selected != HOME_MENU_OTA &&
+        s_home_menu_selected != HOME_MENU_PHONE_BOOK)
     {
         home_menu_select(s_home_menu_next_candidate);
     }

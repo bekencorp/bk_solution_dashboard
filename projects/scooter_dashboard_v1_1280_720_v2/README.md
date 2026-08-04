@@ -6,6 +6,8 @@
 
 This guide applies only to Dashboard V1.0 hardware.
 
+> **Note**: The board requires a DC 12V power supply to boot normally.
+
 ### Jumper Configuration
 
 Before powering on, verify that the following jumpers are connected:
