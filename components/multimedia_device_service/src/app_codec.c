@@ -194,7 +194,7 @@ int app_h264e_turn_on(void)
         .gop_frame_count = 30,
         .input_flexa_cnt = 3,
         .input_buf = isp_control->chn[chnl_id].y_addr,
-        .input_size = input_buffer_size,
+        .input_size = enc_aligned_height,
         .outbuf_malloc = encoder_buffer_request,
         .outbuf_malloc_args = NULL,
         .outbuf_complete = encoder_buffer_complete,

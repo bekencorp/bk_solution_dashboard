@@ -55,8 +55,6 @@ static rott_angle_t scooter_lvgl_rotation_from_deg(int deg)
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 
-extern void beken_ui_init(void);
-
 /*
  * Panel / DSI-bus / DPU ownership lives in the app_display layer
  * (app_mipi_lcd_turn_on). This component does not keep a heap display_ctx_t:
@@ -67,6 +65,7 @@ static bk_display_ctlr_handle_t s_dpu_handle = NULL;
 static const bk_display_dsi_panel_t *s_panel_desc = NULL;
 static uint8_t *s_lvgl_fb[2] = {NULL, NULL};
 static uint32_t s_lvgl_fb_size = 0;
+static display_ui_init_callback_t s_ui_init_callback = NULL;
 
 static void bk_widgets_flush_cb(void *args, void *frame_buffer, int (*cb)(void *args))
 {
@@ -156,6 +155,12 @@ static bk_err_t lvgl_start_internal(void)
 {
     lv_vnd_config_t lv_vnd_config = {0};
 
+    if (s_ui_init_callback == NULL)
+    {
+        LOGE("UI init callback is not registered\n");
+        return BK_FAIL;
+    }
+
     if (s_dpu_handle == NULL) {
         LOGE("display HW not initialized before LVGL start\n");
         return BK_FAIL;
@@ -228,7 +233,7 @@ static bk_err_t lvgl_start_internal(void)
 #endif
 
     lv_vendor_disp_lock();
-    beken_ui_init();
+    s_ui_init_callback();
     lv_vendor_disp_unlock();
     lv_vendor_start();
 
@@ -249,6 +254,17 @@ static bk_err_t lvgl_app_widgets_init(void)
     if (ret != BK_OK)
         return ret;
     return lvgl_start_internal();
+}
+
+bk_err_t display_ui_register_init_callback(display_ui_init_callback_t callback)
+{
+    if (callback == NULL)
+    {
+        return BK_FAIL;
+    }
+
+    s_ui_init_callback = callback;
+    return BK_OK;
 }
 
 bk_err_t display_ui_init_display_hw(void)

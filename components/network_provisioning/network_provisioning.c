@@ -54,9 +54,10 @@
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
 /*
- * Weak default network-ready hook. Projects that need to react to STA got-ip
- * (e.g. scooter_1280_720_v2 starts the FTP server in dashcam_storage.c) provide
- * a strong override; everyone else links this harmless no-op.
+ * Weak default network-ready hook. Projects that need to react when STA gets an
+ * IP or a client connects to AP/P2P GO (e.g. scooter_1280_720_v2 starts the FTP
+ * server in dashcam_storage.c) provide a strong override; everyone else links
+ * this harmless no-op.
  */
 __attribute__((weak)) void dashboard_network_ready_hook(void)
 {
@@ -891,6 +892,7 @@ static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
 	case EVENT_WIFI_AP_CONNECTED:
 		ap_connected = (wifi_event_ap_connected_t *)event_data;
 		LOGD(BK_MAC_FORMAT" connected to BK AP\n", BK_MAC_STR(ap_connected->mac));
+		dashboard_network_ready_hook();
 		break;
 
 	case EVENT_WIFI_AP_DISCONNECTED:
@@ -903,6 +905,11 @@ static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
 		LOGD(" target AP: %s, bssid %pm found\n", network_found->ssid, network_found->bssid);
 		break;
 
+    case EVENT_WIFI_GO_CONNECTED:
+        LOGD("WIFI_GO_CONNECTED\n");
+        dashboard_network_ready_hook();
+        break;
+
 	default:
 		LOGD("rx event <%d %d>\n", event_module, event_id);
 		break;
@@ -910,20 +917,6 @@ static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
 
 	return BK_OK;
 }
-
-// static const struct cli_command s_network_provisioning_commands[] = {
-//     {"np", "np or np [ble]|[console]", cli_network_provisioning},
-//     {"np_erase", "np_erase", cli_erase_network_provisioning_info},
-// };
-
-// int cli_network_provisioning_init(void)
-// {
-//     return 0;
-//     //bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
-//     //bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
-
-//     return cli_register_commands(s_network_provisioning_commands, sizeof(s_network_provisioning_commands) / sizeof(s_network_provisioning_commands[0]));
-// }
 
 
 static void bk_sl_np_ble_disconnect_cb(void)
@@ -964,11 +957,12 @@ bk_err_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use
         bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
         bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
         /*
-         * Register a dedicated netif got-ip cb on the SDK path so the
-         * network-ready hook (FTP start on scooter v2) still fires. It does not
-         * re-notify the phone with BOARDING_OP_CONFIG_WIFI_STA (already sent by
-         * demo_network_provisioning_status_cb() on SUCCEED).
+         * Register Wi-Fi and netif callbacks on the SDK path so the network-ready
+         * hook fires for STA got-IP and AP/P2P GO client connections. The netif
+         * callback does not re-notify the phone with BOARDING_OP_CONFIG_WIFI_STA
+         * (already sent by demo_network_provisioning_status_cb() on SUCCEED).
          */
+        bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
         bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_np_netif_event_cb, NULL);
         //cli_network_provisioning_init();
         s_send = bk_ble_provisioning_event_notify;
