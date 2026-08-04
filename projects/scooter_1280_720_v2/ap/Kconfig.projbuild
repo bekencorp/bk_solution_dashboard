@@ -1,7 +1,15 @@
 menu "PROJECT Configuration"
     config PROJECT_SCOOTER_V2
-        bool
-        default y
+        bool "PROJECT_SCOOTER_V2"
+        default n
+
+    config PROJECT_SCOOTER_DASHBOARD_V_1_0
+        bool "Scooter Dashboard V1.0 board"
+        default n
+
+    config PROJECT_LCD_RESET_PIN
+        int "LCD RESET PIN"
+        default 60
 endmenu
 
 menu "LVGL Widgets_v9 Configuration"
