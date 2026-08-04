@@ -499,7 +499,10 @@ void dashcam_app_shutdown(void)
      * actively recording). */
     dashcam_app_stop_tick();
 
-    (void)dashcam_recorder_stop();
+    /* Worker joined above, so no rotation is in flight: fully tear the recorder
+     * down here (destroys the worker thread + semaphores). Rotation/record_stop
+     * only pause via dashcam_recorder_stop(), never close/delete. */
+    dashcam_recorder_destroy();
     (void)dashcam_player_stop();
     dashcam_video_stop();
     dashcam_camera_close();

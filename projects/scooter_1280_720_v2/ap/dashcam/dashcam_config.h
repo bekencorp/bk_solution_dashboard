@@ -127,7 +127,7 @@ extern "C" {
  * only from preprocessor #if (CONFIG_NTP_SYNC_RTC is undefined when unset).
  */
 #ifndef DASHCAM_USE_WALL_CLOCK
-#define DASHCAM_USE_WALL_CLOCK         (DASHCAM_RELEASE_BUILD && CONFIG_NTP_SYNC_RTC)
+#define DASHCAM_USE_WALL_CLOCK         (CONFIG_NTP_SYNC_RTC)
 #endif
 
 /*

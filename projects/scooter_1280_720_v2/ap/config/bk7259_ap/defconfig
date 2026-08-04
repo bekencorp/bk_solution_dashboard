@@ -174,7 +174,7 @@ CONFIG_BLUETOOTH_BTDM_COMPONENT_BLE_HOGPD=y
 CONFIG_FTP_SERVER=y
 CONFIG_VFS=y
 CONFIG_FATFS=y
-CONFIG_NTP_SYNC_RTC=n
+CONFIG_NTP_SYNC_RTC=y
 
 # Main/init task runs beken_ui_init()->lv_image_set_src("S:/home_bg.jpg"), whose
 # LVGL TJPGD decoder_info puts a 4KB work buffer + JDEC on the stack. The 4096B

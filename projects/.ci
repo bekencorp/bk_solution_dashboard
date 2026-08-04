@@ -1,1 +1,3 @@
 cd scooter_1280_720;./dbuild.sh make bk7259
+cd scooter_1280_720_v2;./dbuild.sh make bk7259
+cd scooter_dashboard_v1_1280_720;./dbuild.sh make bk7259

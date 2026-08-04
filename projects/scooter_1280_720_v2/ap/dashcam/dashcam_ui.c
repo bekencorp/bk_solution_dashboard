@@ -17,7 +17,7 @@
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
-#define DASHCAM_UI_MAX_ITEMS 32
+#define DASHCAM_UI_MAX_ITEMS 10
 
 /* Original design colors for the records list (see dashcam_init.c v2 design). */
 #define DASHCAM_UI_LIST_BG          lv_color_hex(0x0A1520)
@@ -309,6 +309,27 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
         LOGW("scan records failed\n");
     }
 
+    /*
+     * The scan sorts clips newest-first (descending by name), so s_files[0] is
+     * the segment the recorder is currently writing to. While recording is
+     * active, hide that newest clip from the playable list: opening the MP4 the
+     * muxer is still appending to would race record-write vs playback-read on
+     * the same file (and the moov/index is not finalized yet). Drop index 0 by
+     * shifting the rest down so the whole UI (list, key-nav, selection) treats
+     * only the finalized clips as playable.
+     */
+    if (dashcam_app_rec_state() == DASHCAM_REC_RECORDING && s_file_count > 0)
+    {
+        uint32_t k;
+
+        LOGI("skip newest (recording) clip: %s\n", s_files[0].name);
+        for (k = 1; k < s_file_count; k++)
+        {
+            s_files[k - 1] = s_files[k];
+        }
+        s_file_count--;
+    }
+
     if (s_file_count == 0)
     {
         lv_obj_t *txt = lv_list_add_text(list, "No records");
@@ -363,11 +384,17 @@ void dashcam_ui_shutdown(void)
 }
 
 /*
- * Assist-view enter: tear down the dashcam LVGL page state (UI timers, widget
- * refs) like shutdown, but DO NOT call dashcam_app_shutdown() -> the recorder +
- * camera (mode=3, MP->H264) must keep running so the assist view can show the
- * same MP output through a second GPU bond. Only the LVGL segment-rotation tick
- * is paused (it cannot survive lv_vendor_stop()).
+ * Assist-view / cast enter: tear down the dashcam LVGL page state (UI timers,
+ * widget refs) like shutdown, but DO NOT call dashcam_app_shutdown() -> the
+ * recorder + camera (mode=3, MP->H264) must keep running so the assist view can
+ * show the same MP output through a second GPU bond.
+ *
+ * Playback, however, is a pure LVGL-domain path (canvas + refresh lv_timer +
+ * display event cb + player thread) that cannot survive lv_vendor_stop(): its
+ * lv_timer would revive on resume against a stale canvas, the player thread
+ * would spin with no consumer, and its UNCODED/HSRAM buffers would starve the
+ * assist GPU bond allocation. So stop playback here (player + video sink) the
+ * same way detach() does, while leaving the recorder/camera untouched.
  */
 void dashcam_ui_suspend_keep_recording(void)
 {
@@ -377,6 +404,13 @@ void dashcam_ui_suspend_keep_recording(void)
     s_list_focused = false;
     s_play_info_valid = false;
     memset(s_btns, 0, sizeof(s_btns));
+
+    /* Drop the playback path only; recorder + camera stay up (keep recording). */
+    if (dashcam_app_is_playing())
+    {
+        dashcam_app_stop_playback();
+    }
+
     dashcam_app_pause_segment_tick();
 }
 
