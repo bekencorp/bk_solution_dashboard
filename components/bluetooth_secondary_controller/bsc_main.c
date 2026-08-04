@@ -67,43 +67,6 @@ static int32_t bsc_uart_enable(uint8_t uart_id, uint8_t enable, uint32_t band)
             break;
         }
 
-        switch (uart_id)
-        {
-        case UART_ID_0:
-            gpio_dev_unmap(CONFIG_UART0_RX_PIN);
-            gpio_dev_unmap(CONFIG_UART0_TX_PIN);
-            gpio_dev_map(CONFIG_UART0_RX_PIN, GPIO_DEV_UART0_RXD);
-            gpio_dev_map(CONFIG_UART0_TX_PIN, GPIO_DEV_UART0_TXD);
-
-            // gpio_dev_unmap(GPIO_12);
-            // gpio_dev_unmap(GPIO_13);
-            //s_bsc_config.uart_config.flow_ctrl = UART_FLOWCTRL_CTS_RTS;
-            break;
-
-        case UART_ID_1:
-            gpio_dev_unmap(CONFIG_UART1_TX_PIN);
-            gpio_dev_unmap(CONFIG_UART1_RX_PIN);
-            gpio_dev_map(CONFIG_UART1_TX_PIN, GPIO_DEV_UART1_TXD);
-            gpio_dev_map(CONFIG_UART1_RX_PIN, GPIO_DEV_UART1_RXD);
-            // gpio_dev_map resets the pin register and never applies pull,
-            // so the RX line would float low and flood with 0x00. Force pull-up.
-            bk_gpio_pull_up(CONFIG_UART1_RX_PIN);
-            bk_gpio_pull_up(CONFIG_UART1_TX_PIN);
-            break;
-
-        case UART_ID_2:
-            gpio_dev_unmap(CONFIG_UART2_RX_PIN);
-            gpio_dev_unmap(CONFIG_UART2_TX_PIN);
-            gpio_dev_map(CONFIG_UART2_RX_PIN, GPIO_DEV_UART2_RXD);
-            gpio_dev_map(CONFIG_UART2_TX_PIN, GPIO_DEV_UART2_TXD);
-            break;
-
-        default:
-            LOGE("uart_id err %d", uart_id);
-            return -1;
-            break;
-        }
-
         LOGD("before init uart %d", uart_id);
         ret = bk_uart_init(uart_id, &s_bsc_config.uart_config);
         LOGD("after init uart %d", uart_id);
