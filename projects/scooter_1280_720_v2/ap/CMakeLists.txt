@@ -4,13 +4,22 @@ set(MULTIMEDIA_DEVICE_SERVICE_DIR
     ${CMAKE_CURRENT_LIST_DIR}/../../../components/multimedia_device_service
 )
 
+# SDK audio-player component root (sits beside the Solution tree; see project
+# Makefile: SDK_DIR ?= ../../../SDK).
+set(BK_AUDIO_PLAYER_DIR
+    ${CMAKE_CURRENT_LIST_DIR}/../../../../SDK/ap/components/bk_audio_player
+)
+
 set(incs .
     dashcam
     ota
     home
     phone_book
+    music_player
     ${BEKEN_GENERATOR_INCLUDE_DIRS}
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/include
+    ${BK_AUDIO_PLAYER_DIR}
+    ${BK_AUDIO_PLAYER_DIR}/include
 )
 
 set(srcs
@@ -33,6 +42,7 @@ set(srcs
     ota/ota_ui.c
     home/home_ui.c
     phone_book/phone_book_ui.c
+    music_player/music_player_ui.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_camera.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_codec.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_gpu.c
@@ -48,7 +58,8 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
               jpeg_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
-              bk_video_recorder bk_video_player bk_encoder app boot_avi_play)
+              bk_video_recorder bk_video_player bk_encoder app boot_avi_play
+              bk_audio_player)
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")
 

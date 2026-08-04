@@ -14,6 +14,7 @@ typedef enum
     HOME_UI_NAV_DASHCAM = 1,
     HOME_UI_NAV_OTA,
     HOME_UI_NAV_PHONE_BOOK,
+    HOME_UI_NAV_MUSIC_PLAYER,
 } home_ui_nav_item_t;
 
 typedef void (*home_ui_nav_callback_t)(int32_t item);
@@ -58,6 +59,11 @@ void phone_key_hangup(void);
  * text (e.g. PBAP contact names) renders without baking a bitmap CJK font.
  * Returns NULL if the font has not been loaded yet. */
 lv_font_t *home_ui_get_cn_font(void);
+
+/* Create an additional CJK font at an arbitrary pixel size, sharing the single
+ * PSRAM-resident TTF buffer (only a per-size glyph cache is added). Returns NULL
+ * if the TTF buffer is not available. Create each size once and keep it. */
+lv_font_t *home_ui_create_cn_font(uint32_t px);
 
 #ifdef __cplusplus
 }

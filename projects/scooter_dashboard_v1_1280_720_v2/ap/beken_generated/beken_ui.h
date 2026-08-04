@@ -121,6 +121,9 @@ typedef struct
     lv_obj_t *home_phone_entry;
     lv_obj_t *home_phone_ic;
     lv_obj_t *home_phone_lbl;
+    lv_obj_t *home_music_entry;
+    lv_obj_t *home_nav_music_ic;
+    lv_obj_t *home_nav_music_lbl;
     lv_obj_t *home_np_panel;
     lv_obj_t *home_music_ic;
     lv_obj_t *home_song_title;
@@ -344,6 +347,67 @@ typedef struct
     lv_obj_t *phone_book_r_call6;
     lv_obj_t *phone_book_r_tm6;
     lv_obj_t *phone_book_bt_ic;
+    /* Page: 5 objects */
+    lv_obj_t *music_player;
+    lv_obj_t *music_player_bg_img;
+    lv_obj_t *music_player_page_title;
+    lv_obj_t *music_player_np_panel;
+    lv_obj_t *music_player_np_section;
+    lv_obj_t *music_player_album_art;
+    lv_obj_t *music_player_album_note;
+    lv_obj_t *music_player_song_title;
+    lv_obj_t *music_player_song_artist;
+    lv_obj_t *music_player_progress;
+    lv_obj_t *music_player_cur_time;
+    lv_obj_t *music_player_total_time;
+    lv_obj_t *music_player_btn_prev;
+    lv_obj_t *music_player_btn_play;
+    lv_obj_t *music_player_btn_next;
+    lv_obj_t *music_player_vol_lbl;
+    lv_obj_t *music_player_vol_slider;
+    lv_obj_t *music_player_btn_mode;
+    lv_obj_t *music_player_btn_vol_down;
+    lv_obj_t *music_player_btn_vol_up;
+    lv_obj_t *music_player_pl_panel;
+    lv_obj_t *music_player_pl_title;
+    lv_obj_t *music_player_pl_count;
+    lv_obj_t *music_player_pl_list;
+    lv_obj_t *music_player_row1;
+    lv_obj_t *music_player_r1_acc;
+    lv_obj_t *music_player_r1_idx;
+    lv_obj_t *music_player_r1_title;
+    lv_obj_t *music_player_r1_artist;
+    lv_obj_t *music_player_r1_dur;
+    lv_obj_t *music_player_row2;
+    lv_obj_t *music_player_r2_idx;
+    lv_obj_t *music_player_r2_title;
+    lv_obj_t *music_player_r2_artist;
+    lv_obj_t *music_player_r2_dur;
+    lv_obj_t *music_player_row3;
+    lv_obj_t *music_player_r3_idx;
+    lv_obj_t *music_player_r3_title;
+    lv_obj_t *music_player_r3_artist;
+    lv_obj_t *music_player_r3_dur;
+    lv_obj_t *music_player_row4;
+    lv_obj_t *music_player_r4_idx;
+    lv_obj_t *music_player_r4_title;
+    lv_obj_t *music_player_r4_artist;
+    lv_obj_t *music_player_r4_dur;
+    lv_obj_t *music_player_row5;
+    lv_obj_t *music_player_r5_idx;
+    lv_obj_t *music_player_r5_title;
+    lv_obj_t *music_player_r5_artist;
+    lv_obj_t *music_player_r5_dur;
+    lv_obj_t *music_player_row6;
+    lv_obj_t *music_player_r6_idx;
+    lv_obj_t *music_player_r6_title;
+    lv_obj_t *music_player_r6_artist;
+    lv_obj_t *music_player_r6_dur;
+    lv_obj_t *music_player_row7;
+    lv_obj_t *music_player_r7_idx;
+    lv_obj_t *music_player_r7_title;
+    lv_obj_t *music_player_r7_artist;
+    lv_obj_t *music_player_r7_dur;
 } bk_lv_ui_t;
 
 void init_page_home(bk_lv_ui_t *bk_ui);
@@ -371,9 +435,12 @@ void beken_ui_key_right(void);
  */
 void beken_ui_keypad_set_modal_group(lv_group_t *group);
 void beken_ui_nav_to_phone_book(void);
+void beken_ui_nav_to_music_player(void);
+void beken_ui_nav_home(void);
 void init_page_phone_book(bk_lv_ui_t *bk_ui);
 void destroy_page_phone_book(bk_lv_ui_t *bk_ui);
-
+void init_page_music_player(bk_lv_ui_t *bk_ui);
+void destroy_page_music_player(bk_lv_ui_t *bk_ui);
 /*
  * Wrap the background bitmap preloaded during the boot animation
  * (boot_bg_preload) onto a page's background image object. Shared by the page
@@ -389,6 +456,8 @@ LV_IMAGE_DECLARE(arrow_out_sm_30x30_RGB565A8_NONE);
 LV_IMAGE_DECLARE(avatar_sm_52x52_RGB565A8_NONE);
 LV_IMAGE_DECLARE(bt_gray_sm_28x28_RGB565A8_NONE);
 LV_IMAGE_DECLARE(bt_sm_28x28_RGB565A8_NONE);
+LV_IMAGE_DECLARE(btn_vol_down_44x44_RGB565A8_NONE);
+LV_IMAGE_DECLARE(btn_vol_up_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(contacts_ic2_tp_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(dash_bg_clean_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(entry_dashcam_status_copy_38x36_RGB565A8_NONE);
@@ -397,7 +466,12 @@ LV_IMAGE_DECLARE(home_bg_tech_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(incall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(light_grey_80x77_RGB565A8_NONE);
 LV_IMAGE_DECLARE(light_left_80x77_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_line_sm_38x36_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_next_sm_56x56_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_note_tp_110x74_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_note_tp_139x76_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_play_sm_72x72_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_prev_sm_56x56_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_bg_tech_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_ic_abs_33x31_RGB565A8_NONE);
 LV_IMAGE_DECLARE(nav_ic_back_status_copy_33x31_RGB565A8_NONE);
@@ -416,6 +490,10 @@ LV_IMAGE_DECLARE(oncall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(ota_bg_pure_black_copy_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(outcall_sm_44x44_RGB565A8_NONE);
 LV_IMAGE_DECLARE(play_btn_trans_ARGB8888);
+LV_IMAGE_DECLARE(repeat_sm_52x52_RGB565A8_NONE);
+LV_IMAGE_DECLARE(repeat_one_sm_52x52_RGB565A8_NONE);
+LV_IMAGE_DECLARE(shuffle_sm_52x52_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_pause_sm_72x72_RGB565A8_NONE);
 
 /* declare fonts */
 LV_FONT_DECLARE(lv_font_pingfang_SC_18);
@@ -442,6 +520,7 @@ LV_FONT_DECLARE(lv_font_pingfang_SC_28);
 LV_FONT_DECLARE(lv_font_pingfang_SC_11);
 LV_FONT_DECLARE(lv_font_pingfang_SC_80);
 LV_FONT_DECLARE(lv_font_montserrat_regular_32);
+LV_FONT_DECLARE(lv_font_pingfang_SC_26);
 
 /**
  * @brief Initialize the Beken UI system

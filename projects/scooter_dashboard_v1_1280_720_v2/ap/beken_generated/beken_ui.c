@@ -42,6 +42,7 @@
 #include "ota_ui.h"
 #include "home_ui.h"
 #include "phone_book_ui.h"
+#include "music_player_ui.h"
 
 bk_lv_ui_t bk_lv_tool_ui = {0};
 static lv_timer_t *s_dashcam_boot_timer = NULL;
@@ -92,6 +93,7 @@ typedef enum
     HOME_MENU_DASHCAM = HOME_UI_NAV_DASHCAM,
     HOME_MENU_OTA = HOME_UI_NAV_OTA,
     HOME_MENU_PHONE_BOOK = HOME_UI_NAV_PHONE_BOOK,
+    HOME_MENU_MUSIC_PLAYER = HOME_UI_NAV_MUSIC_PLAYER,
     HOME_MENU_COUNT,
 } home_menu_item_t;
 
@@ -138,6 +140,7 @@ static void beken_ui_create_home(bk_lv_ui_t *ui);
 static void beken_ui_create_dashcam(bk_lv_ui_t *ui);
 static void beken_ui_create_ota(bk_lv_ui_t *ui);
 static void beken_ui_create_phone_book(bk_lv_ui_t *ui);
+static void beken_ui_create_music_player(bk_lv_ui_t *ui);
 
 /*
  * One descriptor owns every page-specific operation. Adding a page should only
@@ -175,6 +178,14 @@ static const ui_page_descriptor_t s_ui_pages[HOME_MENU_COUNT] = {
         phone_book_ui_leave,
         NULL,
         phone_book_ui_get_group,
+    },
+    [HOME_MENU_MUSIC_PLAYER] = {
+        offsetof(bk_lv_ui_t, music_player),
+        beken_ui_create_music_player,
+        music_player_ui_enter,
+        music_player_ui_leave,
+        NULL,
+        music_player_ui_get_group,
     },
 };
 
@@ -322,6 +333,12 @@ static void beken_ui_create_ota(bk_lv_ui_t *ui)
 static void beken_ui_create_phone_book(bk_lv_ui_t *ui)
 {
     init_page_phone_book(ui);
+}
+
+static void beken_ui_create_music_player(bk_lv_ui_t *ui)
+{
+    init_page_music_player(ui);
+    beken_ui_install_preloaded_bg(ui->music_player_bg_img);
 }
 
 static lv_obj_t *beken_ui_ensure_page(bk_lv_ui_t *ui, int32_t page)
@@ -501,7 +518,7 @@ static void home_menu_select_delta(int32_t delta)
 
     if (item <= HOME_MENU_HOME)
     {
-        item = HOME_MENU_PHONE_BOOK;
+        item = HOME_MENU_MUSIC_PLAYER;
     }
     else if (item >= HOME_MENU_COUNT)
     {
@@ -584,6 +601,16 @@ void beken_ui_nav_to_ota_update(void)
 void beken_ui_nav_to_phone_book(void)
 {
     beken_ui_nav_to_page(HOME_MENU_PHONE_BOOK);
+}
+
+void beken_ui_nav_to_music_player(void)
+{
+    beken_ui_nav_to_page(HOME_MENU_MUSIC_PLAYER);
+}
+
+void beken_ui_nav_home(void)
+{
+    beken_ui_nav_to_page(HOME_MENU_HOME);
 }
 
 /*
@@ -871,16 +898,25 @@ void beken_ui_key_down(void)
     beken_ui_send_direction_key(LV_KEY_DOWN);
 }
 
+/* On the phone_book and music_player pages LEFT/RIGHT switch between the two
+ * navigable zones (contacts/recents, now-playing/playlist); elsewhere they cycle
+ * the focus (PREV/NEXT) through the active group. */
+static bool beken_ui_page_uses_lr_zones(void)
+{
+    return s_home_menu_active == HOME_MENU_PHONE_BOOK ||
+           s_home_menu_active == HOME_MENU_MUSIC_PLAYER;
+}
+
 void beken_ui_key_left(void)
 {
-    beken_ui_send_direction_key(s_home_menu_active == HOME_MENU_PHONE_BOOK
+    beken_ui_send_direction_key(beken_ui_page_uses_lr_zones()
                                     ? LV_KEY_LEFT
                                     : LV_KEY_PREV);
 }
 
 void beken_ui_key_right(void)
 {
-    beken_ui_send_direction_key(s_home_menu_active == HOME_MENU_PHONE_BOOK
+    beken_ui_send_direction_key(beken_ui_page_uses_lr_zones()
                                     ? LV_KEY_RIGHT
                                     : LV_KEY_NEXT);
 }

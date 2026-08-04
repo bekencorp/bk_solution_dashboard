@@ -264,6 +264,20 @@ void home_phone_entry_event_cb(lv_event_t *e)
     }
 }
 
+/**
+ * @brief Event callback for home_music_entry - handles all events
+ * @param e LVGL event object
+ */
+void home_music_entry_event_cb(lv_event_t *e)
+{
+    bk_lv_ui_t *bk_ui = &bk_lv_tool_ui;   
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if (code == LV_EVENT_CLICKED) {
+        beken_ui_nav_to_music_player();
+    }
+}
+
 
 /*
  * @brief: init page home
@@ -2642,9 +2656,9 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_shadow_spread(bk_ui->home_nav_panel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     bk_ui->home_dash_entry = lv_obj_create(bk_ui->home_nav_panel);
-    lv_obj_set_x(bk_ui->home_dash_entry, 12);
+    lv_obj_set_x(bk_ui->home_dash_entry, 2);
     lv_obj_set_y(bk_ui->home_dash_entry, 2);
-    lv_obj_set_width(bk_ui->home_dash_entry, 125);
+    lv_obj_set_width(bk_ui->home_dash_entry, 96);
     lv_obj_set_height(bk_ui->home_dash_entry, 108);
     lv_obj_remove_flag(bk_ui->home_dash_entry, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(bk_ui->home_dash_entry, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2674,7 +2688,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_image_set_src(bk_ui->home_dash_ic, &entry_dashcam_status_copy_38x36_RGB565A8_NONE);
     lv_image_set_pivot(bk_ui->home_dash_ic, 50, 50);
     lv_image_set_rotation(bk_ui->home_dash_ic, 0);
-    lv_obj_set_x(bk_ui->home_dash_ic, 41);
+    lv_obj_set_x(bk_ui->home_dash_ic, 29);
     lv_obj_set_y(bk_ui->home_dash_ic, 27);
     lv_obj_set_width(bk_ui->home_dash_ic, 38);
     lv_obj_set_height(bk_ui->home_dash_ic, 36);
@@ -2702,7 +2716,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_label_set_long_mode(bk_ui->home_dash_lbl, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_x(bk_ui->home_dash_lbl, 0);
     lv_obj_set_y(bk_ui->home_dash_lbl, 62);
-    lv_obj_set_width(bk_ui->home_dash_lbl, 125);
+    lv_obj_set_width(bk_ui->home_dash_lbl, 96);
     lv_obj_set_height(bk_ui->home_dash_lbl, 22);
     lv_obj_set_style_bg_color(bk_ui->home_dash_lbl, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->home_dash_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2732,9 +2746,9 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_shadow_spread(bk_ui->home_dash_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     bk_ui->home_ota_entry = lv_obj_create(bk_ui->home_nav_panel);
-    lv_obj_set_x(bk_ui->home_ota_entry, 151);
+    lv_obj_set_x(bk_ui->home_ota_entry, 102);
     lv_obj_set_y(bk_ui->home_ota_entry, 2);
-    lv_obj_set_width(bk_ui->home_ota_entry, 125);
+    lv_obj_set_width(bk_ui->home_ota_entry, 96);
     lv_obj_set_height(bk_ui->home_ota_entry, 108);
     lv_obj_remove_flag(bk_ui->home_ota_entry, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(bk_ui->home_ota_entry, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2764,7 +2778,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_image_set_src(bk_ui->home_ota_ic, &entry_ota_status_copy_38x36_RGB565A8_NONE);
     lv_image_set_pivot(bk_ui->home_ota_ic, 50, 50);
     lv_image_set_rotation(bk_ui->home_ota_ic, 0);
-    lv_obj_set_x(bk_ui->home_ota_ic, 45);
+    lv_obj_set_x(bk_ui->home_ota_ic, 29);
     lv_obj_set_y(bk_ui->home_ota_ic, 26);
     lv_obj_set_width(bk_ui->home_ota_ic, 38);
     lv_obj_set_height(bk_ui->home_ota_ic, 36);
@@ -2792,7 +2806,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_label_set_long_mode(bk_ui->home_ota_lbl, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_x(bk_ui->home_ota_lbl, 0);
     lv_obj_set_y(bk_ui->home_ota_lbl, 62);
-    lv_obj_set_width(bk_ui->home_ota_lbl, 125);
+    lv_obj_set_width(bk_ui->home_ota_lbl, 96);
     lv_obj_set_height(bk_ui->home_ota_lbl, 22);
     lv_obj_set_style_bg_color(bk_ui->home_ota_lbl, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->home_ota_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2822,9 +2836,9 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_shadow_spread(bk_ui->home_ota_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     bk_ui->home_phone_entry = lv_obj_create(bk_ui->home_nav_panel);
-    lv_obj_set_x(bk_ui->home_phone_entry, 280);
+    lv_obj_set_x(bk_ui->home_phone_entry, 202);
     lv_obj_set_y(bk_ui->home_phone_entry, 2);
-    lv_obj_set_width(bk_ui->home_phone_entry, 120);
+    lv_obj_set_width(bk_ui->home_phone_entry, 96);
     lv_obj_set_height(bk_ui->home_phone_entry, 108);
     lv_obj_remove_flag(bk_ui->home_phone_entry, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(bk_ui->home_phone_entry, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2854,7 +2868,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_image_set_src(bk_ui->home_phone_ic, &contacts_ic2_tp_38x36_RGB565A8_NONE);
     lv_image_set_pivot(bk_ui->home_phone_ic, 50, 50);
     lv_image_set_rotation(bk_ui->home_phone_ic, 0);
-    lv_obj_set_x(bk_ui->home_phone_ic, 41);
+    lv_obj_set_x(bk_ui->home_phone_ic, 29);
     lv_obj_set_y(bk_ui->home_phone_ic, 27);
     lv_obj_set_width(bk_ui->home_phone_ic, 38);
     lv_obj_set_height(bk_ui->home_phone_ic, 36);
@@ -2882,7 +2896,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_label_set_long_mode(bk_ui->home_phone_lbl, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_x(bk_ui->home_phone_lbl, 0);
     lv_obj_set_y(bk_ui->home_phone_lbl, 62);
-    lv_obj_set_width(bk_ui->home_phone_lbl, 120);
+    lv_obj_set_width(bk_ui->home_phone_lbl, 96);
     lv_obj_set_height(bk_ui->home_phone_lbl, 22);
     lv_obj_set_style_bg_color(bk_ui->home_phone_lbl, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->home_phone_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2910,6 +2924,96 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_shadow_offset_x(bk_ui->home_phone_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_offset_y(bk_ui->home_phone_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_spread(bk_ui->home_phone_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    bk_ui->home_music_entry = lv_obj_create(bk_ui->home_nav_panel);
+    lv_obj_set_x(bk_ui->home_music_entry, 302);
+    lv_obj_set_y(bk_ui->home_music_entry, 2);
+    lv_obj_set_width(bk_ui->home_music_entry, 96);
+    lv_obj_set_height(bk_ui->home_music_entry, 108);
+    lv_obj_remove_flag(bk_ui->home_music_entry, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_set_style_bg_color(bk_ui->home_music_entry, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(bk_ui->home_music_entry, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(bk_ui->home_music_entry, lv_color_hex(0xd9d9d9), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_opa(bk_ui->home_music_entry, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_side(bk_ui->home_music_entry, LV_BORDER_SIDE_FULL, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_clip_corner(bk_ui->home_music_entry, false, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_row(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_column(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(bk_ui->home_music_entry, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(bk_ui->home_music_entry, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_x(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_y(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(bk_ui->home_music_entry, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(bk_ui->home_music_entry, home_music_entry_event_cb, LV_EVENT_ALL, NULL);
+
+    bk_ui->home_nav_music_ic = lv_image_create(bk_ui->home_music_entry);
+    lv_image_set_src(bk_ui->home_nav_music_ic, &music_line_sm_38x36_RGB565A8_NONE);
+    lv_image_set_pivot(bk_ui->home_nav_music_ic, 50, 50);
+    lv_image_set_rotation(bk_ui->home_nav_music_ic, 0);
+    lv_obj_set_x(bk_ui->home_nav_music_ic, 29);
+    lv_obj_set_y(bk_ui->home_nav_music_ic, 27);
+    lv_obj_set_width(bk_ui->home_nav_music_ic, 38);
+    lv_obj_set_height(bk_ui->home_nav_music_ic, 36);
+    lv_obj_set_style_bg_color(bk_ui->home_nav_music_ic, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(bk_ui->home_nav_music_ic, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(bk_ui->home_nav_music_ic, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_opa(bk_ui->home_nav_music_ic, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_side(bk_ui->home_nav_music_ic, LV_BORDER_SIDE_FULL, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_clip_corner(bk_ui->home_nav_music_ic, false, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(bk_ui->home_nav_music_ic, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(bk_ui->home_nav_music_ic, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_x(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_y(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_image_opa(bk_ui->home_nav_music_ic, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_image_recolor(bk_ui->home_nav_music_ic, lv_color_hex(0x00ff00), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_image_recolor_opa(bk_ui->home_nav_music_ic, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    bk_ui->home_nav_music_lbl = lv_label_create(bk_ui->home_music_entry);
+    lv_label_set_text(bk_ui->home_nav_music_lbl, "MUSIC");
+    lv_label_set_long_mode(bk_ui->home_nav_music_lbl, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_set_x(bk_ui->home_nav_music_lbl, 0);
+    lv_obj_set_y(bk_ui->home_nav_music_lbl, 62);
+    lv_obj_set_width(bk_ui->home_nav_music_lbl, 96);
+    lv_obj_set_height(bk_ui->home_nav_music_lbl, 22);
+    lv_obj_set_style_bg_color(bk_ui->home_nav_music_lbl, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(bk_ui->home_nav_music_lbl, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(bk_ui->home_nav_music_lbl, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_opa(bk_ui->home_nav_music_lbl, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_side(bk_ui->home_nav_music_lbl, LV_BORDER_SIDE_FULL, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_clip_corner(bk_ui->home_nav_music_lbl, false, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_row(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_column(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(bk_ui->home_nav_music_lbl, lv_color_hex(0x1EF2C3), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(bk_ui->home_nav_music_lbl, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->home_nav_music_lbl, &lv_font_montserrat_regular_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(bk_ui->home_nav_music_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_letter_space(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_color(bk_ui->home_nav_music_lbl, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_opa(bk_ui->home_nav_music_lbl, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_x(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_offset_y(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_spread(bk_ui->home_nav_music_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     bk_ui->home_np_panel = lv_obj_create(bk_ui->home);
     lv_obj_set_x(bk_ui->home_np_panel, 505);

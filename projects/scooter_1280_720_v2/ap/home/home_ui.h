@@ -42,6 +42,11 @@ void phone_key_hangup(void);
  * Returns NULL if the font has not been loaded yet. */
 lv_font_t *home_ui_get_cn_font(void);
 
+/* Create an additional CJK font at an arbitrary pixel size, sharing the single
+ * PSRAM-resident TTF buffer (only a per-size glyph cache is added). Returns NULL
+ * if the TTF buffer is not available. Create each size once and keep it. */
+lv_font_t *home_ui_create_cn_font(uint32_t px);
+
 #ifdef __cplusplus
 }
 #endif

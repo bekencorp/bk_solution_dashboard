@@ -125,7 +125,7 @@ Dashboard V1.0 按键 GPIO 定义如下：
 
 工程启动时已注册 `mtp` CLI，但不会自动开启 USB MTP 设备。
 
-1. 插入已格式化的 SD 卡，并使用 USB 连接设备与 PC。
+1. 使用 USB 连接设备与 PC。
 2. 在串口执行 `ap_cmd mtp start`。
 3. PC 会将设备枚举为 MTP 媒体设备，可浏览和拷贝 `/sd0` 中的文件，包括 `/sd0/dashcam` 录像。
 4. 使用结束后执行 `ap_cmd mtp stop`。

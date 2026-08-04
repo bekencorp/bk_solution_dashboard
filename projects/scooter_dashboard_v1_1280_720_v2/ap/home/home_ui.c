@@ -28,6 +28,7 @@ static home_ui_nav_callback_t s_nav_activate_cb = NULL;
 extern void home_dash_entry_event_cb(lv_event_t *e);
 extern void home_ota_entry_event_cb(lv_event_t *e);
 extern void home_phone_entry_event_cb(lv_event_t *e);
+extern void home_music_entry_event_cb(lv_event_t *e);
 
 static lv_obj_t *home_ui_nav_entry_for_item(int32_t item)
 {
@@ -41,6 +42,8 @@ static lv_obj_t *home_ui_nav_entry_for_item(int32_t item)
         return ui->home_ota_entry;
     case HOME_UI_NAV_PHONE_BOOK:
         return ui->home_phone_entry;
+    case HOME_UI_NAV_MUSIC_PLAYER:
+        return ui->home_music_entry;
     default:
         return NULL;
     }
@@ -101,16 +104,19 @@ static void home_ui_nav_apply_selection(int32_t selected_item)
         ui->home_dash_entry,
         ui->home_ota_entry,
         ui->home_phone_entry,
+        ui->home_music_entry,
     };
     lv_obj_t *icons[] = {
         ui->home_dash_ic,
         ui->home_ota_ic,
         ui->home_phone_ic,
+        ui->home_nav_music_ic,
     };
     const int32_t items[] = {
         HOME_UI_NAV_DASHCAM,
         HOME_UI_NAV_OTA,
         HOME_UI_NAV_PHONE_BOOK,
+        HOME_UI_NAV_MUSIC_PLAYER,
     };
     const int32_t normal_scale = 256;
     const int32_t selected_scale = 410;
@@ -121,7 +127,7 @@ static void home_ui_nav_apply_selection(int32_t selected_item)
         return;
     }
 
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < 4; i++)
     {
         if (entries[i] != NULL && lv_obj_is_valid(entries[i]))
         {
@@ -160,6 +166,10 @@ static int32_t home_ui_nav_item_for_entry(lv_obj_t *entry)
     if (entry == bk_lv_tool_ui.home_phone_entry)
     {
         return HOME_UI_NAV_PHONE_BOOK;
+    }
+    if (entry == bk_lv_tool_ui.home_music_entry)
+    {
+        return HOME_UI_NAV_MUSIC_PLAYER;
     }
 
     return 0;
@@ -204,6 +214,9 @@ static void home_ui_nav_replace_generated_cb(lv_obj_t *entry, int32_t item)
     case HOME_UI_NAV_PHONE_BOOK:
         lv_obj_remove_event_cb(entry, home_phone_entry_event_cb);
         break;
+    case HOME_UI_NAV_MUSIC_PLAYER:
+        lv_obj_remove_event_cb(entry, home_music_entry_event_cb);
+        break;
     default:
         return;
     }
@@ -241,7 +254,7 @@ void home_ui_nav_group_build(int32_t selected_item,
 
     lv_group_remove_all_objs(s_nav_group);
 
-    for (item = HOME_UI_NAV_DASHCAM; item <= HOME_UI_NAV_PHONE_BOOK; item++)
+    for (item = HOME_UI_NAV_DASHCAM; item <= HOME_UI_NAV_MUSIC_PLAYER; item++)
     {
         lv_obj_t *entry = home_ui_nav_entry_for_item(item);
 
@@ -310,20 +323,26 @@ lv_group_t *home_ui_get_group(void)
 #define HOME_CN_TTF_GLYPH_CACHE_CNT 64
 static lv_font_t *s_cn_font = NULL;
 static void *s_cn_font_buf = NULL;
+static uint32_t s_cn_font_buf_size = 0;
 
-/* Read the whole TTF into PSRAM and build a tiny_ttf font from the buffer.
- * Returns NULL on any failure (file missing, OOM, short read, parse error). */
-static lv_font_t *home_cn_font_load(void)
+/* Read the whole TTF into a single PSRAM buffer once. All tiny_ttf fonts (any
+ * size) then share this buffer, so it must outlive them (never freed). Returns
+ * true when the buffer is available. */
+static bool home_cn_buf_ensure(void)
 {
     lv_fs_file_t f;
     uint32_t size = 0;
     uint32_t rd = 0;
-    lv_font_t *font;
+
+    if (s_cn_font_buf != NULL)
+    {
+        return true;
+    }
 
     if (lv_fs_open(&f, HOME_CN_TTF_PATH, LV_FS_MODE_RD) != LV_FS_RES_OK)
     {
         BK_LOGE("home_ui", "open %s failed\n", HOME_CN_TTF_PATH);
-        return NULL;
+        return false;
     }
     lv_fs_seek(&f, 0, LV_FS_SEEK_END);
     lv_fs_tell(&f, &size);
@@ -332,7 +351,7 @@ static lv_font_t *home_cn_font_load(void)
     {
         lv_fs_close(&f);
         BK_LOGE("home_ui", "%s is empty\n", HOME_CN_TTF_PATH);
-        return NULL;
+        return false;
     }
 
     s_cn_font_buf = psram_malloc(size);
@@ -340,7 +359,7 @@ static lv_font_t *home_cn_font_load(void)
     {
         lv_fs_close(&f);
         BK_LOGE("home_ui", "psram_malloc(%u) for ttf failed\n", (unsigned)size);
-        return NULL;
+        return false;
     }
 
     if (lv_fs_read(&f, s_cn_font_buf, size, &rd) != LV_FS_RES_OK || rd != size)
@@ -349,20 +368,34 @@ static lv_font_t *home_cn_font_load(void)
         psram_free(s_cn_font_buf);
         s_cn_font_buf = NULL;
         BK_LOGE("home_ui", "read %s short (%u/%u)\n", HOME_CN_TTF_PATH, (unsigned)rd, (unsigned)size);
-        return NULL;
+        return false;
     }
     lv_fs_close(&f);
+
+    s_cn_font_buf_size = size;
+    return true;
+}
+
+/* Build the default-size CJK tiny_ttf font from the shared PSRAM buffer.
+ * Returns NULL on any failure (file missing, OOM, short read, parse error). */
+static lv_font_t *home_cn_font_load(void)
+{
+    lv_font_t *font;
+
+    if (!home_cn_buf_ensure())
+    {
+        return NULL;
+    }
 
     /* create_data does NOT copy: it keeps a pointer into s_cn_font_buf, so the
      * buffer must outlive the font (both are never freed). Use the _ex variant
      * to cap the glyph cache (default 256 blows the HSRAM heap, see above). */
-    font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, size, HOME_CN_TTF_SIZE,
+    font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size,
+                                      HOME_CN_TTF_SIZE,
                                       LV_FONT_KERNING_NORMAL,
                                       HOME_CN_TTF_GLYPH_CACHE_CNT);
     if (font == NULL)
     {
-        psram_free(s_cn_font_buf);
-        s_cn_font_buf = NULL;
         BK_LOGE("home_ui", "tiny_ttf parse %s failed\n", HOME_CN_TTF_PATH);
     }
     return font;
@@ -376,6 +409,23 @@ static lv_font_t *home_cn_font_load(void)
 lv_font_t *home_ui_get_cn_font(void)
 {
     return s_cn_font;
+}
+
+/*
+ * Create an additional CJK font at an arbitrary pixel size, sharing the single
+ * PSRAM TTF buffer (no extra copy of the font data; only a per-size glyph cache).
+ * Returns NULL if the buffer is unavailable. The caller keeps the returned font
+ * for the process lifetime (never freed, like s_cn_font) - create each size once.
+ */
+lv_font_t *home_ui_create_cn_font(uint32_t px)
+{
+    if (!home_cn_buf_ensure())
+    {
+        return NULL;
+    }
+    return lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size, px,
+                                      LV_FONT_KERNING_NORMAL,
+                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
 }
 
 /*

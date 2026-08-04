@@ -41,13 +41,6 @@ lv_group_t *phone_book_ui_get_group(void);
 bool phone_book_ui_handle_key_double(void);
 bool phone_book_ui_handle_key_single(void);
 
-/*
- * long : when a list is focused, dial the currently-selected contact / recent
- *        (HFP outgoing call); returns false at page focus so the home-menu
- *        long-press (return home) still works.
- */
-bool phone_book_ui_handle_key_long(void);
-
 #ifdef __cplusplus
 }
 #endif

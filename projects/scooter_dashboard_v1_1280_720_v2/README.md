@@ -125,7 +125,7 @@ Use directory browsing or file download to retrieve recordings. FTP uses clear-t
 
 The `mtp` CLI is registered during startup, but the USB MTP device is not started automatically.
 
-1. Insert a formatted SD card and connect the board to a PC through USB.
+1. Connect the board to a PC through USB.
 2. Run `ap_cmd mtp start` in the serial CLI.
 3. The PC enumerates the board as an MTP media device. Browse or copy files under `/sd0`, including recordings in `/sd0/dashcam`.
 4. Run `ap_cmd mtp stop` when finished.

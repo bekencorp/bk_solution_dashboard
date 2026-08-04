@@ -39,6 +39,7 @@
 #include "ota_ui.h"
 #include "home_ui.h"
 #include "phone_book_ui.h"
+#include "music_player_ui.h"
 
 bk_lv_ui_t bk_lv_tool_ui = {0};
 
@@ -70,6 +71,7 @@ typedef enum
     HOME_MENU_DASHCAM,
     HOME_MENU_OTA,
     HOME_MENU_PHONE_BOOK,
+    HOME_MENU_MUSIC_PLAYER,
     HOME_MENU_COUNT,
 } home_menu_item_t;
 
@@ -135,9 +137,11 @@ static void home_menu_apply_selection(void)
     lv_obj_t *dash = ui->home_dash_entry;
     lv_obj_t *ota = ui->home_ota_entry;
     lv_obj_t *phone = ui->home_phone_entry;
+    lv_obj_t *music = ui->home_music_entry;
     lv_obj_t *dash_ic = ui->home_dash_ic;
     lv_obj_t *ota_ic = ui->home_ota_ic;
     lv_obj_t *phone_ic = ui->home_phone_ic;
+    lv_obj_t *music_ic = ui->home_nav_music_ic;
     const int32_t normal_scale = 256;
     const int32_t selected_scale = 410;
 
@@ -167,6 +171,13 @@ static void home_menu_apply_selection(void)
         home_nav_entry_set_scale(phone, normal_scale);
     }
 
+    if (music != NULL && lv_obj_is_valid(music))
+    {
+        lv_obj_set_style_border_width(music, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_shadow_width(music, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        home_nav_entry_set_scale(music, normal_scale);
+    }
+
     if (dash_ic != NULL && lv_obj_is_valid(dash_ic))
     {
         lv_image_set_pivot(dash_ic, lv_obj_get_width(dash_ic) / 2, lv_obj_get_height(dash_ic) / 2);
@@ -186,6 +197,13 @@ static void home_menu_apply_selection(void)
         lv_image_set_pivot(phone_ic, lv_obj_get_width(phone_ic) / 2, lv_obj_get_height(phone_ic) / 2);
         home_nav_image_animate_scale(phone_ic,
                                      s_home_menu_selected == HOME_MENU_PHONE_BOOK ? selected_scale : normal_scale);
+    }
+
+    if (music_ic != NULL && lv_obj_is_valid(music_ic))
+    {
+        lv_image_set_pivot(music_ic, lv_obj_get_width(music_ic) / 2, lv_obj_get_height(music_ic) / 2);
+        home_nav_image_animate_scale(music_ic,
+                                     s_home_menu_selected == HOME_MENU_MUSIC_PLAYER ? selected_scale : normal_scale);
     }
 }
 
@@ -221,6 +239,10 @@ static void beken_ui_free_heavy_page(bk_lv_ui_t *ui, int32_t page)
     else if (page == HOME_MENU_PHONE_BOOK)
     {
         slot = &ui->phone_book;
+    }
+    else if (page == HOME_MENU_MUSIC_PLAYER)
+    {
+        slot = &ui->music_player;
     }
     else if (page == HOME_MENU_HOME)
     {
@@ -272,6 +294,10 @@ static void home_menu_free_inactive_heavy_pages(int32_t active_page)
     {
         beken_ui_free_heavy_page(ui, HOME_MENU_PHONE_BOOK);
     }
+    if (active_page != HOME_MENU_MUSIC_PLAYER)
+    {
+        beken_ui_free_heavy_page(ui, HOME_MENU_MUSIC_PLAYER);
+    }
     if (active_page != HOME_MENU_HOME)
     {
         beken_ui_free_heavy_page(ui, HOME_MENU_HOME);
@@ -302,6 +328,10 @@ static void home_menu_load_selected_page(void)
         else if (old_page == HOME_MENU_PHONE_BOOK)
         {
             phone_book_ui_leave();
+        }
+        else if (old_page == HOME_MENU_MUSIC_PLAYER)
+        {
+            music_player_ui_leave();
         }
     }
 
@@ -338,6 +368,14 @@ static void home_menu_load_selected_page(void)
         }
         target = ui->phone_book;
         break;
+    case HOME_MENU_MUSIC_PLAYER:
+        if (ui->music_player == NULL)
+        {
+            init_page_music_player(ui);
+            beken_ui_install_preloaded_bg(ui->music_player_bg_img);
+        }
+        target = ui->music_player;
+        break;
     default:
         break;
     }
@@ -370,6 +408,10 @@ static void home_menu_load_selected_page(void)
     {
         phone_book_ui_enter();
     }
+    else if (s_home_menu_active == HOME_MENU_MUSIC_PLAYER)
+    {
+        music_player_ui_enter();
+    }
 }
 
 static void home_menu_open(home_menu_item_t item)
@@ -394,6 +436,10 @@ static void home_menu_return_home(void)
     else if (old_page == HOME_MENU_PHONE_BOOK)
     {
         phone_book_ui_leave();
+    }
+    else if (old_page == HOME_MENU_MUSIC_PLAYER)
+    {
+        music_player_ui_leave();
     }
 
     if (ui->home == NULL || !lv_obj_is_valid(ui->home))
@@ -439,7 +485,7 @@ static void home_menu_select_delta(int32_t delta)
     s_home_menu_selected += delta;
     if (s_home_menu_selected <= HOME_MENU_HOME)
     {
-        s_home_menu_selected = HOME_MENU_PHONE_BOOK;
+        s_home_menu_selected = HOME_MENU_MUSIC_PLAYER;
     }
     else if (s_home_menu_selected >= HOME_MENU_COUNT)
     {
@@ -516,6 +562,16 @@ void beken_ui_nav_to_phone_book(void)
     lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)HOME_MENU_PHONE_BOOK);
 }
 
+void beken_ui_nav_to_music_player(void)
+{
+    lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)HOME_MENU_MUSIC_PLAYER);
+}
+
+void beken_ui_nav_home(void)
+{
+    lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)HOME_MENU_HOME);
+}
+
 /*
  * Heap probe for the OOM (LV_ASSERT_MALLOC) investigation. Logs the free and
  * lowest-ever-free bytes of the three heaps LVGL can draw from. Compare the
@@ -562,6 +618,14 @@ static void home_menu_toggle_async_cb(void *user_data)
         return;
     }
 
+    /* On the music_player page, a single press selects a playlist row when the
+     * list is focused; at page focus it falls through to return home. */
+    if (music_player_ui_handle_key_single())
+    {
+        beken_ui_log_heap("toggle-out");
+        return;
+    }
+
     if (s_home_menu_active != HOME_MENU_HOME)
     {
         home_menu_return_home();
@@ -571,13 +635,13 @@ static void home_menu_toggle_async_cb(void *user_data)
         home_menu_item_t selected = (home_menu_item_t)s_home_menu_selected;
 
         if (selected != HOME_MENU_DASHCAM && selected != HOME_MENU_OTA &&
-            selected != HOME_MENU_PHONE_BOOK)
+            selected != HOME_MENU_PHONE_BOOK && selected != HOME_MENU_MUSIC_PLAYER)
         {
             selected = s_home_menu_next_candidate;
         }
 
-        /* Cycle DASHCAM -> OTA -> PHONE_BOOK -> DASHCAM on each short press. */
-        selected = (selected >= HOME_MENU_PHONE_BOOK)
+        /* Cycle DASHCAM -> OTA -> PHONE_BOOK -> MUSIC_PLAYER -> DASHCAM. */
+        selected = (selected >= HOME_MENU_MUSIC_PLAYER)
                        ? HOME_MENU_DASHCAM
                        : (home_menu_item_t)(selected + 1);
         s_home_menu_next_candidate = selected;
@@ -600,6 +664,10 @@ static void home_menu_double_async_cb(void *user_data)
     /* On the phone_book page, double press cycles focus across the whole page,
      * the contacts list and the recents list. */
     (void)phone_book_ui_handle_key_double();
+
+    /* On the music_player page, double press cycles focus across the whole
+     * page, the now-playing panel and the playlist. */
+    (void)music_player_ui_handle_key_double();
 }
 
 static void home_menu_enter_async_cb(void *user_data)
@@ -618,6 +686,14 @@ static void home_menu_enter_async_cb(void *user_data)
      * page below (like ending any other page). */
     (void)phone_book_ui_handle_key_long();
 
+    /* Music player: a long press on a playlist row starts playback and stays
+     * on the page (like dashcam). Only fall through to return home when it did
+     * not consume the press. */
+    if (music_player_ui_handle_key_long())
+    {
+        return;
+    }
+
     if (s_home_menu_active != HOME_MENU_HOME)
     {
         home_menu_return_home();
@@ -625,7 +701,7 @@ static void home_menu_enter_async_cb(void *user_data)
     }
 
     if (s_home_menu_selected != HOME_MENU_DASHCAM && s_home_menu_selected != HOME_MENU_OTA &&
-        s_home_menu_selected != HOME_MENU_PHONE_BOOK)
+        s_home_menu_selected != HOME_MENU_PHONE_BOOK && s_home_menu_selected != HOME_MENU_MUSIC_PLAYER)
     {
         home_menu_select(s_home_menu_next_candidate);
     }

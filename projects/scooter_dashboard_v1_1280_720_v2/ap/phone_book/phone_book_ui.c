@@ -292,6 +292,8 @@ static void phone_book_dial_selection(pb_focus_t focus, int sel)
     {
         LOGI("dial %s\n", number);
         hfp_demo_dial(1, (uint8_t *)number);
+        /* Jump back home so the outgoing-call popup is visible right away. */
+        beken_ui_nav_home();
     }
     else
     {
@@ -782,52 +784,6 @@ bool phone_book_ui_handle_key_single(void)
     *sel = (*sel + 1) % cnt;
     pb_apply_selection(list, *sel, true);
     LOGI("single -> sel=%d (focus %d)\n", *sel, (int)s_focus);
-    return true;
-}
-
-bool phone_book_ui_handle_key_long(void)
-{
-    if (!phone_book_is_active() || s_focus == PB_FOCUS_NONE)
-    {
-        /* At page focus, let the home-menu long-press (return home) run. */
-        return false;
-    }
-
-#if CONFIG_PBAP_CONTACTS
-    char number[32] = {0};
-
-    /* Re-snapshot on demand: row order matches the snapshot order, so the
-     * selection index maps directly to the entry (avoids caching numbers). */
-    if (s_focus == PB_FOCUS_CONTACTS)
-    {
-        static pbap_contact_info_t snap[PB_MAX_ROWS];
-        int n = pbap_contacts_snapshot(snap, PB_MAX_ROWS);
-        if (s_contact_sel >= 0 && s_contact_sel < n)
-        {
-            snprintf(number, sizeof(number), "%s", snap[s_contact_sel].number);
-        }
-    }
-    else
-    {
-        static pbap_recent_info_t snap[PB_MAX_ROWS];
-        int n = pbap_recents_snapshot(snap, PB_MAX_ROWS);
-        if (s_recent_sel >= 0 && s_recent_sel < n)
-        {
-            snprintf(number, sizeof(number), "%s", snap[s_recent_sel].number);
-        }
-    }
-
-    if (number[0] != '\0')
-    {
-        LOGI("dial %s\n", number);
-        hfp_demo_dial(1, (uint8_t *)number);
-    }
-    else
-    {
-        LOGI("dial ignored: no number for sel\n");
-    }
-#endif
-
     return true;
 }
 
