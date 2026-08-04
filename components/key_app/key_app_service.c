@@ -22,9 +22,8 @@ extern void phone_key_hangup(void);
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+/* Debounce rapid presses on the pet-page toggle key (all boards). */
 #define USER_PET_TOGGLE_THROTTLE_MS 500
-#endif
 
 
 static void config_network(void)
@@ -38,22 +37,18 @@ static void config_network(void)
 
 static void release_info(void)
 {
-    LOGI("USER_REASE_INFO\r\n");
+    LOGI("USER_ERASE_INFO\r\n");
 #if CONFIG_BK_NETWORK_PROVISIONING
     erase_network_auto_reconnect_info();
 #endif
 }
 
 static KeyConfig_t key_configs[] = KEY_DEFAULT_CONFIG_TABLE;
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
 static uint32_t s_last_pet_toggle_ms = 0;
-#endif
 
 static void key_event_handler(uint8_t event)
 {
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
     uint32_t now_ms = 0;
-#endif
 
     if (IS_INVALID_EVENT(event))
     {
@@ -69,7 +64,6 @@ static void key_event_handler(uint8_t event)
             release_info();
             break;
         case USER_PET_TOGGLE:
-#if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
             now_ms = rtos_get_time();
             if (s_last_pet_toggle_ms != 0 &&
                 (now_ms - s_last_pet_toggle_ms) < USER_PET_TOGGLE_THROTTLE_MS)
@@ -80,16 +74,23 @@ static void key_event_handler(uint8_t event)
             }
 
             s_last_pet_toggle_ms = now_ms;
-#endif
             LOGI("USER_PET_TOGGLE\r\n");
             pet_page_toggle();
             break;
-        case USER_PET_ENTER:
 #if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
+        case USER_PET_ENTER:
             LOGI("USER_PET_ENTER\r\n");
             pet_page_enter();
-#endif
             break;
+#endif
+#if defined(CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0) && CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0
+        case USER_KEY4_PLACEHOLDER:
+            LOGI("USER_KEY4_PLACEHOLDER (GPIO_31)\r\n");
+            break;
+        case USER_KEY5_PLACEHOLDER:
+            LOGI("USER_KEY5_PLACEHOLDER (GPIO_29)\r\n");
+            break;
+#endif
 #if defined(CONFIG_PROJECT_SCOOTER_V2) && CONFIG_PROJECT_SCOOTER_V2
         case USER_PET_DOUBLE:
             LOGI("USER_PET_DOUBLE\r\n");
