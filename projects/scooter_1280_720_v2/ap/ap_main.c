@@ -13,7 +13,7 @@
 #include "dm_gatt.h"
 #include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
-#if CONFIG_BK_BLE_PROVISIONING || CONFIG_BK_NETWORK_PROVISIONING
+#if CONFIG_BK_NETWORK_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
 #include "network_provisioning.h"
@@ -209,13 +209,11 @@ static void ap_bt_app_init(void)
 #endif
 
 #if CONFIG_BLE
-#if !CONFIG_BK_BLE_PROVISIONING
     cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
-    dm_gatt_main(&param);
-    dm_gatts_main(&param);
-    wifi_boarding_demo_service_main();
-#endif
+    BK_LOG_ON_ERR(bk_dm_prf_gap_main(&param));
+    BK_LOG_ON_ERR(bk_dm_prf_gatts_main(&param));
+    BK_LOG_ON_ERR(wifi_boarding_demo_service_main());
 
     extern int cli_ble_gatt_demo_init(void);
     cli_ble_gatt_demo_init();
@@ -253,12 +251,18 @@ static void ap_bt_startup_task(void *arg)
 #endif
 
     ap_bt_app_init();
+    if (!wifi_boarding_demo_service_is_ready())
+    {
+        LOGE("wifi boarding service init failed\n");
+        goto end;
+    }
 
-#if CONFIG_BK_BLE_PROVISIONING
-    bk_sl_np_init(0);
-#else
-    bk_sl_np_init(1);
-#endif
+    ret = bk_sl_np_init();
+    if (ret != BK_OK)
+    {
+        LOGE("network provisioning init failed %d\n", ret);
+        goto end;
+    }
 
 end:;
     LOGI("%s end\n", __func__);
@@ -274,7 +278,6 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
 
     if ((argc >= 2) && (os_strcmp(argv[1], "np_erase") == 0))
     {
-#if CONFIG_BK_BLE_PROVISIONING
         LOGI("erase saved network provisioning info\n");
         erase_network_auto_reconnect_info();
 
@@ -283,19 +286,11 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
             LOGI("reboot after erase provisioning info\n");
             bk_reboot();
         }
-#else
-        LOGW("np_erase unsupported, enable CONFIG_BK_BLE_PROVISIONING\n");
-#endif
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "np_start_advertise") == 0))
     {
-#if CONFIG_BK_BLE_PROVISIONING
-        LOGI("start advertise\n");
-        extern int wifi_boarding_adv_stop(void);
-        wifi_boarding_adv_stop();
-        extern int wifi_boarding_adv_start(void);
-        wifi_boarding_adv_start();
-#endif
+        LOGI("start network provisioning\n");
+        BK_LOG_ON_ERR(bk_sl_np_start_provisioning());
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam") == 0))
     {
