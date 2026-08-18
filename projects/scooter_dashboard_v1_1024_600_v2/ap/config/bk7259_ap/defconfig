@@ -210,6 +210,16 @@ CONFIG_TASK_WDT=y
 CONFIG_LVGL_MEM_USE_PSRAM=y
 CONFIG_LWIP_MAX_LISTENING_SOCKETS_TCP=6
 
+# Move the lwIP heap out of SRAM (was a ~50KB static `ram_heap` in .bss, the
+# single largest SRAM consumer) into PSRAM, freeing SRAM heap for the BT host H5
+# transport whose per-packet RX allocations were failing under cast+A2DP load.
+# CONFIG_LWIP_MEM_LIBC_MALLOC_USE_PSRAM must be paired with
+# CONFIG_CONTROLLER_AP_BUFFER_COPY (enforced in bk_wifi_driver/wdrv_main.h).
+# Mirrors avdk/projects/lwip_psram_example/ap/config/bk7259_ap/defconfig.
+CONFIG_CONTROLLER_AP_BUFFER_COPY=y
+CONFIG_LWIP_MEM_LIBC_MALLOC=y
+CONFIG_LWIP_MEM_LIBC_MALLOC_USE_PSRAM=y
+
 
 # USB device MTP: expose the SD card to a PC over MTP. Protocol engine lives in
 # the SDK (bk_usb/bk_mtp/bk_usbd_mtp.c); the runtime start/stop control layer is
