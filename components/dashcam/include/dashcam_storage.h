@@ -51,6 +51,8 @@ bk_err_t dashcam_storage_recycle_for_release(void);
 void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, size_t size);
 /* Validate finalized top-level MP4 structure before handing a clip to the player. */
 bool dashcam_storage_mp4_is_playable(const char *path);
+/* Unlink orphan .mp4.idx sidecars; removed/failed may be NULL. */
+bk_err_t dashcam_storage_cleanup_orphan_idx(uint32_t *removed, uint32_t *failed);
 
 #ifdef __cplusplus
 }
