@@ -97,6 +97,9 @@ extern "C" {
 #ifndef DASHCAM_PLAYBACK_HEIGHT
 #define DASHCAM_PLAYBACK_HEIGHT        540
 #endif
+#ifndef DASHCAM_PLAYBACK_ROTATION
+#define DASHCAM_PLAYBACK_ROTATION      90
+#endif
 
 /* Segment length and dev-phase file cap.
  *
