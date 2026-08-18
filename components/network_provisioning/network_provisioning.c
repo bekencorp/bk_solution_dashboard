@@ -17,9 +17,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "bk_network_provisioning.h"
-#if CONFIG_BK_BLE_PROVISIONING
-#include "ble_scheme/ble_provisioning.h"
-#endif
 #include <components/event.h>
 #include <components/netif.h>
 #include "bk_wifi.h"
@@ -46,6 +43,7 @@
 #include "network_provisioning.h"
 #include "wifi_boarding_demo_service.h"
 #include "wifi_boarding_demo.h"
+#include "wifi_boarding_adv.h"
 
 /* Firmware version advertised in the BLE provisioning core header. */
 #define DASHBOARD_FW_MAJOR 1
@@ -59,6 +57,14 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
+typedef enum
+{
+    DEMO_NP_STATE_INACTIVE = 0,
+    DEMO_NP_STATE_PREPARING,
+    DEMO_NP_STATE_READY,
+    DEMO_NP_STATE_CONNECTING,
+} demo_np_state_t;
+
 /*
  * Weak default network-ready hook. Projects that need to react when STA gets an
  * IP or a client connects to AP/P2P GO (e.g. scooter_1280_720_v2 starts the FTP
@@ -69,12 +75,15 @@ __attribute__((weak)) void dashboard_network_ready_hook(void)
 {
 }
 
-//bk_ble_provisioning_event_notify_with_data
-static void (*s_send)(uint16_t opcode, int status);
-static void (*s_send_data)(uint16_t opcode, int status, char *payload, uint16_t length);
+static bk_err_t (*s_send)(uint16_t opcode, int status);
+static bk_err_t (*s_send_data)(uint16_t opcode, int status, const char *payload, uint16_t length);
 static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
 static bool s_casting_active = false;
-//static uint8_t s_reg_method;
+static volatile demo_np_state_t s_np_state = DEMO_NP_STATE_INACTIVE;
+static volatile uint16_t s_pending_sta_opcode;
+static volatile bool s_rearm_on_disconnect;
+
+static bk_err_t demo_np_require_ready(void);
 
 static void set_navigation_type(navigation_type_t type)
 {
@@ -190,31 +199,31 @@ static void demo_np_upload_supported_mode(unsigned int os_code)
     }
 }
 
-static void demo_np_parse_wifi_info(char *wifi_info, char **ssid, char **pwd)
+static bool demo_np_parse_wifi_info(char *wifi_info, char **ssid, char **pwd)
 {
     cJSON *root = NULL;
     cJSON *ssid_item = NULL;
     cJSON *password_item = NULL;
+    bool valid = false;
 
     if (!wifi_info || !ssid || !pwd) {
         LOGE("Invalid parameters\n");
-        return;
+        return false;
     }
 
     // 初始化输出参数
     *ssid = NULL;
     *pwd = NULL;
-    os_printf("wifi_info: %s\n", wifi_info);
     // 解析 JSON 字符串
     root = cJSON_Parse(wifi_info);
     if (!root) {
-        LOGE("Failed to parse JSON: %s\n", wifi_info);
-        return;
+        LOGE("Failed to parse Wi-Fi JSON\n");
+        return false;
     }
 
     // 获取 ssid 字段，使用 os_strdup 分配内存
     ssid_item = cJSON_GetObjectItem(root, "ssid");
-    if (ssid_item && cJSON_IsString(ssid_item) && ssid_item->valuestring) {
+    if (ssid_item && cJSON_IsString(ssid_item) && ssid_item->valuestring && (os_strlen(ssid_item->valuestring) <= 32)) {
         *ssid = os_strdup(ssid_item->valuestring);
         if (*ssid) {
             LOGI("Parsed ssid: %s\n", *ssid);
@@ -223,37 +232,71 @@ static void demo_np_parse_wifi_info(char *wifi_info, char **ssid, char **pwd)
         }
     } else {
         LOGE("Failed to get ssid from JSON\n");
+        goto exit;
     }
 
-    // 获取 password 字段，使用 os_strdup 分配内存
+    if (*ssid == NULL) {
+        goto exit;
+    }
+
+    // Password is optional only when the field is absent (open network).
     password_item = cJSON_GetObjectItem(root, "password");
-    if (password_item && cJSON_IsString(password_item) && password_item->valuestring) {
+    if (password_item == NULL) 
+    {
+        valid = true;
+    } else if (cJSON_IsString(password_item) && password_item->valuestring && (os_strlen(password_item->valuestring) <= 64)) 
+    {
         *pwd = os_strdup(password_item->valuestring);
         if (*pwd) {
-            LOGI("Parsed password: %s\n", *pwd);
+            LOGI("Parsed password len: %u\n", (unsigned int)os_strlen(*pwd));
+            valid = true;
         } else {
             LOGE("Failed to duplicate password string\n");
         }
     } else {
-        LOGE("Failed to get password from JSON\n");
+        LOGE("Invalid password field in Wi-Fi JSON\n");
     }
 
-    // 释放 cJSON 对象
+exit:
+    if (!valid) {
+        os_free(*ssid);
+        os_free(*pwd);
+        *ssid = NULL;
+        *pwd = NULL;
+    }
     cJSON_Delete(root);
+    return valid;
 }
 
-static bk_err_t demo_np_wifi_ap_start(char *ssid, char *pwd)
+static bk_err_t demo_np_wifi_ap_start(char *ssid, char *pwd, uint8_t channel)
 {
     wifi_ap_config_t ap_config = {0};
+    netif_ip4_config_t ip4_config = {0};
+    bk_err_t ret;
 
-    if (ssid) {
-        os_strcpy(ap_config.ssid, ssid);
+    if ((ssid == NULL) || (os_strlen(ssid) > 32) ||
+        ((pwd != NULL) && (os_strlen(pwd) > 64))) {
+        return BK_ERR_PARAM;
     }
+
+    os_strcpy(ap_config.ssid, ssid);
     if (pwd) {
         os_strcpy(ap_config.password, pwd);
     }
+    ap_config.channel = channel;
 
-    BK_LOG_ON_ERR(bk_wifi_ap_set_config(&ap_config));
+    os_strcpy(ip4_config.ip, WLAN_DEFAULT_IP);
+    os_strcpy(ip4_config.mask, WLAN_DEFAULT_MASK);
+    os_strcpy(ip4_config.gateway, WLAN_DEFAULT_GW);
+    os_strcpy(ip4_config.dns, WLAN_DEFAULT_GW);
+    ret = bk_netif_set_ip4_config(NETIF_IF_AP, &ip4_config);
+    if (ret != BK_OK) {
+        return ret;
+    }
+    ret = bk_wifi_ap_set_config(&ap_config);
+    if (ret != BK_OK) {
+        return ret;
+    }
     return bk_wifi_ap_start();
 }
 
@@ -263,6 +306,8 @@ bool enable_ble_split_pkt = false;
 static bk_err_t demo_np_wifi_sta_connect(char *ssid, char *pwd)
 {
     int ssid_len;
+    int pwd_len = 0;
+    bk_err_t ret;
 
     wifi_sta_config_t sta_config = {0};
 
@@ -272,10 +317,13 @@ static bk_err_t demo_np_wifi_sta_connect(char *ssid, char *pwd)
     }
 
     ssid_len = os_strlen(ssid);
+    if (pwd) {
+        pwd_len = os_strlen(pwd);
+    }
 
-    if (32 < ssid_len)
+    if ((32 < ssid_len) || (64 < pwd_len))
     {
-        LOGW("ssid name more than 32 Bytes\r\n");
+        LOGW("invalid Wi-Fi credential length\r\n");
         return BK_FAIL;
     }
 
@@ -289,11 +337,13 @@ static bk_err_t demo_np_wifi_sta_connect(char *ssid, char *pwd)
     sta_config.auto_reconnect_count = 5;
     sta_config.disable_auto_reconnect_after_disconnect = true;
 #endif
-    LOGI("ssid:%s key:%s\r\n", sta_config.ssid, sta_config.password);
-    BK_LOG_ON_ERR(bk_wifi_sta_set_config(&sta_config));
-    BK_LOG_ON_ERR(bk_wifi_sta_start());
+    LOGI("connect STA ssid:%s\r\n", sta_config.ssid);
+    ret = bk_wifi_sta_set_config(&sta_config);
+    if (ret != BK_OK) {
+        return ret;
+    }
 
-    return BK_OK;
+    return bk_wifi_sta_start();
 }
 
 #define BLE_SPLIT_PKT_LEN 400
@@ -325,7 +375,7 @@ again:
         j = i + 1;
     }
     len += os_snprintf(payload+len, BLE_SPLIT_PKT_LEN, "]");
-    LOGI("upload scan_rst %s, sended:%d, total:%d\r\n", payload, j, scan_result.ap_num);
+    LOGI("upload scan_rst %s, sent:%d, total:%d\r\n", payload, j, scan_result.ap_num);
     if ((j >= scan_result.ap_num) || (enable_ble_split_pkt == false))
     {
         if(s_send_data) s_send_data(BOARDING_OP_GET_SCAN_RESULTS, 0, payload, len);
@@ -522,8 +572,6 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
-            s_casting_active = true;
-
             #if CONFIG_LCD_PANEL_USE_480X272
                 lvgl_app_enter_navigation();
             #else
@@ -537,21 +585,14 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 }
             #endif
 
-#if CONFIG_BK_BLE_PROVISIONING
-#else
+            s_casting_active = true;
             wifi_boarding_demo_set_log_level(BOARDING_DEBUG_LEVEL_WARNING);
-#endif
             break;
         }
 
         case NAVIGATION_CONTROL_STOP:
         {
-            s_casting_active = false;
-
-#if CONFIG_BK_BLE_PROVISIONING
-#else
             wifi_boarding_demo_set_log_level(BOARDING_DEBUG_LEVEL_INFO);
-#endif
             ret = av_server_jpeg_decode_manager_turn_off();
             if (ret != BK_OK)
             {
@@ -560,6 +601,7 @@ static void handle_navigation_control_msg(uint8_t *data_ptr, uint16_t length)
                 return;
             }
 
+            s_casting_active = false;
             #if CONFIG_LCD_PANEL_USE_480X272
                 lvgl_app_exit_navigation();
             #else
@@ -603,13 +645,69 @@ static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t lengt
     if(s_send) s_send(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_OK);
 }
 
-static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
+static void bk_sl_np_ble_msg_handle(uint16_t event, uint8_t *param, uint16_t length)
 {
-    switch (msg->event)
+    switch (event)
     {
+        case BOARDING_OP_STATION_START:
+        case BOARDING_OP_SOFT_AP_START:
+        {
+            const boarding_wifi_config_t *config =
+                (const boarding_wifi_config_t *)param;
+            bk_err_t ret = BK_ERR_PARAM;
+
+            if ((config != NULL) && (length == sizeof(*config)) &&
+                (config->ssid[0] != '\0'))
+            {
+                ret = demo_np_require_ready();
+                if (ret == BK_OK)
+                {
+                    s_np_state = DEMO_NP_STATE_CONNECTING;
+                    if (event == BOARDING_OP_STATION_START)
+                    {
+                        s_pending_sta_opcode = event;
+                        ret = demo_np_wifi_sta_connect((char *)config->ssid,
+                                                       (char *)config->password);
+                    }
+                    else
+                    {
+                        s_pending_sta_opcode = 0;
+                        ret = demo_np_wifi_ap_start((char *)config->ssid,
+                                                   (char *)config->password,
+                                                   (uint8_t)config->channel);
+                    }
+                }
+            }
+
+            if (ret != BK_OK)
+            {
+                if (s_np_state == DEMO_NP_STATE_CONNECTING)
+                {
+                    s_np_state = DEMO_NP_STATE_READY;
+                }
+                if (event == BOARDING_OP_STATION_START)
+                {
+                    s_pending_sta_opcode = 0;
+                }
+                if (s_send)
+                {
+                    s_send(event, EVT_STATUS_ERROR);
+                }
+            }
+            else if (event == BOARDING_OP_SOFT_AP_START)
+            {
+                s_np_state = DEMO_NP_STATE_READY;
+                if (s_send)
+                {
+                    s_send(event, EVT_STATUS_OK);
+                }
+            }
+        }
+        break;
+
         case BOARDING_OP_SYNC_PHONE_OS:
         {
-            uint8_t os_code = (uint8_t)msg->param;
+            uint8_t os_code = ((param != NULL) && (length >= 1)) ? param[0] : 0;
             demo_np_upload_supported_mode(os_code);
         }
         break;
@@ -617,42 +715,100 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
         case BOARDING_OP_CONFIG_WIFI_AP:
         {
             char *ssid = NULL, *pwd = NULL;
-            demo_np_parse_wifi_info((char *)msg->param, &ssid, &pwd);
-            demo_np_wifi_ap_start(ssid, pwd);
-            if (ssid) {
+            bk_err_t ret;
+            bool credentials_valid;
+
+            credentials_valid = demo_np_parse_wifi_info((char *)param, &ssid, &pwd);
+            ret = credentials_valid ? demo_np_require_ready() : BK_ERR_PARAM;
+            if (ret == BK_OK)
+            {
+                s_pending_sta_opcode = 0;
+                s_np_state = DEMO_NP_STATE_CONNECTING;
+                ret = demo_np_wifi_ap_start(ssid, pwd, 0);
+            }
+            else
+            {
+                ret = BK_FAIL;
+            }
+            if (ssid)
+            {
                 os_free(ssid);
             }
-            if (pwd) {
+            if (pwd)
+            {
                 os_free(pwd);
             }
-            // 发送成功状态码 0 给手机APP
-            static const uint8_t success_status = 0;
-            if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_AP, BK_OK,
-                                                       (char *)&success_status, sizeof(success_status));
+            if (ret != BK_OK)
+            {
+                if (s_np_state == DEMO_NP_STATE_CONNECTING)
+                {
+                    s_np_state = DEMO_NP_STATE_READY;
+                }
+                if (s_send)
+                {
+                    s_send(BOARDING_OP_CONFIG_WIFI_AP, EVT_STATUS_ERROR);
+                }
+            }
+            else
+            {
+                s_np_state = DEMO_NP_STATE_READY;
+                static const uint8_t success_status = 0;
+                if (s_send_data)
+                {
+                    s_send_data(BOARDING_OP_CONFIG_WIFI_AP, EVT_STATUS_OK,
+                                (const char *)&success_status,
+                                sizeof(success_status));
+                }
+            }
         }
         break;
 
         case BOARDING_OP_CONFIG_WIFI_STA:
         {
             char *ssid = NULL, *pwd = NULL;
-            demo_np_parse_wifi_info((char *)msg->param, &ssid, &pwd);
-            demo_np_wifi_sta_connect(ssid, pwd);
-            if (ssid) {
+            bk_err_t ret;
+            bool credentials_valid;
+
+            credentials_valid = demo_np_parse_wifi_info((char *)param, &ssid, &pwd);
+            ret = credentials_valid ? demo_np_require_ready() : BK_ERR_PARAM;
+            if (ret == BK_OK)
+            {
+                s_pending_sta_opcode = BOARDING_OP_CONFIG_WIFI_STA;
+                s_np_state = DEMO_NP_STATE_CONNECTING;
+                ret = demo_np_wifi_sta_connect(ssid, pwd);
+            }
+            else
+            {
+                ret = BK_FAIL;
+            }
+            if (ssid)
+            {
                 os_free(ssid);
             }
-            if (pwd) {
+            if (pwd)
+            {
                 os_free(pwd);
             }
-            bk_event_unregister_cb(EVENT_MOD_WIFI, EVENT_WIFI_SCAN_DONE,
-                                                        demo_np_wlan_scan_done_handler);
+            if (ret != BK_OK)
+            {
+                if (s_np_state == DEMO_NP_STATE_CONNECTING)
+                {
+                    s_np_state = DEMO_NP_STATE_READY;
+                }
+                s_pending_sta_opcode = 0;
+                if (s_send)
+                {
+                    s_send(BOARDING_OP_CONFIG_WIFI_STA, EVT_STATUS_ERROR);
+                }
+            }
         }
         break;
 
         case BOARDING_OP_GET_SCAN_RESULTS:
         {
             LOGI("BOARDING_OP_GET_SCAN_RESULTS\n");
-            if (msg->param) {
-                if (*(uint8_t *)msg->param == 1)
+            if ((param != NULL) && (length > 0)) {
+                if (param[0] == 1)
                     enable_ble_split_pkt = true;
                 else
                     enable_ble_split_pkt = false;
@@ -667,57 +823,89 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
         {
             uint8_t mac[6] = {0};
             char p2p_name[32] = {0};  // bk_db_p2p_XXXXXX 格式
+            bk_err_t ret = demo_np_require_ready();
 
             // 获取 MAC 地址并生成 P2P 设备名称
-            if (bk_wifi_sta_get_mac(mac) == BK_OK) {
+            if (bk_wifi_sta_get_mac(mac) == BK_OK)
+            {
                 // 使用 MAC 地址的后3个字节，格式: bk_db_p2p_112233
                 snprintf(p2p_name, sizeof(p2p_name), "bk_db_p2p_%02x%02x%02x",
                          mac[3], mac[4], mac[5]);
                 LOGI("P2P device name: %s\n", p2p_name);
-            } else {
+            }
+            else
+            {
                 LOGW("Failed to get MAC address, using default P2P name\n");
                 os_strcpy(p2p_name, "bk_db_p2p_000000");
             }
 
 #if CONFIG_P2P
-            bk_wifi_p2p_enable_with_intent(p2p_name, 15);
-            bk_wifi_p2p_find();
+            if (ret == BK_OK)
+            {
+                s_pending_sta_opcode = 0;
+                s_np_state = DEMO_NP_STATE_CONNECTING;
+                ret = bk_wifi_p2p_enable_with_intent(p2p_name, 15);
+            }
+            if (ret == BK_OK)
+            {
+                ret = bk_wifi_p2p_find();
+            }
+#else
+            ret = BK_ERR_NOT_SUPPORT;
 #endif
 
-            // 发送成功状态码 0 给手机APP
-            static const uint8_t success_status = 0;
-            if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_P2P, BK_OK,
-                                                       (char *)&success_status, sizeof(success_status));
+            if (ret != BK_OK)
+            {
+                if (s_np_state == DEMO_NP_STATE_CONNECTING)
+                {
+                    s_np_state = DEMO_NP_STATE_READY;
+                }
+                if (s_send)
+                {
+                    s_send(BOARDING_OP_CONFIG_WIFI_P2P, EVT_STATUS_ERROR);
+                }
+            }
+            else
+            {
+                s_np_state = DEMO_NP_STATE_READY;
+                static const uint8_t success_status = 0;
+                if (s_send_data)
+                {
+                    s_send_data(BOARDING_OP_CONFIG_WIFI_P2P, EVT_STATUS_OK,
+                                (const char *)&success_status,
+                                sizeof(success_status));
+                }
+            }
         }
         break;
 
         case BOARDING_OP_TRANSFER_FILE_CONTROL:
         {
-            handle_transfer_file_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+            handle_transfer_file_control_msg(param, length);
         }
         break;
 
         case BOARDING_OP_TRANSFER_FILE_DATA:
         {
-            handle_transfer_file_data_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+            handle_transfer_file_data_msg(param, length);
         }
         break;
 
         case BOARDING_OP_NAVIGATION_CONTROL:
         {
-            handle_navigation_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+            handle_navigation_control_msg(param, length);
         }
         break;
 
         case BOARDING_OP_NAVIGATION_TYPE_CONTROL:
         {
-            handle_navigation_type_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+            handle_navigation_type_control_msg(param, length);
         }
         break;
 
         default:
         {
-            LOGI("%s %d, do nothing\r\n", __func__, msg->event);
+            LOGI("%s %u, do nothing\r\n", __func__, event);
         }
         break;
     }
@@ -725,16 +913,14 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
 
 static void bk_sl_np_ble_msg_handle_demo_low_layer_cb(uint16_t op, uint8_t *data, uint32_t len)
 {
-    ble_prov_msg_t msg = {0};
-    msg.event = op;
-    msg.param = (typeof(msg.param))data;
-    msg.length = len;
-
-    bk_sl_np_ble_msg_handle_demo_cb(&msg);
+    if (len > UINT16_MAX)
+    {
+        LOGE("opcode %u payload too large %u\n", op, (unsigned int)len);
+        return;
+    }
+    bk_sl_np_ble_msg_handle(op, data, (uint16_t)len);
 }
 
-
-#if CONFIG_BK_BLE_PROVISIONING
 
 #if CONFIG_P2P
 static void demo_np_reload_sdp_for_p2p(netif_if_t netif_idx)
@@ -746,195 +932,192 @@ static void demo_np_reload_sdp_for_p2p(netif_if_t netif_idx)
 }
 #endif
 
+static bk_err_t demo_np_require_ready(void)
+{
+    if (s_np_state == DEMO_NP_STATE_READY)
+    {
+        return BK_OK;
+    }
+
+    LOGW("network provisioning is not ready, state=%d\n", s_np_state);
+    return BK_ERR_BUSY;
+}
+
+bk_err_t bk_sl_np_start_provisioning(void)
+{
+    bk_err_t ret;
+
+    if (s_np_state == DEMO_NP_STATE_PREPARING)
+    {
+        return BK_OK;
+    }
+
+    if (s_np_state == DEMO_NP_STATE_READY)
+    {
+        return wifi_boarding_adv_start();
+    }
+
+    s_np_state = DEMO_NP_STATE_PREPARING;
+    s_pending_sta_opcode = 0;
+    s_rearm_on_disconnect = false;
+    BK_LOG_ON_ERR(wifi_boarding_adv_stop());
+
+#if CONFIG_P2P
+    if (bk_wifi_is_p2p_enabled())
+    {
+        ret = bk_wifi_p2p_disable();
+        if (ret != BK_OK)
+        {
+            goto fail;
+        }
+    }
+#endif
+
+    ret = bk_wifi_ap_stop();
+    if (ret != BK_OK)
+    {
+        goto fail;
+    }
+
+    ret = bk_wifi_sta_stop();
+    if (ret != BK_OK)
+    {
+        goto fail;
+    }
+
+    ret = bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_CONSOLE);
+    if (ret != BK_OK)
+    {
+        goto fail;
+    }
+
+    return BK_OK;
+
+fail:
+    s_np_state = DEMO_NP_STATE_INACTIVE;
+    LOGE("prepare network provisioning failed %d\n", ret);
+    return ret;
+}
+
 static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data)
 {
+    netif_if_t netif_idx = (netif_if_t)(uintptr_t)user_data;
+
     LOGI("demo network provisioning status: %d\n", status);
     switch (status)
     {
         case BK_NETWORK_PROVISIONING_STATUS_IDLE:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_rearm_on_disconnect = false;
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RUNNING:
-            break;
-        case BK_NETWORK_PROVISIONING_STATUS_SUCCEED:
-            if (bk_network_provisioning_get_type() == BK_NETWORK_PROVISIONING_TYPE_BLE)
+            s_np_state = DEMO_NP_STATE_READY;
+            s_rearm_on_disconnect = false;
+            if (bk_dm_prf_gap_get_current_conn_id() < 0)
             {
-                netif_if_t netif_idx = (netif_if_t)user_data;
-#if CONFIG_P2P
-                demo_np_reload_sdp_for_p2p(netif_idx);
-#endif
-#if 0
-                netif_ip4_config_t ip4_config = {0};
-
-                bk_netif_get_ip4_config(netif_idx, &ip4_config);
-                LOGI("netif_idx:%d, ip: %s\n", netif_idx, ip4_config.ip);
-                if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, ip4_config.ip, strlen(ip4_config.ip));
-#else
-                if (netif_idx == NETIF_IF_STA) {
-                    // 发送成功状态码 0 给手机APP
-                    static const uint8_t success_status = 0;
-                    if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK,
-                                                               (char *)&success_status, 1);
-                }
-#endif
+                BK_LOG_ON_ERR(wifi_boarding_adv_start());
             }
             break;
+        case BK_NETWORK_PROVISIONING_STATUS_SUCCEED:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_rearm_on_disconnect = false;
+            BK_LOG_ON_ERR(wifi_boarding_adv_stop());
+#if CONFIG_P2P
+            demo_np_reload_sdp_for_p2p(netif_idx);
+#endif
+            if (s_pending_sta_opcode != 0)
+            {
+                static const uint8_t success_status = 0;
+                if (s_pending_sta_opcode == BOARDING_OP_STATION_START)
+                {
+                    netif_ip4_config_t ip4_config = {0};
+                    if ((bk_netif_get_ip4_config(NETIF_IF_STA, &ip4_config) == BK_OK) &&
+                        s_send_data)
+                    {
+                        s_send_data(s_pending_sta_opcode, BK_OK,
+                                    ip4_config.ip, os_strlen(ip4_config.ip));
+                    }
+                }
+                else if (s_send_data)
+                {
+                    s_send_data(s_pending_sta_opcode, BK_OK,
+                                (const char *)&success_status, 1);
+                }
+                s_pending_sta_opcode = 0;
+            }
+            dashboard_network_ready_hook();
+            break;
         case BK_NETWORK_PROVISIONING_STATUS_FAILED:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            if (s_send && (s_pending_sta_opcode != 0))
+            {
+                s_send(s_pending_sta_opcode, EVT_STATUS_ERROR);
+                s_pending_sta_opcode = 0;
+            }
+            if (bk_dm_prf_gap_get_current_conn_id() < 0)
+            {
+                BK_LOG_ON_ERR(bk_sl_np_start_provisioning());
+            }
+            else
+            {
+                s_rearm_on_disconnect = true;
+            }
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECTING:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_rearm_on_disconnect = false;
+            BK_LOG_ON_ERR(wifi_boarding_adv_stop());
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECT_FAILED:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            if (bk_dm_prf_gap_get_current_conn_id() < 0)
+            {
+                BK_LOG_ON_ERR(bk_sl_np_start_provisioning());
+            }
+            else
+            {
+                s_rearm_on_disconnect = true;
+            }
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECT_SUCCEED:
+            s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_rearm_on_disconnect = false;
+            BK_LOG_ON_ERR(wifi_boarding_adv_stop());
 #if CONFIG_P2P
-            demo_np_reload_sdp_for_p2p((netif_if_t)user_data);
+            demo_np_reload_sdp_for_p2p(netif_idx);
 #endif
+            dashboard_network_ready_hook();
             break;
         default:
             break;
     }
 }
-#endif
-// static void cli_network_provisioning(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
-// {
-//     if (argC == 1) {
-//         bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
-//     } else if (argC == 2) {
-//         if (os_strcmp(argV[1], "ble") == 0) {
-//             bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_BLE);
-//         } else if (os_strcmp(argV[1], "console") == 0) {
-//             bk_network_provisioning_start(BK_NETWORK_PROVISIONING_TYPE_CONSOLE);
-//         }
-//     }
-// }
-
-// static void cli_erase_network_provisioning_info(char *pcWriteBuffer, int xWriteBufferLen, int argC, char **argV)
-// {
-//     erase_network_auto_reconnect_info();
-// }
-
-static bk_err_t demo_netif_event_cb(void *arg, event_module_t event_module,
-					   int event_id, void *event_data)
-{
-	netif_event_got_ip4_t *got_ip;
-
-	switch (event_id) {
-	case EVENT_NETIF_GOT_IP4:
-    {
-		got_ip = (netif_event_got_ip4_t *)event_data;
-		LOGI("%s got ip\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
-        uint8_t success_status = 0;
-        if(s_send_data) s_send_data(BOARDING_OP_CONFIG_WIFI_STA, BK_OK, (char *)&success_status, sizeof(success_status));
-        if (got_ip->netif_if == NETIF_IF_STA)
-        {
-            dashboard_network_ready_hook();
-        }
-    }
-    break;
-
-	default:
-		LOGD("rx event <%d %d>\n", event_module, event_id);
-		break;
-	}
-
-	return BK_OK;
-}
-
-#if CONFIG_BK_BLE_PROVISIONING
-/*
- * Netif event cb for the SDK provisioning path (reg_method==0). Unlike
- * demo_netif_event_cb() (wifi_boarding path), it does NOT send
- * BOARDING_OP_CONFIG_WIFI_STA to the phone on got-ip: the SDK path already
- * notifies the phone from demo_network_provisioning_status_cb() on SUCCEED.
- * It only fires the network-ready hook so FTP (scooter v2) starts once STA has
- * an IP.
- */
-static bk_err_t demo_np_netif_event_cb(void *arg, event_module_t event_module,
-					   int event_id, void *event_data)
-{
-	netif_event_got_ip4_t *got_ip;
-
-	switch (event_id) {
-	case EVENT_NETIF_GOT_IP4:
-    {
-		got_ip = (netif_event_got_ip4_t *)event_data;
-		LOGI("%s got ip (np)\n", got_ip->netif_if == NETIF_IF_STA ? "BK STA" : "unknown netif");
-        if (got_ip->netif_if == NETIF_IF_STA)
-        {
-            dashboard_network_ready_hook();
-        }
-    }
-    break;
-
-	default:
-		LOGD("rx event <%d %d>\n", event_module, event_id);
-		break;
-	}
-
-	return BK_OK;
-}
-#endif
-
-static bk_err_t demo_wifi_event_cb(void *arg, event_module_t event_module,
-					  int event_id, void *event_data)
-{
-	wifi_event_sta_disconnected_t *sta_disconnected;
-	wifi_event_sta_connected_t *sta_connected;
-	wifi_event_ap_disconnected_t *ap_disconnected;
-	wifi_event_ap_connected_t *ap_connected;
-	wifi_event_network_found_t *network_found;
-
-	switch (event_id) {
-	case EVENT_WIFI_STA_CONNECTED:
-		sta_connected = (wifi_event_sta_connected_t *)event_data;
-		LOGD("BK STA connected %s\n", sta_connected->ssid);
-		break;
-
-	case EVENT_WIFI_STA_DISCONNECTED:
-		sta_disconnected = (wifi_event_sta_disconnected_t *)event_data;
-		LOGD("BK STA disconnected, reason(%d)%s\n", sta_disconnected->disconnect_reason,
-			sta_disconnected->local_generated ? ", local_generated" : "");
-		break;
-
-	case EVENT_WIFI_AP_CONNECTED:
-		ap_connected = (wifi_event_ap_connected_t *)event_data;
-		LOGD(BK_MAC_FORMAT" connected to BK AP\n", BK_MAC_STR(ap_connected->mac));
-		dashboard_network_ready_hook();
-		break;
-
-	case EVENT_WIFI_AP_DISCONNECTED:
-		ap_disconnected = (wifi_event_ap_disconnected_t *)event_data;
-		LOGD(BK_MAC_FORMAT" disconnected from BK AP\n", BK_MAC_STR(ap_disconnected->mac));
-		break;
-
-	case EVENT_WIFI_NETWORK_FOUND:
-		network_found = (wifi_event_network_found_t *)event_data;
-		LOGD(" target AP: %s, bssid %pm found\n", network_found->ssid, network_found->bssid);
-		break;
-
-    case EVENT_WIFI_GO_CONNECTED:
-        LOGD("WIFI_GO_CONNECTED\n");
-        dashboard_network_ready_hook();
-        break;
-
-	default:
-		LOGD("rx event <%d %d>\n", event_module, event_id);
-		break;
-	}
-
-	return BK_OK;
-}
-
 
 static void bk_sl_np_ble_disconnect_cb(void)
 {
+    s_pending_sta_opcode = 0;
+
+    if ((s_np_state == DEMO_NP_STATE_READY) || (s_np_state == DEMO_NP_STATE_CONNECTING))
+    {
+        BK_LOG_ON_ERR(wifi_boarding_adv_start());
+    }
+    else if (s_rearm_on_disconnect)
+    {
+        s_rearm_on_disconnect = false;
+        BK_LOG_ON_ERR(bk_sl_np_start_provisioning());
+    }
+
+    media_navigation_transfer_cancel();
+
     if (!s_casting_active)
+    {
         return;
+    }
 
     LOGW("BLE disconnected while casting active, stopping cast\n");
     s_casting_active = false;
 
     av_server_jpeg_decode_manager_turn_off();
-    media_navigation_transfer_cancel();
 #if CONFIG_LCD_PANEL_USE_480X272
     lvgl_app_exit_navigation();
 #else
@@ -942,61 +1125,45 @@ static void bk_sl_np_ble_disconnect_cb(void)
 #endif
 }
 
-bk_err_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use solution component)
+bk_err_t bk_sl_np_init(void)
 {
     bk_err_t ret = BK_OK;
+    netif_if_t reconnect_netif = NETIF_IF_INVALID;
+
+    s_send = bk_boarding_event_notify;
+    s_send_data = bk_boarding_event_notify_with_data;
 
     wifi_boarding_demo_reg_ble_disconnect_cb(bk_sl_np_ble_disconnect_cb);
-
-    if(reg_method == 1)
+    ret = wifi_boarding_demo_reg_external_cmd(bk_sl_np_ble_msg_handle_demo_low_layer_cb);
+    if (ret != BK_OK)
     {
-        wifi_boarding_demo_reg_external_cmd(bk_sl_np_ble_msg_handle_demo_low_layer_cb);
-        bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
-        bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_netif_event_cb, NULL);
-        s_send = bk_boarding_event_notify;
-        s_send_data = bk_boarding_event_notify_with_data;
+        return ret;
     }
-#if CONFIG_BK_BLE_PROVISIONING
-    else if(!reg_method)
+
+    ret = wifi_boarding_adv_init();
+    if (ret != BK_OK)
     {
-        bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
-        bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
-
-        /* Advertise per the BLE provisioning adv spec: Local Name
-         * "BK_DASHBOARD_<MAC3>" + the core header {proto_ver, device_type=
-         * DASHBOARD, fw x3} in the ADV Manufacturer Specific Data. Set before
-         * init so the very first advertisement already carries them. */
-        {
-            uint8_t mac[6] = {0};
-            char adv_name[32] = {0};
-
-            bk_bluetooth_get_address(mac);
-            snprintf(adv_name, sizeof(adv_name), "BK_%s_%02X%02X%02X",
-                     bk_ble_provisioning_dev_type_tag(BK_BLE_PROV_DEV_TYPE_DASHBOARD),
-                     mac[0], mac[1], mac[2]);
-            bk_ble_provisioning_set_adv_name(adv_name);
-            bk_ble_provisioning_set_dev_info(BK_BLE_PROV_DEV_TYPE_DASHBOARD,
-                                             DASHBOARD_FW_MAJOR, DASHBOARD_FW_MINOR, DASHBOARD_FW_PATCH);
-        }
-
-        bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
-        /*
-         * Register Wi-Fi and netif callbacks on the SDK path so the network-ready
-         * hook fires for STA got-IP and AP/P2P GO client connections. The netif
-         * callback does not re-notify the phone with BOARDING_OP_CONFIG_WIFI_STA
-         * (already sent by demo_network_provisioning_status_cb() on SUCCEED).
-         */
-        bk_event_register_cb(EVENT_MOD_WIFI, EVENT_ID_ALL, demo_wifi_event_cb, NULL);
-        bk_event_register_cb(EVENT_MOD_NETIF, EVENT_ID_ALL, demo_np_netif_event_cb, NULL);
-        //cli_network_provisioning_init();
-        s_send = bk_ble_provisioning_event_notify;
-        s_send_data = bk_ble_provisioning_event_notify_with_data;
+        return ret;
     }
-#endif
-    else
+
+    wifi_boarding_adv_set_device_info(0x03, DASHBOARD_FW_MAJOR,
+                                      DASHBOARD_FW_MINOR, DASHBOARD_FW_PATCH);
+
+    ret = bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
+    if (ret != BK_OK)
     {
-        LOGE("%s invalid reg method %d\n", __func__, reg_method);
-        return BK_FAIL;
+        return ret;
+    }
+
+    ret = bk_network_auto_reconnect_init(&reconnect_netif);
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
+
+    if (reconnect_netif == NETIF_IF_INVALID)
+    {
+        ret = bk_sl_np_start_provisioning();
     }
 
 #if CONFIG_MEDIA_RECEIVE_DEMO

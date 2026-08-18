@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <components/bluetooth/bk_dm_bluetooth.h>
 #include "wifi_boarding_demo.h"
-#include "ble_cpn_main.h"
+#include "wifi_boarding_adv.h"
 #if WIFI_BOARDING_DEMO_ENABLE
 
 #define BASE_CMD_NAME "wboarding_demo"
@@ -20,18 +20,10 @@ static void wboarding_demo_usage(void)
     return;
 }
 
-#if CONFIG_BK_BLE_PROVISIONING
-__attribute__((weak)) void bk_ble_np_deinit(void)
-{
-    CLI_LOGW("%s can't run here !!!\n", __func__);
-}
-#endif
-
 static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
 {
     char *msg = NULL;
     int ret = 0;
-    cli_gatt_param_t *tmp_param = NULL;
 
     if (argc == 1)
     {
@@ -44,23 +36,27 @@ static void cmd_wboarding_demo(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
     if (os_strcmp(argv[1], "init") == 0)
     {
-#if CONFIG_BK_BLE_PROVISIONING
-        CLI_LOGW("%s bk_ble_np_deinit is temporary used for only deinit bk_network_provisioning ble !!!\n", __func__);
-        extern void bk_ble_np_deinit(void);
-        bk_ble_np_deinit();
-
-        rtos_delay_milliseconds(100);
-        bk_bluetooth_init();
-        extern bk_err_t bk_sl_np_init(uint8_t reg_method);
-        bk_sl_np_init(1);
-#endif
         cli_gatt_param_t param = {.rpa = 0, .p_rpa = &param.rpa, .pa = 0, .p_pa = &param.pa};
 
-        bk_dm_prf_gap_main(&param);
-        bk_dm_prf_gatts_main(&param);
-        wifi_boarding_demo_service_main();
-        ble_cpn_main_init();
-        ble_cpn_adv_enable(1);
+        ret = bk_dm_prf_gap_main(&param);
+        if (ret != BK_OK)
+        {
+            goto __error;
+        }
+
+        ret = bk_dm_prf_gatts_main(&param);
+        if (ret != BK_OK)
+        {
+            goto __error;
+        }
+
+        ret = wifi_boarding_demo_service_main();
+        if (ret != BK_OK)
+        {
+            goto __error;
+        }
+
+        ret = wifi_boarding_adv_start();
     }
     else
     {

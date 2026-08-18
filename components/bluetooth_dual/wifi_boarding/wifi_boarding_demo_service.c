@@ -1,21 +1,18 @@
 #include "wifi_boarding_demo_service.h"
 #include "wifi_boarding_demo.h"
-#include "wifi_boarding_network.h"
 
 #include "components/bluetooth/bk_dm_bluetooth.h"
-
-#include <modules/wifi.h>
-#include <components/event.h>
-#include <components/netif.h>
 
 #include <components/log.h>
 #include <os/mem.h>
 #include <os/str.h>
 #include <os/os.h>
+#include <string.h>
 #include "ble_ota.h"
 
 static beken_thread_t s_boarding_thd = NULL;
 static beken_queue_t s_boarding_queue = NULL;
+static bool s_boarding_ready;
 
 static bk_boarding_info_t *bk_boarding_info = NULL;
 
@@ -23,17 +20,22 @@ static f_ota_t *s_ble_ota = NULL;
 static uint8_t *s_ota_data_ptr = NULL;
 static beken2_timer_t s_ble_ota_tmr;
 static void (*s_cmd_cb)(uint16_t op, uint8_t *data, uint32_t len);
+static void (*s_ble_disconnect_cb)(void);
+
+#define BOARDING_QUEUE_DEPTH 100
+#define BOARDING_MAX_PAYLOAD 1019
 
 static void ble_ota_timer_hdl(void *param1, void *param2)
 {
-    if(s_ble_ota == NULL){
-        return ;
+    if (s_ble_ota == NULL)
+    {
+        return;
     }
     OTA_FREE(s_ble_ota->magic_code);
     f_ota_fun_ptr->deinit(s_ble_ota);
     OTA_FREE(s_ota_data_ptr);
     wboard_logw("ble disconnect need reboot  !\r\n");
-    bk_reboot();   //need do reboot.
+    bk_reboot();
 }
 
 void ble_ota_start_timer(void)
@@ -41,7 +43,7 @@ void ble_ota_start_timer(void)
     rtos_init_oneshot_timer(&s_ble_ota_tmr, CONFIG_BLE_OTA_WAIT_TIMEOUT, ble_ota_timer_hdl, 0, 0);
     rtos_start_oneshot_timer(&s_ble_ota_tmr);
 
-    return ;
+    return;
 }
 
 void ble_ota_stop_timer(void)
@@ -56,7 +58,7 @@ void ble_ota_stop_timer(void)
     return;
 }
 
-void bk_boarding_event_notify(uint16_t opcode, int status)
+bk_err_t bk_boarding_event_notify(uint16_t opcode, int status)
 {
     uint8_t data[] =
     {
@@ -66,10 +68,10 @@ void bk_boarding_event_notify(uint16_t opcode, int status)
     };
 
     wboard_logi("%d, %d", opcode, status);
-    wifi_boarding_notify(data, sizeof(data));
+    return wifi_boarding_notify(data, sizeof(data));
 }
 
-void bk_boarding_event_notify_with_data(uint16_t opcode, int status, char *payload, uint16_t length)
+bk_err_t bk_boarding_event_notify_with_data(uint16_t opcode, int status, const char *payload, uint16_t length)
 {
     uint8_t data[1024] =
     {
@@ -79,21 +81,29 @@ void bk_boarding_event_notify_with_data(uint16_t opcode, int status, char *paylo
                               0,
     };
 
-    if (length > 1024 - 5)
+    if ((length > 1024 - 5) || ((length > 0) && (payload == NULL)))
     {
-        wboard_loge("size %d over flow", length);
-        return;
+        wboard_loge("invalid payload %p size %d", payload, length);
+        return BK_ERR_PARAM;
     }
 
-    os_memcpy(&data[5], payload, length);
+    if (length > 0)
+    {
+        os_memcpy(&data[5], payload, length);
+    }
 
     wboard_logi("%d, %d", opcode, status);
-    wifi_boarding_notify(data, length + 5);
+    return wifi_boarding_notify(data, length + 5);
 }
 
 bk_err_t boarding_send_msg(boarding_msg_t *msg)
 {
     bk_err_t ret = BK_OK;
+
+    if (msg == NULL)
+    {
+        return BK_FAIL;
+    }
 
     if (s_boarding_queue)
     {
@@ -113,111 +123,169 @@ bk_err_t boarding_send_msg(boarding_msg_t *msg)
         return BK_FAIL;
     }
 
-    return ret;
+}
+
+static boarding_wifi_config_t *boarding_wifi_config_snapshot(const bk_boarding_info_t *source)
+{
+    boarding_wifi_config_t *copy;
+
+    if (source == NULL)
+    {
+        return NULL;
+    }
+
+    copy = os_zalloc(sizeof(*copy));
+    if (copy == NULL)
+    {
+        return NULL;
+    }
+
+    copy->channel = source->channel;
+    if (source->boarding_info.ssid_value)
+    {
+        strncpy(copy->ssid, source->boarding_info.ssid_value,
+                sizeof(copy->ssid) - 1);
+    }
+
+    if (source->boarding_info.password_value)
+    {
+        strncpy(copy->password, source->boarding_info.password_value,
+                sizeof(copy->password) - 1);
+    }
+
+    return copy;
+}
+
+static void boarding_msg_release(boarding_msg_t *msg)
+{
+    if ((msg == NULL) || (msg->param == 0))
+    {
+        return;
+    }
+
+    if (msg->event == DBEVT_OTHER_EVT)
+    {
+        os_free((void *)msg->param);
+    }
+
+    msg->param = 0;
 }
 
 void bk_boarding_operation_handle(uint16_t opcode, uint16_t length, uint8_t *data)
 {
+    boarding_msg_t msg = {0};
+    bk_err_t ret;
+
     wboard_logi("opcode: %04X, length: %u", opcode, length);
 
     switch (opcode)
     {
     case BOARDING_OP_STATION_START:
-    {
-        boarding_msg_t msg;
-
-        msg.event = DBEVT_WIFI_STATION_CONNECT;
-        msg.param = (uint32_t)bk_boarding_info;
-        boarding_send_msg(&msg);
-    }
-    break;
-
     case BOARDING_OP_SOFT_AP_START:
     {
-        boarding_msg_t msg;
-
-        msg.event = DBEVT_WIFI_SOFT_AP_TURNING_ON;
-        msg.param = (uint32_t)bk_boarding_info;
-        boarding_send_msg(&msg);
+        boarding_wifi_config_t *snapshot = boarding_wifi_config_snapshot(bk_boarding_info);
+        if (snapshot == NULL)
+        {
+            wboard_loge("snapshot Wi-Fi credentials failed");
+            bk_boarding_event_notify(opcode, EVT_STATUS_ERROR);
+            return;
+        }
+        msg.event = DBEVT_OTHER_EVT;
+        msg.sub_evt = opcode;
+        msg.param = (uintptr_t)snapshot;
+        msg.length = sizeof(*snapshot);
     }
     break;
 
     case BOARDING_OP_BLE_DISABLE:
     {
-        boarding_msg_t msg;
-
         msg.event = DBEVT_BLE_DISABLE;
         msg.param = 0;
-        boarding_send_msg(&msg);
     }
     break;
 
     case BOARDING_OP_SET_WIFI_CHANNEL:
     {
+        if ((data == NULL) || (length < sizeof(uint16_t)))
+        {
+            wboard_loge("invalid channel payload len %u", length);
+            return;
+        }
         STREAM_TO_UINT16(bk_boarding_info->channel, data);
 
         wboard_logi("BOARDING_OP_SET_WIFI_CHANNEL: %u", bk_boarding_info->channel);
-
+        return;
     }
-    break;
 
     case BOARDING_OP_OTA_START_DOWNLOAD:
     {
-        boarding_msg_t msg;
-
         msg.event = DBEVT_OTA_START_DOWNLOAD;
         msg.length = length;
-
         OTA_MALLOC_WITHOUT_RETURN(s_ota_data_ptr, length);
         os_memcpy(s_ota_data_ptr, data, length);
-        msg.param = (uint32_t)(s_ota_data_ptr);
-        boarding_send_msg(&msg);
+        msg.param = (uintptr_t)s_ota_data_ptr;
     }
     break;
 
     case BOARDING_OP_OTA_DO_DOWNLOADING:
     {
-        boarding_msg_t msg;
         msg.event = DBEVT_OTA_DO_DOWNLOADING;
         msg.length = length;
-
         OTA_MALLOC_WITHOUT_RETURN(s_ota_data_ptr, length);
         os_memcpy(s_ota_data_ptr, data, length);
-        msg.param = (uint32_t)(s_ota_data_ptr);
-        boarding_send_msg(&msg);
-
+        msg.param = (uintptr_t)s_ota_data_ptr;
     }
     break;
 
     case BOARDING_OP_OTA_COMPLETE_DOWNLOAD:
     {
-        boarding_msg_t msg;
         msg.event = DBEVT_OTA_COMPLETE_DOWNLOAD;
         msg.length = length;
-
         OTA_MALLOC_WITHOUT_RETURN(s_ota_data_ptr, length);
         os_memcpy(s_ota_data_ptr, data, length);
-        msg.param = (uint32_t)(s_ota_data_ptr);
-        boarding_send_msg(&msg);
+        msg.param = (uintptr_t)s_ota_data_ptr;
     }
     break;
 
     default:
     {
-        wboard_logi("unsupported opcode: 0x%04X, try external call", opcode);
-        boarding_msg_t msg = {0};
-        uint8_t *tmp_buff = NULL;
-        msg.event = DBEVT_OTHER_EVT;
-        msg.length = length;
-        msg.sub_evt = opcode;
+        uint8_t *payload = NULL;
 
-        OTA_MALLOC_WITHOUT_RETURN(tmp_buff, length);
-        os_memcpy(tmp_buff, data, length);
-        msg.param = (uint32_t)(tmp_buff);
-        boarding_send_msg(&msg);
+        wboard_logi("unsupported opcode: 0x%04X, try external call", opcode);
+        if ((length > BOARDING_MAX_PAYLOAD) ||
+            ((length > 0) && (data == NULL)))
+        {
+            bk_boarding_event_notify(opcode, EVT_STATUS_ERROR);
+            return;
+        }
+
+        msg.event = DBEVT_OTHER_EVT;
+        msg.sub_evt = opcode;
+        msg.length = length;
+        if (length > 0)
+        {
+            payload = os_zalloc((size_t)length + 1);
+            if (payload == NULL)
+            {
+                bk_boarding_event_notify(opcode, EVT_STATUS_ERROR);
+                return;
+            }
+            os_memcpy(payload, data, length);
+            msg.param = (uintptr_t)payload;
+        }
     }
     break;
 
+    }
+
+    ret = boarding_send_msg(&msg);
+    if (ret != BK_OK)
+    {
+        boarding_msg_release(&msg);
+        if (msg.event == DBEVT_OTHER_EVT)
+        {
+            bk_boarding_event_notify(opcode, EVT_STATUS_ERROR);
+        }
     }
 }
 
@@ -235,67 +303,6 @@ static void boarding_message_handle(void)
         {
             switch (msg.event)
             {
-            case DBEVT_WIFI_STATION_CONNECT:
-            {
-                wboard_logi("DBEVT_WIFI_STATION_CONNECT");
-
-                bk_boarding_info_t *wifi_info = (bk_boarding_info_t *) msg.param;
-                boarding_wifi_sta_connect(wifi_info->boarding_info.ssid_value,
-                                          wifi_info->boarding_info.password_value);
-            }
-            break;
-
-            case DBEVT_WIFI_STATION_CONNECTED:
-            {
-                wboard_logi("DBEVT_WIFI_STATION_CONNECTED");
-
-                netif_ip4_config_t ip4_config;
-                extern uint32_t uap_ip_is_start(void);
-
-                os_memset(&ip4_config, 0x0, sizeof(netif_ip4_config_t));
-                bk_netif_get_ip4_config(NETIF_IF_AP, &ip4_config);
-
-                if (uap_ip_is_start())
-                {
-                    bk_netif_get_ip4_config(NETIF_IF_AP, &ip4_config);
-                }
-                else
-                {
-                    bk_netif_get_ip4_config(NETIF_IF_STA, &ip4_config);
-                }
-
-                wboard_logi("ip: %s\n", ip4_config.ip);
-
-                bk_boarding_event_notify_with_data(BOARDING_OP_STATION_START, BK_OK, ip4_config.ip, strlen(ip4_config.ip));
-            }
-            break;
-
-            case DBEVT_WIFI_STATION_DISCONNECTED:
-            {
-                wboard_logi("DBEVT_WIFI_STATION_DISCONNECTED");
-            }
-            break;
-
-            case DBEVT_WIFI_SOFT_AP_TURNING_ON:
-            {
-                wboard_logi("DBEVT_WIFI_SOFT_AP_TURNING_ON");
-                bk_boarding_info_t *wifi_info = (bk_boarding_info_t *) msg.param;
-                int ret = boarding_wifi_soft_ap_start(wifi_info->boarding_info.ssid_value,
-                                                      wifi_info->boarding_info.password_value,
-                                                      wifi_info->channel);
-
-                if (ret == BK_OK)
-                {
-                    bk_boarding_event_notify(BOARDING_OP_SOFT_AP_START, EVT_STATUS_OK);
-                }
-                else
-                {
-                    bk_boarding_event_notify(BOARDING_OP_SOFT_AP_START, EVT_STATUS_ERROR);
-                }
-            }
-            break;
-
-
             case DBEVT_BLE_DISABLE:
             {
 #if CONFIG_BLUETOOTH
@@ -312,10 +319,10 @@ static void boarding_message_handle(void)
                 OTA_MALLOC_WITHOUT_RETURN(s_ble_ota->magic_code, OTA_START_MAGIC_LENGTH);
                 if(msg.length == (OTA_START_MAGIC_LENGTH + OTA_STORE_ENTIRE_IMAGE_SIZE))
                 {
-                    os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg.param) , OTA_START_MAGIC_LENGTH);
+                    os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg.param), OTA_START_MAGIC_LENGTH);
                     if(os_memcmp(s_ble_ota->magic_code, OTA_START_MAGIC, OTA_START_MAGIC_LENGTH) == 0)
                     {
-                        os_memcpy(&(s_ble_ota->image_size), (uint8_t *)(msg.param + OTA_START_MAGIC_LENGTH) , OTA_STORE_ENTIRE_IMAGE_SIZE);
+                        os_memcpy(&(s_ble_ota->image_size), (uint8_t *)(msg.param + OTA_START_MAGIC_LENGTH), OTA_STORE_ENTIRE_IMAGE_SIZE);
                         wboard_logw("ota_image_size :0x%x!\r\n", s_ble_ota->image_size);
                         if(f_ota_fun_ptr->init(s_ble_ota) == BK_OK)
                         {
@@ -380,8 +387,8 @@ static void boarding_message_handle(void)
                 OTA_MALLOC_WITHOUT_RETURN(s_ble_ota->magic_code, OTA_COMPLETE_MAGIC_LENGTH);
                 if(msg.length == (OTA_COMPLETE_MAGIC_LENGTH + OTA_CHECK_CRC_LENGTH))
                 {
-                    os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg.param) , OTA_COMPLETE_MAGIC_LENGTH);
-                    os_memcpy(&in_crc, (uint8_t *)(msg.param + OTA_COMPLETE_MAGIC_LENGTH) , OTA_CHECK_CRC_LENGTH);
+                    os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg.param), OTA_COMPLETE_MAGIC_LENGTH);
+                    os_memcpy(&in_crc, (uint8_t *)(msg.param + OTA_COMPLETE_MAGIC_LENGTH), OTA_CHECK_CRC_LENGTH);
                     if(os_memcmp(s_ble_ota->magic_code, OTA_COMPLETE_MAGIC, OTA_COMPLETE_MAGIC_LENGTH) == 0)
                     {
                         if(f_ota_fun_ptr->crc(s_ble_ota, in_crc) != BK_OK)
@@ -396,7 +403,7 @@ static void boarding_message_handle(void)
                         bk_boarding_event_notify(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_COMM_OK);
                         wboard_logw("ota success !\r\n");
                         rtos_delay_milliseconds(1000);
-                        bk_reboot();   //success need do reboot.
+                        bk_reboot();
                     }
                     else
                     {
@@ -416,7 +423,7 @@ static void boarding_message_handle(void)
 
             case DBEVT_OTHER_EVT:
             {
-                wboard_logi("unknow board cmd %d, call external %p !!!", msg.sub_evt, s_cmd_cb);
+                wboard_logi("unknown boarding cmd %d, call external %p", msg.sub_evt, s_cmd_cb);
 
                 if(s_cmd_cb)
                 {
@@ -431,6 +438,16 @@ static void boarding_message_handle(void)
             }
             break;
 
+            case DBEVT_BLE_DISCONNECTED:
+            {
+                wboard_logi("DBEVT_BLE_DISCONNECTED");
+                if (s_ble_disconnect_cb)
+                {
+                    s_ble_disconnect_cb();
+                }
+            }
+            break;
+
             case DBEVT_EXIT:
                 goto exit;
                 break;
@@ -439,29 +456,33 @@ static void boarding_message_handle(void)
 
                 break;
             }
+
+            boarding_msg_release(&msg);
         }
     }
 
 exit:
+    s_boarding_ready = false;
+    while (rtos_pop_from_queue(&s_boarding_queue, &msg, 0) == BK_OK)
+    {
+        boarding_msg_release(&msg);
+    }
 
-    /* delate msg queue */
+    /* delete message queue */
     ret = rtos_deinit_queue(&s_boarding_queue);
 
     if (ret != BK_OK)
     {
-        wboard_loge("delete message queue fail");
+        wboard_loge("delete message queue failed");
     }
 
     s_boarding_queue = NULL;
 
     wboard_loge("delete message queue complete");
 
-    /* delate task */
-    rtos_delete_thread(NULL);
-
     s_boarding_thd = NULL;
-
     wboard_loge("delete task complete");
+    rtos_delete_thread(NULL);
 }
 
 bk_err_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len))
@@ -470,14 +491,26 @@ bk_err_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *da
     return BK_OK;
 }
 
+void wifi_boarding_demo_reg_ble_disconnect_cb(void (*cb)(void))
+{
+    s_ble_disconnect_cb = cb;
+}
+
 bk_err_t wifi_boarding_demo_service_main(void)
 {
     bk_err_t ret = BK_OK;
 
+    if (s_boarding_queue || s_boarding_thd)
+    {
+        wboard_logw("service already initialized");
+        return s_boarding_ready ? BK_OK : BK_ERR_BUSY;
+    }
+
+    s_boarding_ready = false;
     ret = rtos_init_queue(&s_boarding_queue,
                           "boarding_queue",
                           sizeof(boarding_msg_t),
-                          10);
+                          BOARDING_QUEUE_DEPTH);
 
     if (ret != BK_OK)
     {
@@ -495,6 +528,8 @@ bk_err_t wifi_boarding_demo_service_main(void)
     if (ret != BK_OK)
     {
         wboard_loge("create boarding major thread fail");
+        rtos_deinit_queue(&s_boarding_queue);
+        s_boarding_queue = NULL;
         return BK_FAIL;
     }
 
@@ -505,7 +540,10 @@ bk_err_t wifi_boarding_demo_service_main(void)
         if (bk_boarding_info == NULL)
         {
             wboard_loge("bk_boarding_info malloc failed\n");
-
+            boarding_msg_t exit_msg = {
+                .event = DBEVT_EXIT,
+            };
+            boarding_send_msg(&exit_msg);
             return BK_FAIL;
         }
 
@@ -513,7 +551,21 @@ bk_err_t wifi_boarding_demo_service_main(void)
     }
 
     bk_boarding_info->boarding_info.cb = bk_boarding_operation_handle;
-    wifi_boarding_demo_main(&bk_boarding_info->boarding_info);
+    ret = wifi_boarding_demo_main(&bk_boarding_info->boarding_info);
+    if (ret != BK_OK)
+    {
+        boarding_msg_t exit_msg = {
+            .event = DBEVT_EXIT,
+        };
+        boarding_send_msg(&exit_msg);
+        return ret;
+    }
 
-    return ret;
+    s_boarding_ready = true;
+    return BK_OK;
+}
+
+bool wifi_boarding_demo_service_is_ready(void)
+{
+    return s_boarding_ready;
 }

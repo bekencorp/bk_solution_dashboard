@@ -94,16 +94,8 @@ typedef struct
     uint8_t type;
 } __attribute__((packed)) navigation_type_control_t;
 
-#if !CONFIG_BK_BLE_PROVISIONING
-typedef struct
-{
-    int32_t event;
-    uint32_t param;
-    uint16_t length;
-} ble_prov_msg_t;
-#endif
-
-bk_err_t bk_sl_np_init(uint8_t reg_method);
+bk_err_t bk_sl_np_init(void);
+bk_err_t bk_sl_np_start_provisioning(void);
 navigation_type_t get_navigation_type(void);
 
 /* Whether BLE-side navigation (casting) is currently active. */

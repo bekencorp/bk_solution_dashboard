@@ -2,6 +2,7 @@
 
 #include <os/os.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum
@@ -45,23 +46,25 @@ typedef struct
     uint16_t channel;
 } bk_boarding_info_t;
 
+typedef struct
+{
+    char ssid[33];
+    char password[65];
+    uint16_t channel;
+} boarding_wifi_config_t;
+
 
 #define EVT_STATUS_OK               (0)
 #define EVT_STATUS_ERROR            (1)
 
 typedef enum
 {
-    DBEVT_WIFI_STATION_CONNECT,
-    DBEVT_WIFI_STATION_CONNECTED,
-    DBEVT_WIFI_STATION_DISCONNECTED,
-
-    DBEVT_WIFI_SOFT_AP_TURNING_ON,
-
     DBEVT_BLE_DISABLE,
     DBEVT_OTA_START_DOWNLOAD,
     DBEVT_OTA_DO_DOWNLOADING,
     DBEVT_OTA_COMPLETE_DOWNLOAD,
     DBEVT_OTHER_EVT,
+    DBEVT_BLE_DISCONNECTED,
 
     DBEVT_EXIT,
 } dbevt_t;
@@ -69,15 +72,17 @@ typedef enum
 typedef struct
 {
     uint32_t event;
-    uint32_t param;
+    uintptr_t param;
     uint16_t length;
     uint32_t sub_evt;
 } boarding_msg_t;
 
 bk_err_t boarding_send_msg(boarding_msg_t *msg);
 bk_err_t wifi_boarding_demo_service_main(void);
+bool wifi_boarding_demo_service_is_ready(void);
 bk_err_t wifi_boarding_demo_reg_external_cmd(void (*cb)(uint16_t op, uint8_t *data, uint32_t len));
-void bk_boarding_event_notify(uint16_t opcode, int status);
-void bk_boarding_event_notify_with_data(uint16_t opcode, int status, char *payload, uint16_t length);
+void wifi_boarding_demo_reg_ble_disconnect_cb(void (*cb)(void));
+bk_err_t bk_boarding_event_notify(uint16_t opcode, int status);
+bk_err_t bk_boarding_event_notify_with_data(uint16_t opcode, int status, const char *payload, uint16_t length);
 void ble_ota_start_timer(void);
 void ble_ota_stop_timer(void);
