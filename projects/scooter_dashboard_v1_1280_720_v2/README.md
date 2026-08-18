@@ -1,12 +1,30 @@
-# Scooter Dashboard V1.0 V2 User Guide
+# Scooter Dashboard V1.0 1280×720 V2 User Guide
 
 * [中文](./README_CN.md)
 
 ## Development Board Guide
 
-This guide applies only to Dashboard V1.0 hardware.
+This guide applies to Dashboard V1.0 hardware with a 1280×720 landscape UI and corresponds to the `scooter_dashboard_v1_1280_720_v2` project.
 
 > **Note**: The board requires a DC 12V power supply to boot normally.
+
+### Project-Specific Configuration
+
+| Setting | Project configuration |
+| --- | --- |
+| SoC | BK7259 |
+| LCD | ER68576B MIPI, native resolution 720×1280 |
+| LVGL framebuffer | 720×1280 |
+| LVGL canvas | 1280×720 landscape |
+| UI rotation | 270°, mapping the portrait panel to a landscape UI |
+| Boot background | `/sd0/home_bg.jpg` on the SD card |
+| Cast JPEG | 1280×720 input/output, rotated 90° |
+| Dashcam capture and recording | ISP MP at 1280×720; H.264 recording at 25 FPS |
+| Assist View | 1280×720 output with the camera image rotated 90° |
+| Recording playback | 720×1280 pre-swap decode target, producing 1280×720 after the pipeline's 90° rotation |
+| Resolution-specific resources | Background images whose names contain `1280x720`, plus layouts, icons, and fonts sized for this resolution |
+
+The firmware and UI resources in this project are intended only for the 1280×720 landscape UI. Do not mix them with firmware or generated resources from `scooter_dashboard_v1_1024_600_v2`.
 
 ### Jumper Configuration
 
@@ -26,20 +44,22 @@ Before powering on, verify that the following jumpers are connected:
 
 ## Feature Overview
 
-This project targets Dashboard V1.0 hardware and provides home-page navigation, Dashcam loop recording and playback, a phone book, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
+This project targets the Dashboard V1.0 1280×720 landscape-UI variant and provides home-page navigation, Dashcam loop recording and playback, local SD-card music playback, a phone book, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
 
 - Recording files are stored in `/sd0/dashcam`.
 - After entering the Dashcam page, the active recording is stopped and finalized asynchronously before the SD-card recording list is loaded, preventing SD-card contention between recording and playback.
 - Recording automatically resumes after leaving the Dashcam page.
+- Music Player scans audio files in `/sd0/Music`. Background recording pauses on entry and resumes on exit to prevent simultaneous SD-card access by playback and recording.
 
 ## Pages
 
 | Page | Purpose | How to enter |
 | --- | --- | --- |
-| Home | Default page for selecting Dashcam, OTA, or Phone Book | Shown after boot; double-press the middle key on a feature page to return |
+| Home | Default page for selecting Dashcam, OTA, Phone Book, or Music Player | Shown after boot; double-press the middle key on a feature page to return |
 | Dashcam | Browse completed SD-card recordings and play a selected clip; the list shows recording time and file size | Select Dashcam with the left/right key on Home, then short-press the middle key |
 | OTA | Displays OTA upgrade status and progress | Select OTA with the left/right key on Home, then short-press the middle key |
 | Phone Book | Browse contacts and recent calls, and place calls through Bluetooth HFP | Select Phone Book with the left/right key on Home, then short-press the middle key |
+| Music Player | Scan and play up to 100 local audio tracks from `/sd0/Music` | Select Music Player with the left/right key on Home, then short-press the middle key |
 | Assist View | Full-screen live camera view; recording continues while active | Long-press the left or right key on Home; double-press the middle key to exit to Home |
 
 ## Keys
@@ -48,24 +68,25 @@ The Dashboard V1.0 key-to-GPIO mapping is:
 
 | Key | GPIO | Action | Function |
 | --- | --- | --- | --- |
-| Up | GPIO32 | Short press | Select the previous item in the active Phone Book list |
-| Down | GPIO27 | Short press | Select the next item in the active Phone Book list |
+| Up | GPIO32 | Short press | Select the previous item in the Phone Book or Music Player playlist |
+| Down | GPIO27 | Short press | Select the next item in the Phone Book or Music Player playlist |
 | Down | GPIO27 | Long press | Clear saved network provisioning information and reboot; Home only |
-| Left | GPIO31 | Short press | Select the previous item; switch to Contacts in Phone Book |
+| Left | GPIO31 | Short press | Select the previous item; switch Phone Book lists; switch Music Player controls or playlist |
 | Left | GPIO31 | Long press | Open Assist View; Home only |
-| Right | GPIO29 | Short press | Select the next item; switch to Recent Calls in Phone Book |
+| Right | GPIO29 | Short press | Select the next item; switch Phone Book lists; switch Music Player controls or playlist |
 | Right | GPIO29 | Long press | Open Assist View; Home only |
-| Middle | GPIO30 | Short press | Confirm the focused item: open a page, play a recording, dial a number, or perform a call action |
+| Middle | GPIO30 | Short press | Confirm the focused item: open a page, play a recording or track, perform a music control, dial a number, or perform a call action |
 | Middle | GPIO30 | Double press | Return to Home from a feature page; exit Assist View to Home |
 
 ### Page Key Behavior
 
 | Current page or state | Direction keys | Middle short press | Middle double press |
 | --- | --- | --- | --- |
-| Home | Left/right selects Dashcam, OTA, or Phone Book | Open the selected page | Stay on or return to Home |
+| Home | Left/right cycles through Dashcam, OTA, Phone Book, and Music Player | Open the selected page | Stay on or return to Home |
 | Dashcam | Left/right selects the previous or next recording, with wraparound | Play the selected recording | Return to Home |
 | OTA | No in-page direction-key action | No action | Return to Home |
 | Phone Book | Left/right switches Contacts/Recent Calls; up/down selects a list item | Dial the selected number | Return to Home |
+| Music Player | Left/right switches playback controls and the playlist; up/down selects a track | Run the focused control or play the selected track | Return to Home |
 | Incoming HFP call | Left/right selects Answer or Hang Up | Perform the selected action | Return to Home |
 | Outgoing or active HFP call | The current call action receives focus automatically | Hang up | Return to Home |
 | Assist View | No action | No action | Exit Assist View and return to Home |
@@ -81,6 +102,16 @@ After entering Dashcam, the page first shows a loading state while a worker stop
 5. Double-press the middle key to return to Home. Recording resumes after leaving Dashcam.
 
 The first line of each recording-list item shows the recording time; the second line shows the file size in MB.
+
+### Music Player
+
+1. Store supported audio files under `/sd0/Music` on the SD card. MP3, WAV, FLAC, M4A, AAC, OGG, and APE are supported.
+2. Select Music Player with the left or right key on Home, then short-press the middle key.
+3. Use left/right to move between playback controls and the playlist; use up/down to select a track.
+4. Short-press the middle key to run the focused control or play the selected track.
+5. Double-press the middle key to return to Home. Background recording resumes after leaving the page.
+
+Entering Music Player stops and finalizes the active recording to avoid concurrent SD-card reads and writes.
 
 ## CLI Commands
 

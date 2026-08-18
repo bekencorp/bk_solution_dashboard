@@ -150,7 +150,7 @@ They are ignored before playback, after stop, or before UI initialization.
 
 | Command | Description |
 | --- | --- |
-| `ap_cmd klok page <home\|main\|list\|play> [file]` | Switch pages; a file may be specified for the playback page |
+| `ap_cmd klok page <home/main/list/play> [file]` | Switch pages; a file may be specified for the playback page |
 | `ap_cmd klok back` | Navigate back through `mv_play → song_list → klok_main → home` |
 | `ap_cmd klok play [file]` | Open the playback page and play a file; omit the file to use the default |
 | `ap_cmd klok full` | Open the full-screen playback page |
@@ -159,7 +159,7 @@ They are ignored before playback, after stop, or before UI initialization.
 | `ap_cmd klok stop` | Stop playback |
 | `ap_cmd klok pause` / `resume` | Pause or resume playback |
 | `ap_cmd klok playpause` | Toggle between paused and playing states |
-| `ap_cmd klok audio <0\|1>` | Select a track: `0` for vocals, `1` for accompaniment |
+| `ap_cmd klok audio <0/1>` | Select a track: `0` for vocals, `1` for accompaniment |
 | `ap_cmd klok vocal` / `accompany` | Select the vocal or accompaniment track |
 | `ap_cmd klok mute` | Toggle mute |
 | `ap_cmd klok volup` / `voldown` | Increase or decrease volume |
@@ -174,7 +174,7 @@ They are ignored before playback, after stop, or before UI initialization.
 | `ap_cmd video_play_engine seek <ms>` | Seek to a position in milliseconds |
 | `ap_cmd video_play_engine vol_up <n>` | Increase volume by `n` |
 | `ap_cmd video_play_engine vol_down <n>` | Decrease volume by `n` |
-| `ap_cmd video_play_engine mute <on\|off>` | Set mute state |
+| `ap_cmd video_play_engine mute <on/off>` | Set mute state |
 | `ap_cmd video_play_engine audio_track <index>` | Select an audio track |
 
 ## SD Card MTP

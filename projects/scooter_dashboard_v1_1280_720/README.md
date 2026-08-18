@@ -1,12 +1,24 @@
-# Scooter Dashboard V1.0 User Guide
+# Scooter Dashboard V1.0 1280×720 User Guide
 
 * [中文](./README_CN.md)
 
 ## Development Board Guide
 
-This guide applies only to Dashboard V1.0 hardware.
+This guide applies to Dashboard V1.0 hardware with a 1280×720 landscape UI and corresponds to the `scooter_dashboard_v1_1280_720` project.
 
 > **Note**: The board requires a DC 12V power supply to boot normally.
+
+### Project-Specific Configuration
+
+| Setting | Project configuration |
+| --- | --- |
+| SoC | BK7259 |
+| Bluetooth controller | BK3515NS, connected to BK7259 through UART1 |
+| LCD | ER68576B MIPI, native resolution 720×1280 |
+| UI rotation | 270°, mapping the portrait panel to a landscape UI |
+| Cast JPEG | 1280×720 input/output, rotated 90° |
+| SD Card | SDIO1 in 4-bit mode |
+| Touch | Disabled; operation uses five physical keys |
 
 ### Jumper Configuration
 

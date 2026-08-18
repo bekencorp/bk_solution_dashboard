@@ -140,7 +140,7 @@ ap_cmd klok play /sd0/demo.mp4
 
 | 命令 | 说明 |
 | --- | --- |
-| `ap_cmd klok page <home\|main\|list\|play> [file]` | 切换页面；进入播放页时可指定文件 |
+| `ap_cmd klok page <home/main/list/play> [file]` | 切换页面；进入播放页时可指定文件 |
 | `ap_cmd klok back` | 按 `mv_play → song_list → klok_main → home` 返回 |
 | `ap_cmd klok play [file]` | 进入播放页并播放指定文件；省略文件时播放默认文件 |
 | `ap_cmd klok full` | 进入全屏播放页 |
@@ -149,7 +149,7 @@ ap_cmd klok play /sd0/demo.mp4
 | `ap_cmd klok stop` | 停止播放 |
 | `ap_cmd klok pause` / `resume` | 暂停或继续播放 |
 | `ap_cmd klok playpause` | 切换暂停和播放状态 |
-| `ap_cmd klok audio <0\|1>` | 选择音轨；`0` 为原唱，`1` 为伴唱 |
+| `ap_cmd klok audio <0/1>` | 选择音轨；`0` 为原唱，`1` 为伴唱 |
 | `ap_cmd klok vocal` / `accompany` | 切换到原唱或伴唱音轨 |
 | `ap_cmd klok mute` | 切换静音状态 |
 | `ap_cmd klok volup` / `voldown` | 增大或减小音量 |
@@ -164,7 +164,7 @@ ap_cmd klok play /sd0/demo.mp4
 | `ap_cmd video_play_engine seek <ms>` | 跳转到指定毫秒位置 |
 | `ap_cmd video_play_engine vol_up <n>` | 音量增加 `n` |
 | `ap_cmd video_play_engine vol_down <n>` | 音量减少 `n` |
-| `ap_cmd video_play_engine mute <on\|off>` | 设置静音状态 |
+| `ap_cmd video_play_engine mute <on/off>` | 设置静音状态 |
 | `ap_cmd video_play_engine audio_track <index>` | 选择音轨 |
 
 ## SD Card MTP
