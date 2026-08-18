@@ -41,6 +41,7 @@
 #define MP_TITLE_MAX    64
 #define MP_ARTIST_MAX   40
 #define MP_PATH_MAX     160
+#define MP_VOLUME_STEP  10
 
 /* Playlist row geometry (mirrors the designer's static rows). */
 #define MP_ROW_W        420
@@ -73,6 +74,7 @@ static int        s_pl_sel;
 static int        s_pl_rows;   /* real (selectable) playlist rows */
 static int        s_np_sel;    /* selected np-panel button when focus==MP_FOCUS_NP */
 static audio_player_mode_t s_play_mode = AUDIO_PLAYER_MODE_SEQUENCE_LOOP;
+static bool       s_volume_btns_bound;
 
 /* np-panel control buttons cycled by single-press while the panel is focused. */
 #define MP_NP_BTN_CNT 6
@@ -1128,8 +1130,53 @@ bool music_player_ui_handle_key_single(void)
 
 /* Trigger the action of the currently highlighted np-panel button. Runs on the
  * key/LVGL task, same context as the playlist long-press play. */
+static void mp_volume_adjust(int delta)
+{
+    lv_obj_t *slider = bk_lv_tool_ui.music_player_vol_slider;
+    int value;
+
+    if (slider == NULL || !lv_obj_is_valid(slider))
+    {
+        return;
+    }
+
+    value = lv_slider_get_value(slider) + delta;
+    if (value < 0)
+    {
+        value = 0;
+    }
+    else if (value > 100)
+    {
+        value = 100;
+    }
+
+    lv_slider_set_value(slider, value, LV_ANIM_ON);
+    LOGI("volume slider -> %d\n", value);
+}
+
+static void mp_volume_btn_clicked(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_target(e);
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (target == ui->music_player_btn_vol_down)
+    {
+        mp_volume_adjust(-MP_VOLUME_STEP);
+    }
+    else if (target == ui->music_player_btn_vol_up)
+    {
+        mp_volume_adjust(MP_VOLUME_STEP);
+    }
+}
+
 static void mp_np_activate(int sel)
 {
+    if (sel == 4 || sel == 5)
+    {
+        mp_volume_adjust(sel == 4 ? -MP_VOLUME_STEP : MP_VOLUME_STEP);
+        return;
+    }
+
     if (mp_player_ensure() == NULL)
     {
         return;
@@ -1193,14 +1240,6 @@ static void mp_np_activate(int sel)
             s_now_idx = (s_now_idx + 1) % s_track_cnt;
         }
         LOGI("np: next -> %d\n", s_now_idx);
-        break;
-
-    case 4:  /* btn_vol_down: TODO volume control not wired yet */
-        LOGI("np: vol- (stub)\n");
-        break;
-
-    case 5:  /* btn_vol_up: TODO volume control not wired yet */
-        LOGI("np: vol+ (stub)\n");
         break;
 
     default:
@@ -1271,6 +1310,25 @@ void music_player_ui_enter(void)
     mp_scan_tracks();
     mp_fill_playlist();
     mp_refresh_focus();
+
+    if (!s_volume_btns_bound &&
+        ui->music_player_btn_vol_down != NULL &&
+        ui->music_player_btn_vol_up != NULL &&
+        lv_obj_is_valid(ui->music_player_btn_vol_down) &&
+        lv_obj_is_valid(ui->music_player_btn_vol_up))
+    {
+        lv_obj_add_flag(ui->music_player_btn_vol_down, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(ui->music_player_btn_vol_up, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(ui->music_player_btn_vol_down,
+                            mp_volume_btn_clicked,
+                            LV_EVENT_CLICKED,
+                            NULL);
+        lv_obj_add_event_cb(ui->music_player_btn_vol_up,
+                            mp_volume_btn_clicked,
+                            LV_EVENT_CLICKED,
+                            NULL);
+        s_volume_btns_bound = true;
+    }
 
     /* Keep the player's playlist aligned with the freshly scanned rows so a
      * later jumpto(idx) targets the same track the UI shows. */

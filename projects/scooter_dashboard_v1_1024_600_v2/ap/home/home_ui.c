@@ -594,14 +594,33 @@ typedef struct
     hfp_hf_call_state_t state;
 } home_music_phone_async_t;
 
+/*
+ * Bluetooth callbacks run outside the LVGL task. Keep only the newest state
+ * here and let the home-page LVGL timer consume it. This avoids touching the
+ * LVGL timer list from the Bluetooth task and, while lv_vendor_stop() is active,
+ * prevents an unbounded list of lv_async_call() timers from accumulating.
+ */
+typedef struct
+{
+    home_music_update_async_t music;
+    home_music_phone_async_t phone;
+    uint32_t play_position_ms;
+    uint8_t has_music;
+    uint8_t has_phone;
+    uint8_t has_play_position;
+} home_music_pending_t;
+
 static home_music_state_t s_home_music = {
     .title = "",
     .artist = "",
 };
+static home_music_pending_t s_home_music_pending;
+static beken_mutex_t s_home_music_pending_mutex = NULL;
 static lv_obj_t *s_home_beat_canvas = NULL;
 static void *s_home_beat_canvas_buf = NULL;
 
 static void home_music_apply(void);
+static void home_music_pending_apply(void);
 
 static void speed_gauge_apply(void)
 {
@@ -633,6 +652,8 @@ static void speed_gauge_apply(void)
 static void speed_gauge_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
+
+    home_music_pending_apply();
 
     s_speed_value += s_speed_dir * SPEED_ANIM_STEP;
     if (s_speed_value >= SPEED_SCALE_MAX)
@@ -1295,9 +1316,8 @@ static void home_music_sync_timer(void)
     }
 }
 
-static void home_music_update_async_cb(void *user_data)
+static void home_music_update_apply(const home_music_update_async_t *update)
 {
-    home_music_update_async_t *update = (home_music_update_async_t *)user_data;
     bool track_changed = false;
 
     if (update == NULL)
@@ -1349,13 +1369,10 @@ static void home_music_update_async_cb(void *user_data)
     s_home_music.progress_accum_ms = 0;
     home_music_sync_timer();
     home_music_apply();
-    os_free(update);
 }
 
-static void home_music_phone_async_cb(void *user_data)
+static void home_music_phone_apply(const home_music_phone_async_t *update)
 {
-    home_music_phone_async_t *update = (home_music_phone_async_t *)user_data;
-
     if (update == NULL)
     {
         return;
@@ -1379,7 +1396,6 @@ static void home_music_phone_async_cb(void *user_data)
     home_music_sync_timer();
     home_music_apply();
     home_call_nav_sync();
-    os_free(update);
 }
 
 /*
@@ -1387,18 +1403,11 @@ static void home_music_phone_async_cb(void *user_data)
  * by the phone via AVRCP PLAY_POS_CHANGED. The 1-second timer keeps advancing
  * the bar smoothly between these periodic corrections.
  */
-static void home_music_position_async_cb(void *user_data)
+static void home_music_position_apply(uint32_t position_ms)
 {
-    uint32_t *position_ms = (uint32_t *)user_data;
-
-    if (position_ms == NULL)
-    {
-        return;
-    }
-
     if (!home_call_is_active())
     {
-        s_home_music.position_ms = *position_ms;
+        s_home_music.position_ms = position_ms;
         if (s_home_music.duration_ms > 0 &&
             s_home_music.position_ms > s_home_music.duration_ms)
         {
@@ -1409,8 +1418,124 @@ static void home_music_position_async_cb(void *user_data)
         home_music_sync_timer();
         home_music_apply();
     }
+}
 
-    os_free(position_ms);
+static bk_err_t home_music_pending_init(void)
+{
+    if (s_home_music_pending_mutex != NULL)
+    {
+        return BK_OK;
+    }
+
+    return rtos_init_mutex(&s_home_music_pending_mutex);
+}
+
+static bool home_music_pending_lock(void)
+{
+    return s_home_music_pending_mutex != NULL &&
+           rtos_lock_mutex(&s_home_music_pending_mutex) == BK_OK;
+}
+
+static void home_music_pending_unlock(void)
+{
+    (void)rtos_unlock_mutex(&s_home_music_pending_mutex);
+}
+
+static void home_music_pending_publish(const home_music_update_async_t *update)
+{
+    home_music_update_async_t *pending;
+
+    if (update == NULL || !home_music_pending_lock())
+    {
+        return;
+    }
+
+    pending = &s_home_music_pending.music;
+    if (update->has_title)
+    {
+        snprintf(pending->title, sizeof(pending->title), "%s", update->title);
+        pending->has_title = 1;
+    }
+    if (update->has_artist)
+    {
+        snprintf(pending->artist, sizeof(pending->artist), "%s", update->artist);
+        pending->has_artist = 1;
+    }
+    if (update->has_duration)
+    {
+        pending->duration_ms = update->duration_ms;
+        pending->has_duration = 1;
+    }
+    if (update->has_position)
+    {
+        pending->position_ms = update->position_ms;
+        pending->has_position = 1;
+        s_home_music_pending.has_play_position = 0;
+    }
+    if (update->has_playing)
+    {
+        pending->playing = update->playing;
+        pending->has_playing = 1;
+    }
+    s_home_music_pending.has_music = 1;
+
+    home_music_pending_unlock();
+}
+
+static void home_music_pending_publish_position(uint32_t position_ms)
+{
+    if (!home_music_pending_lock())
+    {
+        return;
+    }
+
+    s_home_music_pending.play_position_ms = position_ms;
+    s_home_music_pending.has_play_position = 1;
+    home_music_pending_unlock();
+}
+
+static void home_music_pending_publish_phone(const home_music_phone_async_t *update)
+{
+    if (update == NULL || !home_music_pending_lock())
+    {
+        return;
+    }
+
+    s_home_music_pending.phone = *update;
+    s_home_music_pending.has_phone = 1;
+    home_music_pending_unlock();
+}
+
+/*
+ * LVGL-thread consumer. When LVGL is stopped this function cannot run, but
+ * producers only overwrite the fixed-size snapshot above, so memory use stays
+ * bounded. The newest snapshot is applied when the home page resumes.
+ */
+static void home_music_pending_apply(void)
+{
+    home_music_pending_t pending = {0};
+
+    if (!home_music_pending_lock())
+    {
+        return;
+    }
+
+    pending = s_home_music_pending;
+    os_memset(&s_home_music_pending, 0, sizeof(s_home_music_pending));
+    home_music_pending_unlock();
+
+    if (pending.has_music)
+    {
+        home_music_update_apply(&pending.music);
+    }
+    if (pending.has_phone)
+    {
+        home_music_phone_apply(&pending.phone);
+    }
+    if (pending.has_play_position)
+    {
+        home_music_position_apply(pending.play_position_ms);
+    }
 }
 
 static uint32_t home_music_parse_u32_text(const char *text)
@@ -1557,16 +1682,10 @@ static void home_music_copy_avrcp_attr_text(char *dst, size_t dst_size, const a2
 
 static void home_music_handle_avrcp_attr_rsp(const a2dp_sink_avrcp_elem_attr_msg_t *rsp)
 {
-    home_music_update_async_t *update;
+    home_music_update_async_t update = {0};
     uint8_t has_update = 0;
 
     if (rsp == NULL)
-    {
-        return;
-    }
-
-    update = (home_music_update_async_t *)os_zalloc(sizeof(*update));
-    if (update == NULL)
     {
         return;
     }
@@ -1578,23 +1697,23 @@ static void home_music_handle_avrcp_attr_rsp(const a2dp_sink_avrcp_elem_attr_msg
         switch (attr->attr_id)
         {
         case BK_AVRCP_MEDIA_ATTR_ID_TITLE:
-            home_music_copy_avrcp_attr_text(update->title, sizeof(update->title), attr);
-            update->has_title = update->title[0] != '\0';
-            has_update |= update->has_title;
+            home_music_copy_avrcp_attr_text(update.title, sizeof(update.title), attr);
+            update.has_title = update.title[0] != '\0';
+            has_update |= update.has_title;
             break;
 
         case BK_AVRCP_MEDIA_ATTR_ID_ARTIST:
-            home_music_copy_avrcp_attr_text(update->artist, sizeof(update->artist), attr);
-            update->has_artist = update->artist[0] != '\0';
-            has_update |= update->has_artist;
+            home_music_copy_avrcp_attr_text(update.artist, sizeof(update.artist), attr);
+            update.has_artist = update.artist[0] != '\0';
+            has_update |= update.has_artist;
             break;
 
         case BK_AVRCP_MEDIA_ATTR_ID_PLAYING_TIME:
         {
             char duration_text[24] = {0};
             home_music_copy_avrcp_attr_text(duration_text, sizeof(duration_text), attr);
-            update->duration_ms = home_music_parse_u32_text(duration_text);
-            update->has_duration = 1;
+            update.duration_ms = home_music_parse_u32_text(duration_text);
+            update.has_duration = 1;
             has_update = 1;
             break;
         }
@@ -1606,11 +1725,7 @@ static void home_music_handle_avrcp_attr_rsp(const a2dp_sink_avrcp_elem_attr_msg
 
     if (has_update)
     {
-        lv_async_call(home_music_update_async_cb, update);
-    }
-    else
-    {
-        os_free(update);
+        home_music_pending_publish(&update);
     }
 }
 
@@ -1620,62 +1735,54 @@ static void home_music_update(const char *title,
                               uint32_t position_ms,
                               uint8_t playing)
 {
-    home_music_update_async_t *update = (home_music_update_async_t *)os_zalloc(sizeof(*update));
-
-    if (update == NULL)
-    {
-        return;
-    }
+    home_music_update_async_t update = {0};
 
     if (title != NULL)
     {
-        snprintf(update->title, sizeof(update->title), "%s", title);
-        update->has_title = 1;
+        snprintf(update.title, sizeof(update.title), "%s", title);
+        update.has_title = 1;
     }
     if (artist != NULL)
     {
-        snprintf(update->artist, sizeof(update->artist), "%s", artist);
-        update->has_artist = 1;
+        snprintf(update.artist, sizeof(update.artist), "%s", artist);
+        update.has_artist = 1;
     }
-    update->duration_ms = duration_ms;
-    update->position_ms = position_ms;
-    update->playing = playing ? 1 : 0;
-    update->has_duration = 1;
-    update->has_position = 1;
-    update->has_playing = 1;
+    update.duration_ms = duration_ms;
+    update.position_ms = position_ms;
+    update.playing = playing ? 1 : 0;
+    update.has_duration = 1;
+    update.has_position = 1;
+    update.has_playing = 1;
 
-    lv_async_call(home_music_update_async_cb, update);
+    home_music_pending_publish(&update);
+}
+
+static void home_music_set_playing(uint8_t playing)
+{
+    home_music_update_async_t update = {
+        .playing = playing ? 1 : 0,
+        .has_playing = 1,
+    };
+
+    home_music_pending_publish(&update);
 }
 
 static void home_music_set_position(uint32_t position_ms)
 {
-    uint32_t *async_pos = (uint32_t *)os_zalloc(sizeof(*async_pos));
-
-    if (async_pos == NULL)
-    {
-        return;
-    }
-
-    *async_pos = position_ms;
-    lv_async_call(home_music_position_async_cb, async_pos);
+    home_music_pending_publish_position(position_ms);
 }
 
 static void home_phone_update(hfp_hf_call_state_t state, const char *number)
 {
-    home_music_phone_async_t *update = (home_music_phone_async_t *)os_zalloc(sizeof(*update));
-
-    if (update == NULL)
-    {
-        return;
-    }
+    home_music_phone_async_t update = {0};
 
     if (number != NULL)
     {
-        snprintf(update->number, sizeof(update->number), "%s", number);
+        snprintf(update.number, sizeof(update.number), "%s", number);
     }
-    update->state = state;
+    update.state = state;
 
-    lv_async_call(home_music_phone_async_cb, update);
+    home_music_pending_publish_phone(&update);
 }
 
 static void home_ui_bt_a2dp_event_cb(a2dp_sink_ui_event_t event,
@@ -1689,7 +1796,7 @@ static void home_ui_bt_a2dp_event_cb(a2dp_sink_ui_event_t event,
     case A2DP_SINK_UI_EVT_TRACK_CHANGED:
         /* Do not rewind here: the demo follows up with a track-attr request and
          * the position is only reset once the new title/artist actually arrives
-         * (see home_music_update_async_cb). This avoids the bar jumping back to
+         * (see home_music_update_apply). This avoids the bar jumping back to
          * 0 on the repeated TRACK_CHANGED notifications phones emit. */
         break;
 
@@ -1697,11 +1804,7 @@ static void home_ui_bt_a2dp_event_cb(a2dp_sink_ui_event_t event,
         if (event_data != NULL)
         {
             uint8_t play_status = *(const uint8_t *)event_data;
-            home_music_update(NULL,
-                              NULL,
-                              s_home_music.duration_ms,
-                              s_home_music.position_ms,
-                              play_status == BK_AVRCP_PLAYBACK_PLAYING);
+            home_music_set_playing(play_status == BK_AVRCP_PLAYBACK_PLAYING);
         }
         break;
 
@@ -1741,6 +1844,11 @@ void home_ui_register_bt_callbacks(void)
         .phone_update = home_ui_bt_phone_update_cb,
         .user_data = NULL,
     };
+
+    if (home_music_pending_init() != BK_OK)
+    {
+        BK_LOGE("home_ui", "init Bluetooth UI state mutex failed\n");
+    }
 
     a2dp_sink_demo_register_ui_callback(&a2dp_callbacks);
     hfp_hf_demo_register_ui_callback(&hfp_callbacks);
@@ -1852,6 +1960,7 @@ void home_ui_enter(void)
     }
 
     s_home_music.progress_valid = 0;
+    home_music_pending_apply();
     home_music_apply();
     home_music_sync_timer();
 

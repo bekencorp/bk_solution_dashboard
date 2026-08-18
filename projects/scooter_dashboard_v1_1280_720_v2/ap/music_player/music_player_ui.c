@@ -1339,6 +1339,34 @@ bool music_player_ui_handle_key_single(void)
 
 /* Trigger the action of the currently highlighted np-panel button. Runs on the
  * key/LVGL task, same context as the playlist long-press play. */
+static void mp_volume_slider_apply(int volume_db, lv_anim_enable_t anim)
+{
+    lv_obj_t *slider = bk_lv_tool_ui.music_player_vol_slider;
+    int db_range = CONFIG_MUSIC_PLAYER_VOLUME_DB_MAX -
+                   CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN;
+    int slider_value;
+
+    if (slider == NULL || !lv_obj_is_valid(slider))
+    {
+        return;
+    }
+
+    if (volume_db < CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN)
+    {
+        volume_db = CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN;
+    }
+    else if (volume_db > CONFIG_MUSIC_PLAYER_VOLUME_DB_MAX)
+    {
+        volume_db = CONFIG_MUSIC_PLAYER_VOLUME_DB_MAX;
+    }
+
+    slider_value = (db_range > 0)
+                       ? (volume_db - CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN) * 100 /
+                             db_range
+                       : 0;
+    lv_slider_set_value(slider, slider_value, anim);
+}
+
 static void mp_volume_adjust(int delta_db)
 {
     int volume_db = bk_audio_player_get_volume(s_player);
@@ -1356,6 +1384,7 @@ static void mp_volume_adjust(int delta_db)
 
     if (target_db == volume_db)
     {
+        mp_volume_slider_apply(volume_db, LV_ANIM_ON);
         LOGI("np: volume already at limit %d dB\n", volume_db);
         return;
     }
@@ -1367,6 +1396,7 @@ static void mp_volume_adjust(int delta_db)
         return;
     }
 
+    mp_volume_slider_apply(target_db, LV_ANIM_ON);
     LOGI("np: volume %d -> %d dB\n", volume_db, target_db);
 }
 
@@ -1821,6 +1851,10 @@ void music_player_ui_enter(void)
     }
 
     mp_refresh_focus();
+    mp_volume_slider_apply(s_player != NULL
+                               ? bk_audio_player_get_volume(s_player)
+                               : CONFIG_MUSIC_PLAYER_INITIAL_VOLUME_DB,
+                           LV_ANIM_OFF);
 
     /* Keep the player's playlist aligned with the freshly scanned rows so a
      * later jumpto(idx) targets the same track the UI shows. */
