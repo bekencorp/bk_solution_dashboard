@@ -31,6 +31,7 @@
 #include "cJSON.h"
 #include <components/media_types.h>
 
+#include "components/bluetooth/bk_dm_bluetooth.h"
 #include "components/bluetooth/bk_dm_bluetooth_types.h"
 #include "components/bluetooth/bk_dm_gap_ble.h"
 #include "components/bluetooth/bk_dm_gatt_common.h"
@@ -45,6 +46,11 @@
 #include "network_provisioning.h"
 #include "wifi_boarding_demo_service.h"
 #include "wifi_boarding_demo.h"
+
+/* Firmware version advertised in the BLE provisioning core header. */
+#define DASHBOARD_FW_MAJOR 1
+#define DASHBOARD_FW_MINOR 0
+#define DASHBOARD_FW_PATCH 0
 #define TAG "np_demo"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -955,6 +961,24 @@ bk_err_t bk_sl_np_init(uint8_t reg_method) // 0 use avdk sdk np component, 1 use
     {
         bk_register_network_provisioning_status_cb(demo_network_provisioning_status_cb);
         bk_ble_provisioning_set_msg_handle_cb(bk_sl_np_ble_msg_handle_demo_cb);
+
+        /* Advertise per the BLE provisioning adv spec: Local Name
+         * "BK_DASHBOARD_<MAC3>" + the core header {proto_ver, device_type=
+         * DASHBOARD, fw x3} in the ADV Manufacturer Specific Data. Set before
+         * init so the very first advertisement already carries them. */
+        {
+            uint8_t mac[6] = {0};
+            char adv_name[32] = {0};
+
+            bk_bluetooth_get_address(mac);
+            snprintf(adv_name, sizeof(adv_name), "BK_%s_%02X%02X%02X",
+                     bk_ble_provisioning_dev_type_tag(BK_BLE_PROV_DEV_TYPE_DASHBOARD),
+                     mac[0], mac[1], mac[2]);
+            bk_ble_provisioning_set_adv_name(adv_name);
+            bk_ble_provisioning_set_dev_info(BK_BLE_PROV_DEV_TYPE_DASHBOARD,
+                                             DASHBOARD_FW_MAJOR, DASHBOARD_FW_MINOR, DASHBOARD_FW_PATCH);
+        }
+
         bk_network_provisioning_init(BK_NETWORK_PROVISIONING_TYPE_BLE);
         /*
          * Register Wi-Fi and netif callbacks on the SDK path so the network-ready
