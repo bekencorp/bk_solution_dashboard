@@ -94,7 +94,7 @@ static void phone_book_update_header(void)
          * (32px) is taller than the designer's 18px box, so let the label size to
          * its content and center it against the icon (below) instead of relying
          * on the fixed y/height baked into the generated layout. */
-        lv_obj_set_style_text_font(lbl, cn ? cn : &lv_font_montserrat_regular_18,
+        lv_obj_set_style_text_font(lbl, cn ? cn : &lv_font_montserrat_regular_16,
                                    LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_text_color(lbl, accent, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_MODE_DOTS);
@@ -152,7 +152,7 @@ static void phone_book_add_empty(lv_obj_t *list, const char *text)
 {
     lv_obj_t *lbl = lv_label_create(list);
 
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_regular_18,
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_regular_16,
                                LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(lbl, lv_color_hex(0x9a9a9a),
                                LV_PART_MAIN | LV_STATE_DEFAULT);

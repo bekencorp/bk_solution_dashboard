@@ -37,10 +37,13 @@ void dashcam_ui_leave(void);
  *   double : toggle "list selection" focus mode (in <-> out of the list).
  *   single : when focused, move the selection down one item (wraps around).
  *   long   : when focused, play the currently selected clip.
+ *   home   : while a clip is playing, stop playback and return to the dashcam
+ *            list (mapped to the MIDDLE double-press via beken_ui_key_home).
  */
 bool dashcam_ui_handle_key_double(void);
 bool dashcam_ui_handle_key_single(void);
 bool dashcam_ui_handle_key_long(void);
+bool dashcam_ui_handle_key_home(void);
 
 /*
  * The LVGL group holding the records-list items. beken_ui binds the shared

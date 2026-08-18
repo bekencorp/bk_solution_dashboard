@@ -70,6 +70,16 @@ extern "C" {
 #define DASHCAM_RECORD_FPS             25
 #endif
 
+/* Board and panel integration used by the shared dashcam component. */
+#define DASHCAM_CAMERA_PIN_RESET        GPIO_71
+#define DASHCAM_CAMERA_HMIRROR          1
+#define DASHCAM_CAMERA_VFLIP            0
+#define DASHCAM_ASSIST_ROTATION         90
+#define DASHCAM_ASSIST_DST_WIDTH        1280
+#define DASHCAM_ASSIST_DST_HEIGHT       720
+#define DASHCAM_ASSIST_SCALE            0
+#define DASHCAM_STORAGE_LABEL_WITH_SIZE 1
+
 /*
  * Playback (scaled) target resolution.
  *

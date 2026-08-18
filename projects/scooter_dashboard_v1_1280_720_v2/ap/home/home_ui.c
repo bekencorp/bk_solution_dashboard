@@ -1,7 +1,7 @@
 /*
  * Home page logic, split out of the generated beken_ui.c.
  *
- * Contains the home page's own behavior only (speed gauge, hazard blink, the
+ * Contains the home page's own behavior only (speed gauge, the
  * music/phone panel and its Bluetooth callbacks, and the home background
  * bitmap). Navigation between pages stays in beken_ui.c, mirroring the
  * ota_ui / dashcam_ui split.
@@ -521,16 +521,21 @@ void home_ui_install_bg(void)
     BK_LOGI("ui_bg", "decoded home_bg.jpg into PSRAM bitmap (%dx%d)\n", (int)w, (int)h);
 }
 
-/* ---------- Speed gauge: needle sweeps 0->60->0, the speed number tracks it ----------
- * Mirrors scooter_1280_720: drive lv_scale's line needle + the numeric label from a
- * single timer. Scale range is 0..60.
+/* ---------- Gauges: speed and system needles sweep together ----------
+ * Keep the two generated scales and their numeric labels refreshed from one
+ * timer, matching the 1024x600 dashboard behavior.
  */
 #define SPEED_NEEDLE_LENGTH    170
 #define SPEED_SCALE_MAX        60
-#define SPEED_ANIM_PERIOD_MS   50
-#define SPEED_ANIM_STEP        1
+#define SPEED_ANIM_PERIOD_MS   10
+#define SPEED_ANIM_STEP        3
+#define SYS_NEEDLE_LENGTH      170
+#define SYS_SCALE_MAX          8000
+#define SYS_ANIM_STEP          400
 static int32_t s_speed_value = 0;
 static int32_t s_speed_dir = 1;
+static int32_t s_sys_value = 0;
+static int32_t s_sys_dir = 1;
 static lv_timer_t *s_speed_timer = NULL;
 static lv_timer_t *s_music_timer = NULL;
 
@@ -611,6 +616,16 @@ static void speed_gauge_apply(void)
 
     lv_scale_set_line_needle_value(ui->home_speed_scale, ui->home_speed_scale_needle_0,
                                    SPEED_NEEDLE_LENGTH, s_speed_value);
+    if (ui->home_sys_scale && lv_obj_is_valid(ui->home_sys_scale) &&
+        ui->home_sys_scale_needle_0 && lv_obj_is_valid(ui->home_sys_scale_needle_0))
+    {
+        lv_scale_set_line_needle_value(ui->home_sys_scale, ui->home_sys_scale_needle_0,
+                                       SYS_NEEDLE_LENGTH, s_sys_value);
+    }
+    if (ui->home_volt_txt && lv_obj_is_valid(ui->home_volt_txt))
+    {
+        lv_label_set_text_fmt(ui->home_volt_txt, "%" LV_PRId32, s_sys_value / 100);
+    }
     lv_label_set_text_fmt(ui->home_speed_val, "%" LV_PRId32, s_speed_value);
 }
 
@@ -629,38 +644,19 @@ static void speed_gauge_timer_cb(lv_timer_t *timer)
         s_speed_value = 0;
         s_speed_dir = 1;
     }
+
+    s_sys_value += s_sys_dir * SYS_ANIM_STEP;
+    if (s_sys_value >= SYS_SCALE_MAX)
+    {
+        s_sys_value = SYS_SCALE_MAX;
+        s_sys_dir = -1;
+    }
+    else if (s_sys_value <= 0)
+    {
+        s_sys_value = 0;
+        s_sys_dir = 1;
+    }
     speed_gauge_apply();
-}
-
-/* ---------- Hazard blink: only the left turn indicator flashes ----------
- * scooter_1280_720 blinks a turn light by toggling image opacity on a 500ms timer.
- * Only home_ic_left flashes; home_ic_right stays steady at its designer opacity.
- */
-#define HAZARD_BLINK_PERIOD_MS  500
-static bool s_hazard_on = true;
-static lv_timer_t *s_hazard_timer = NULL;
-
-static void hazard_blink_apply(void)
-{
-    bk_lv_ui_t *ui = &bk_lv_tool_ui;
-    lv_opa_t opa = s_hazard_on ? LV_OPA_COVER : LV_OPA_TRANSP;
-
-    if (!ui->home || !lv_obj_is_valid(ui->home))
-    {
-        return;
-    }
-
-    if (ui->home_ic_left && lv_obj_is_valid(ui->home_ic_left))
-    {
-        lv_obj_set_style_image_opa(ui->home_ic_left, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-}
-
-static void hazard_blink_timer_cb(lv_timer_t *timer)
-{
-    (void)timer;
-    s_hazard_on = !s_hazard_on;
-    hazard_blink_apply();
 }
 
 static bool home_music_obj_valid(lv_obj_t *obj)
@@ -1809,18 +1805,13 @@ void phone_key_hangup(void)
     hfp_demo_answer(0);
 }
 
-/* Create the gauge + hazard timers (idempotent). */
+/* Create the gauge timer (idempotent). */
 void home_ui_enter(void)
 {
     if (s_speed_timer)
     {
         lv_timer_delete(s_speed_timer);
         s_speed_timer = NULL;
-    }
-    if (s_hazard_timer)
-    {
-        lv_timer_delete(s_hazard_timer);
-        s_hazard_timer = NULL;
     }
 
     bk_lv_ui_t *ui = &bk_lv_tool_ui;
@@ -1831,16 +1822,26 @@ void home_ui_enter(void)
 
     s_speed_value = 0;
     s_speed_dir = 1;
+    s_sys_value = 0;
+    s_sys_dir = 1;
+    /* The designer sets home_sys_unit to "RPM ×100", but its font
+     * (pingfang_SC_16) only covers ASCII 0x20-0x7F, so U+00D7 '×' renders blank.
+     * Replace it with an ASCII 'x' so the multiplier shows. Kept here so a
+     * home_init.c regenerate cannot reintroduce the missing glyph. */
+    if (home_music_obj_valid(ui->home_sys_unit))
+    {
+        lv_label_set_text(ui->home_sys_unit, "RPM x100");
+    }
     if (ui->home_speed_scale_needle_0 != NULL && lv_obj_is_valid(ui->home_speed_scale_needle_0))
     {
         lv_obj_move_foreground(ui->home_speed_scale_needle_0);
     }
+    if (ui->home_sys_scale_needle_0 != NULL && lv_obj_is_valid(ui->home_sys_scale_needle_0))
+    {
+        lv_obj_move_foreground(ui->home_sys_scale_needle_0);
+    }
     speed_gauge_apply();
     s_speed_timer = lv_timer_create(speed_gauge_timer_cb, SPEED_ANIM_PERIOD_MS, NULL);
-
-    s_hazard_on = true;
-    hazard_blink_apply();
-    s_hazard_timer = lv_timer_create(hazard_blink_timer_cb, HAZARD_BLINK_PERIOD_MS, NULL);
 
     /* If we re-entered mid-call, the page tree was rebuilt and home_oc_timer got
      * re-registered into the global digital clock (home_init.c). Detach it again
@@ -1902,18 +1903,13 @@ void home_ui_enter(void)
     home_call_nav_sync();
 }
 
-/* Delete the gauge + hazard timers. */
+/* Delete the gauge timer. */
 void home_ui_leave(void)
 {
     if (s_speed_timer)
     {
         lv_timer_delete(s_speed_timer);
         s_speed_timer = NULL;
-    }
-    if (s_hazard_timer)
-    {
-        lv_timer_delete(s_hazard_timer);
-        s_hazard_timer = NULL;
     }
     home_music_stop_timer();
     home_call_blink_stop();

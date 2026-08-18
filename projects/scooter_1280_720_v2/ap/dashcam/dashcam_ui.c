@@ -11,6 +11,9 @@
 #include "lvgl.h"
 #include "dashcam_assitview.h"
 
+extern void beken_ui_before_assist_lvgl_teardown(void);
+extern void beken_ui_kick_after_display_resume(void);
+
 #define TAG "d_ui"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -367,7 +370,14 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui)
 
 void dashcam_ui_boot_start(void)
 {
+    static const dashcam_assitview_hooks_t assist_hooks =
+    {
+        .before_lvgl_teardown = beken_ui_before_assist_lvgl_teardown,
+        .after_display_resume = beken_ui_kick_after_display_resume,
+    };
+
     LOGD("boot_start\n");
+    dashcam_assitview_register_hooks(&assist_hooks);
     dashcam_app_boot_start();
     dashcam_assitview_init();
 }

@@ -298,7 +298,7 @@ void init_page_phone_book(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->phone_book_batt_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->phone_book_batt_lbl, lv_color_hex(0xeaeaea), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->phone_book_batt_lbl, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->phone_book_batt_lbl, &lv_font_montserrat_regular_18, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->phone_book_batt_lbl, &lv_font_montserrat_regular_16, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->phone_book_batt_lbl, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->phone_book_batt_lbl, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->phone_book_batt_lbl, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -386,7 +386,7 @@ void init_page_phone_book(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->phone_book_c_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->phone_book_c_title, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->phone_book_c_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->phone_book_c_title, &lv_font_montserrat_regular_30, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->phone_book_c_title, &lv_font_montserrat_regular_32, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->phone_book_c_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->phone_book_c_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->phone_book_c_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -420,7 +420,7 @@ void init_page_phone_book(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->phone_book_r_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->phone_book_r_title, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->phone_book_r_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->phone_book_r_title, &lv_font_montserrat_regular_30, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->phone_book_r_title, &lv_font_montserrat_regular_32, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->phone_book_r_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->phone_book_r_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->phone_book_r_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);

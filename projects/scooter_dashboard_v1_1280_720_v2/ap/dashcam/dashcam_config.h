@@ -70,22 +70,40 @@ extern "C" {
 #define DASHCAM_RECORD_FPS             25
 #endif
 
+/* Board and panel integration used by the shared dashcam component. */
+#define DASHCAM_CAMERA_PIN_RESET        ((uint8_t)-1)
+#define DASHCAM_CAMERA_HMIRROR          0
+#define DASHCAM_CAMERA_VFLIP            0
+#define DASHCAM_ASSIST_ROTATION         90
+#define DASHCAM_ASSIST_DST_WIDTH        1280
+#define DASHCAM_ASSIST_DST_HEIGHT       720
+#define DASHCAM_ASSIST_SCALE            0
+#define DASHCAM_STORAGE_LABEL_WITH_SIZE 0
+
 /*
  * Playback (scaled) target resolution.
  *
- * Recorded clips are H.264 at the record resolution (1280x720). During playback
- * the H.264 frame controller (decode core + PP) down-scales and converts to
- * RGB565 in a single hardware pass, writing directly into the player output
- * buffer; the dashcam LVGL canvas is created at this size. Default 640x360 is a
- * clean 1/2 of 1280x720, which halves per-frame LVGL redraw + GPU-compress cost
- * and keeps the RGB565 triple buffer small (~1.35MB) so playback can run
- * concurrently with recording. Bump toward the panel size for full-screen play.
+ * The camera is mounted rotated 90 degrees relative to this landscape 1280x720
+ * panel, so playback must rotate 90 to display upright - the same orientation
+ * the assist view uses (DASHCAM_ASSIST_ROTATION == 90, see dashcam_assitview.c).
+ *
+ * IMPORTANT: the HW H264 decoder pipeline swaps display_width/display_height
+ * whenever rotate is 90/270 (bk_video_player_h264_flexa_decoder.c ->
+ * hw_h264_decoder_setup_pipeline), so the value below is the PRE-swap size. To
+ * make the final GPU dst (and therefore the ARGB8888 frame handed to the DPU)
+ * land on the panel's landscape 1280x720, the pre-swap dims must be 720x1280.
+ * After the internal swap this becomes exactly the assist view's dst 1280x720.
+ * (Contrast the 1024x600 project: rotate 180 does not swap, so it passes the
+ * panel dims 1024x600 directly.)
  */
 #ifndef DASHCAM_PLAYBACK_WIDTH
-#define DASHCAM_PLAYBACK_WIDTH         960
+#define DASHCAM_PLAYBACK_WIDTH         720
 #endif
 #ifndef DASHCAM_PLAYBACK_HEIGHT
-#define DASHCAM_PLAYBACK_HEIGHT        540
+#define DASHCAM_PLAYBACK_HEIGHT        1280
+#endif
+#ifndef DASHCAM_PLAYBACK_ROTATION
+#define DASHCAM_PLAYBACK_ROTATION      90
 #endif
 
 /* Segment length and dev-phase file cap.

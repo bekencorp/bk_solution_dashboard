@@ -10,4 +10,8 @@ set(EXTRA_COMPONENTS_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components
 )
 
+set(DASHCAM_CONFIG_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/ap/dashcam
+)
+
 project(app)

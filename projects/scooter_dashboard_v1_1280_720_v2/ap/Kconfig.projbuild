@@ -63,6 +63,10 @@ menu "Scooter media / display configuration"
         default 720
         range 1 10000
 
+    config SCOOTER_BOOT_BG_FILENAME
+        string "Boot background JPEG filename on SD card"
+        default "home_bg.jpg"
+
     comment "Cast JPEG pipeline (src/dst in pixels; rotate in degrees)"
 
     config SCOOTER_CAST_JPEG_SRC_WIDTH

@@ -24,21 +24,7 @@ set(incs .
 
 set(srcs
     ap_main.c
-    # Video surface: pick exactly ONE.
-    #   dashcam_video.c    - legacy live-preview compositor (CPU page-composite blend)
-    #   dashcam_video_v2.c - legacy live-preview via lv_camera_blend_process (GPU)
-    #   dashcam_video_v3.c - playback-only (camera preview removed; the camera->display
-    #                        path now lives in dashcam_assitview.c). Active.
-    #   dashcam/dashcam_video.c
-    #   dashcam/dashcam_video_v2.c
-    dashcam/dashcam_video_v3.c
-    dashcam/dashcam_player.c
-    dashcam/dashcam_recorder.c
-    dashcam/dashcam_storage.c
-    dashcam/dashcam_camera.c
-    dashcam/dashcam_app.c
     dashcam/dashcam_ui.c
-    dashcam/dashcam_assitview.c
     ota/ota_ui.c
     home/home_ui.c
     phone_book/phone_book_ui.c
@@ -59,7 +45,7 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
               jpeg_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
               bk_video_recorder bk_video_player bk_encoder app boot_avi_play
-              bk_audio_player)
+              bk_audio_player dashcam)
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")
 

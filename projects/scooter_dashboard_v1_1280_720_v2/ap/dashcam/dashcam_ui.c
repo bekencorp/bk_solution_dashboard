@@ -7,12 +7,16 @@
 #include "components/log.h"
 #include "dashcam_app.h"
 #include "dashcam_player.h"
+#include "dashcam_recorder.h"
 #include "dashcam_storage.h"
 #include "lvgl.h"
 #include "lv_port_indev.h"
 #include "dashcam_assitview.h"
 #include "os/mem.h"
 #include "os/os.h"
+
+extern void beken_ui_before_assist_lvgl_teardown(void);
+extern void beken_ui_kick_after_display_resume(void);
 
 #define TAG "d_ui"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -341,6 +345,44 @@ lv_group_t *dashcam_ui_get_group(void)
 
 /* ---------- list population (req2 colors) ---------- */
 
+/*
+ * Guard playback so a half-written clip never reaches the player. Two cases are
+ * rejected: (1) the clip that is still being recorded (its moov/index is not
+ * finalized), and (2) any .mp4 whose container fails a quick sanity check. On
+ * 1280 the dashcam page stops recording on enter, so (1) is usually moot, but it
+ * is kept for parity with 1024 and to stay safe if that ordering ever changes.
+ */
+static bool dashcam_ui_clip_is_playable(const dashcam_file_info_t *info)
+{
+    const char *recording_path;
+    size_t path_len;
+
+    if (info == NULL || info->path[0] == '\0')
+    {
+        return false;
+    }
+
+    recording_path = dashcam_recorder_current_path();
+    if (dashcam_recorder_is_running() &&
+        recording_path != NULL &&
+        strcmp(info->path, recording_path) == 0)
+    {
+        LOGW("reject active recording clip: %s\n", info->path);
+        return false;
+    }
+
+    path_len = strlen(info->path);
+    if (path_len >= 4U &&
+        strcasecmp(info->path + path_len - 4U, ".mp4") == 0 &&
+        !dashcam_storage_mp4_is_playable(info->path))
+    {
+        LOGW("reject invalid MP4 clip: %s\n", info->path);
+        return false;
+    }
+
+    return true;
+}
+
 static void dashcam_ui_item_clicked_cb(lv_event_t *e)
 {
     dashcam_file_info_t *info = (dashcam_file_info_t *)lv_event_get_user_data(e);
@@ -351,6 +393,11 @@ static void dashcam_ui_item_clicked_cb(lv_event_t *e)
     }
 
     LOGI("item clicked: %s\n", info->path);
+
+    if (!dashcam_ui_clip_is_playable(info))
+    {
+        return;
+    }
 
     if (dashcam_app_play(info->path) == BK_OK)
     {
@@ -720,7 +767,14 @@ static void dashcam_ui_start_async_load(void)
 
 void dashcam_ui_boot_start(void)
 {
+    static const dashcam_assitview_hooks_t assist_hooks =
+    {
+        .before_lvgl_teardown = beken_ui_before_assist_lvgl_teardown,
+        .after_display_resume = beken_ui_kick_after_display_resume,
+    };
+
     LOGD("boot_start\n");
+    dashcam_assitview_register_hooks(&assist_hooks);
     if (dashcam_ui_load_state_init() != BK_OK)
     {
         LOGE("init load state mutex failed\n");
@@ -905,6 +959,25 @@ bool dashcam_ui_handle_key_double(void)
     return true;
 }
 
+bool dashcam_ui_handle_key_home(void)
+{
+    if (!dashcam_app_is_playing())
+    {
+        return false;
+    }
+
+    /*
+     * A clip is playing (direct-DPU playback stops the LVGL task). Double-press
+     * of the MIDDLE key routes here via beken_ui_key_home: stop playback so the
+     * dashcam list page comes back, instead of jumping all the way to HOME. This
+     * handler runs on the application key-event thread, so it only tears down the
+     * player/display handoff; LVGL is restored inside dashcam_app_stop_playback.
+     */
+    LOGI("home key: stop playback, return to dashcam list\n");
+    dashcam_app_stop_playback();
+    return true;
+}
+
 bool dashcam_ui_handle_key_single(void)
 {
     if (!dashcam_ui_is_active() || !s_list_focused)
@@ -960,6 +1033,11 @@ bool dashcam_ui_handle_key_long(void)
     }
 
     LOGI("key long -> play sel=%d %s\n", (int)s_sel_index, s_files[s_sel_index].path);
+
+    if (!dashcam_ui_clip_is_playable(&s_files[s_sel_index]))
+    {
+        return true;
+    }
 
     if (dashcam_app_play(s_files[s_sel_index].path) == BK_OK)
     {

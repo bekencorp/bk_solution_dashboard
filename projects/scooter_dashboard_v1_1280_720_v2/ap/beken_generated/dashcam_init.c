@@ -576,7 +576,7 @@ void init_page_dashcam(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->dashcam_ts_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->dashcam_ts_overlay, lv_color_hex(0xF0F0F0), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->dashcam_ts_overlay, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->dashcam_ts_overlay, &lv_font_pingfang_SC_13, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->dashcam_ts_overlay, &lv_font_pingfang_SC_12, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->dashcam_ts_overlay, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->dashcam_ts_overlay, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->dashcam_ts_overlay, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1021,7 +1021,7 @@ void init_page_dashcam(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_text_align(bk_ui->dashcam_rec_list, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->dashcam_rec_list, lv_color_hex(0x1EF2C4), LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_text_opa(bk_ui->dashcam_rec_list, 255, LV_PART_MAIN | LV_STATE_CHECKED);
-    lv_obj_set_style_text_font(bk_ui->dashcam_rec_list, &lv_font_pingfang_SC_11, LV_PART_MAIN | LV_STATE_CHECKED);
+    lv_obj_set_style_text_font(bk_ui->dashcam_rec_list, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_text_align(bk_ui->dashcam_rec_list, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(bk_ui->dashcam_rec_list, lv_color_hex(0x1EF2C4), LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->dashcam_rec_list, 64, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);

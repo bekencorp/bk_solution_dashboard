@@ -816,7 +816,7 @@ void init_page_ota_update(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->ota_update_pct_num, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->ota_update_pct_num, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->ota_update_pct_num, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->ota_update_pct_num, &lv_font_pingfang_SC_80, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->ota_update_pct_num, &lv_font_pingfang_SC_54, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->ota_update_pct_num, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->ota_update_pct_num, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->ota_update_pct_num, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);

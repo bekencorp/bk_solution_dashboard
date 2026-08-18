@@ -291,7 +291,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_page_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_page_title, lv_color_hex(0x1EF2C3), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_page_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_page_title, &lv_font_pingfang_SC_26, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_page_title, &lv_font_pingfang_SC_24, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_page_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_page_title, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_page_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -444,7 +444,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_song_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_song_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_song_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_song_title, &lv_font_pingfang_SC_30, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_song_title, &lv_font_pingfang_SC_28, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_song_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_song_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_song_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -904,7 +904,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_pl_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_pl_title, lv_color_hex(0x1EF2C3), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_pl_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_pl_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_pl_title, &lv_font_pingfang_SC_16, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_pl_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_pl_title, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_pl_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1087,7 +1087,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r1_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r1_title, lv_color_hex(0x1EF2C3), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r1_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r1_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r1_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r1_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r1_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r1_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1121,7 +1121,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r1_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r1_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r1_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r1_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r1_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r1_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r1_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r1_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1155,7 +1155,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r1_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r1_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r1_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r1_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r1_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r1_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r1_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r1_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1250,7 +1250,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r2_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r2_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r2_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r2_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r2_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r2_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r2_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r2_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1284,7 +1284,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r2_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r2_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r2_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r2_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r2_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r2_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r2_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r2_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1318,7 +1318,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r2_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r2_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r2_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r2_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r2_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r2_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r2_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r2_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1413,7 +1413,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r3_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r3_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r3_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r3_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r3_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r3_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r3_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r3_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1447,7 +1447,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r3_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r3_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r3_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r3_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r3_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r3_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r3_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r3_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1481,7 +1481,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r3_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r3_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r3_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r3_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r3_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r3_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r3_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r3_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1576,7 +1576,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r4_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r4_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r4_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r4_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r4_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r4_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r4_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r4_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1610,7 +1610,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r4_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r4_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r4_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r4_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r4_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r4_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r4_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r4_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1644,7 +1644,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r4_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r4_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r4_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r4_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r4_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r4_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r4_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r4_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1739,7 +1739,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r5_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r5_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r5_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r5_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r5_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r5_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r5_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r5_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1773,7 +1773,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r5_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r5_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r5_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r5_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r5_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r5_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r5_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r5_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1807,7 +1807,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r5_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r5_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r5_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r5_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r5_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r5_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r5_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r5_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1902,7 +1902,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r6_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r6_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r6_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r6_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r6_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r6_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r6_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r6_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1936,7 +1936,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r6_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r6_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r6_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r6_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r6_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r6_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r6_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r6_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1970,7 +1970,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r6_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r6_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r6_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r6_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r6_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r6_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r6_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r6_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2065,7 +2065,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r7_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r7_title, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r7_title, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r7_title, &lv_font_pingfang_SC_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r7_title, &lv_font_pingfang_SC_18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r7_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r7_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r7_title, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2099,7 +2099,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r7_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r7_artist, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r7_artist, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r7_artist, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r7_artist, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r7_artist, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r7_artist, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r7_artist, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2133,7 +2133,7 @@ void init_page_music_player(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_pad_column(bk_ui->music_player_r7_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->music_player_r7_dur, lv_color_hex(0x9FB3C8), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->music_player_r7_dur, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->music_player_r7_dur, &lv_font_pingfang_SC_15, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(bk_ui->music_player_r7_dur, &lv_font_pingfang_SC_14, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->music_player_r7_dur, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->music_player_r7_dur, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->music_player_r7_dur, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);

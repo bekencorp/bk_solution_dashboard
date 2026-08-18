@@ -102,6 +102,27 @@ typedef struct
     lv_obj_t *home_odo_lbl;
     lv_obj_t *home_trip_lbl;
     lv_obj_t *home_music_panel;
+    lv_obj_t *home_beat_panel;
+    lv_obj_t *home_beat01;
+    lv_obj_t *home_beat02;
+    lv_obj_t *home_beat03;
+    lv_obj_t *home_beat04;
+    lv_obj_t *home_beat05;
+    lv_obj_t *home_beat06;
+    lv_obj_t *home_beat07;
+    lv_obj_t *home_beat08;
+    lv_obj_t *home_beat09;
+    lv_obj_t *home_beat10;
+    lv_obj_t *home_beat11;
+    lv_obj_t *home_beat12;
+    lv_obj_t *home_beat13;
+    lv_obj_t *home_beat14;
+    lv_obj_t *home_beat15;
+    lv_obj_t *home_beat16;
+    lv_obj_t *home_beat17;
+    lv_obj_t *home_beat18;
+    lv_obj_t *home_beat19;
+    lv_obj_t *home_beat20;
     lv_obj_t *home_music_prog;
     lv_obj_t *home_right_info;
     lv_obj_t *home_avg_txt;
@@ -418,8 +439,16 @@ void init_page_dashcam(bk_lv_ui_t *bk_ui);
 void destroy_page_dashcam(bk_lv_ui_t *bk_ui);
 void init_page_ota_update(bk_lv_ui_t *bk_ui);
 void destroy_page_ota_update(bk_lv_ui_t *bk_ui);
+void init_page_phone_book(bk_lv_ui_t *bk_ui);
+void destroy_page_phone_book(bk_lv_ui_t *bk_ui);
+void init_page_music_player(bk_lv_ui_t *bk_ui);
+void destroy_page_music_player(bk_lv_ui_t *bk_ui);
+
 void beken_ui_nav_to_dashcam(void);
 void beken_ui_nav_to_ota_update(void);
+void beken_ui_nav_to_phone_book(void);
+void beken_ui_nav_to_music_player(void);
+void beken_ui_nav_home(void);
 void beken_ui_key_enter(void);
 void beken_ui_key_open_assist_view(void);
 void beken_ui_key_home(void);
@@ -427,27 +456,12 @@ void beken_ui_key_up(void);
 void beken_ui_key_down(void);
 void beken_ui_key_left(void);
 void beken_ui_key_right(void);
-
-/*
- * Modal override for the shared KEYPAD indev. The call-state machine in
- * home_ui.c pushes its answer/hangup group here while a call popup/card owns the
- * keys, and clears it (NULL) when the call ends to fall back to the page group.
- */
 void beken_ui_keypad_set_modal_group(lv_group_t *group);
-void beken_ui_nav_to_phone_book(void);
-void beken_ui_nav_to_music_player(void);
-void beken_ui_nav_home(void);
-void init_page_phone_book(bk_lv_ui_t *bk_ui);
-void destroy_page_phone_book(bk_lv_ui_t *bk_ui);
-void init_page_music_player(bk_lv_ui_t *bk_ui);
-void destroy_page_music_player(bk_lv_ui_t *bk_ui);
-/*
- * Wrap the background bitmap preloaded during the boot animation
- * (boot_bg_preload) onto a page's background image object. Shared by the page
- * modules / navigation so each page can reuse the single decoded bitmap.
- * Returns true if the preloaded bitmap was installed.
- */
 bool beken_ui_install_preloaded_bg(lv_obj_t *bg_img);
+bool beken_ui_is_home_active(void);
+
+LV_IMAGE_DECLARE(light_grey_80x77_RGB565A8_NONE);
+LV_IMAGE_DECLARE(light_left_80x77_RGB565A8_NONE);
 
 /* declare image */
 LV_IMAGE_DECLARE(arrow_in_sm_30x30_RGB565A8_NONE);
@@ -464,10 +478,11 @@ LV_IMAGE_DECLARE(entry_dashcam_status_copy_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(entry_ota_status_copy_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(home_bg_tech_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(incall_sm_44x44_RGB565A8_NONE);
-LV_IMAGE_DECLARE(light_grey_80x77_RGB565A8_NONE);
-LV_IMAGE_DECLARE(light_left_80x77_RGB565A8_NONE);
+LV_IMAGE_DECLARE(light_grey_64x64_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_bg_1280_1280x720_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_line_sm_38x36_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_next_sm_56x56_RGB565A8_NONE);
+LV_IMAGE_DECLARE(music_pause_sm_72x72_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_note_tp_110x74_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_note_tp_139x76_RGB565A8_NONE);
 LV_IMAGE_DECLARE(music_play_sm_72x72_RGB565A8_NONE);
@@ -493,34 +508,22 @@ LV_IMAGE_DECLARE(play_btn_trans_ARGB8888);
 LV_IMAGE_DECLARE(repeat_sm_52x52_RGB565A8_NONE);
 LV_IMAGE_DECLARE(repeat_one_sm_52x52_RGB565A8_NONE);
 LV_IMAGE_DECLARE(shuffle_sm_52x52_RGB565A8_NONE);
-LV_IMAGE_DECLARE(music_pause_sm_72x72_RGB565A8_NONE);
 
 /* declare fonts */
 LV_FONT_DECLARE(lv_font_pingfang_SC_18);
 LV_FONT_DECLARE(lv_font_montserrat_regular_22);
-LV_FONT_DECLARE(lv_font_montserrat_regular_14);
-LV_FONT_DECLARE(lv_font_pingfang_SC_90);
-LV_FONT_DECLARE(lv_font_pingfang_SC_24);
-LV_FONT_DECLARE(lv_font_pingfang_SC_14);
-LV_FONT_DECLARE(lv_font_montserrat_regular_18);
-LV_FONT_DECLARE(lv_font_pingfang_SC_13);
-LV_FONT_DECLARE(lv_font_pingfang_SC_16);
-LV_FONT_DECLARE(lv_font_pingfang_SC_15);
 LV_FONT_DECLARE(lv_font_montserrat_regular_12);
-LV_FONT_DECLARE(lv_font_pingfang_SC_72);
-LV_FONT_DECLARE(lv_font_pingfang_SC_22);
-LV_FONT_DECLARE(lv_font_pingfang_SC_20);
+LV_FONT_DECLARE(lv_font_pingfang_SC_54);
+LV_FONT_DECLARE(lv_font_pingfang_SC_16);
+LV_FONT_DECLARE(lv_font_pingfang_SC_14);
 LV_FONT_DECLARE(lv_font_montserrat_regular_16);
-LV_FONT_DECLARE(lv_font_montserrat_regular_24);
-LV_FONT_DECLARE(lv_font_montserrat_regular_30);
+LV_FONT_DECLARE(lv_font_pingfang_SC_24);
+LV_FONT_DECLARE(lv_font_pingfang_SC_20);
+LV_FONT_DECLARE(lv_font_montserrat_regular_14);
 LV_FONT_DECLARE(lv_font_montserrat_regular_20);
-LV_FONT_DECLARE(lv_font_pingfang_SC_30);
 LV_FONT_DECLARE(lv_font_pingfang_SC_12);
 LV_FONT_DECLARE(lv_font_pingfang_SC_28);
-LV_FONT_DECLARE(lv_font_pingfang_SC_11);
-LV_FONT_DECLARE(lv_font_pingfang_SC_80);
 LV_FONT_DECLARE(lv_font_montserrat_regular_32);
-LV_FONT_DECLARE(lv_font_pingfang_SC_26);
 
 /**
  * @brief Initialize the Beken UI system
@@ -541,7 +544,6 @@ int beken_get_screen_width(void);
  * @return Screen height in pixels
  */
 int beken_get_screen_height(void);
-bool beken_ui_is_home_active(void);
 
 extern bk_lv_ui_t bk_lv_tool_ui;
 

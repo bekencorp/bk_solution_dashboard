@@ -1,0 +1,242 @@
+#
+# Automatically generated project default config. You can update it with menuconfig [D] option.
+# This file contains only differences compared to board defconfig.
+#
+CONFIG_DPU_DRIVER=y
+CONFIG_DSI_DRIVER=y
+CONFIG_ISP=y
+CONFIG_MIPI_CSI=y
+CONFIG_BK_CAMERA=y
+CONFIG_BK_DECODER=y
+CONFIG_VIDEO_RECORDER=y
+CONFIG_AVI_PLAYER=y
+CONFIG_BK_VIDEO_PLAYER_ENABLE_AVI_PARSER=y
+CONFIG_BK_VIDEO_PLAYER_ENABLE_MP4_PARSER=y
+CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_JPEG_VIDEO_DECODER=y
+CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_H264_VIDEO_DECODER=y
+CONFIG_BK_VIDEO_PLAYER_VIDEO_DECODE_THREAD_STACK_SIZE=8192
+CONFIG_BK_ENCODER=y
+CONFIG_APP_GPU=y
+CONFIG_BLUETOOTH_AP=y
+CONFIG_BT=y
+# CONFIG_BLUETOOTH_AUTO_ENABLE is not set
+CONFIG_BLUETOOTH_MULTI_CONTROLLER=y
+CONFIG_BLUETOOTH_MULTI_CONTROLLER_MODE_PRI_BLE_SEC_BT=y
+CONFIG_BLUETOOTH_HOST_ENABLE_H5=y
+CONFIG_CLI_TASK_STACK_SIZE=1536
+CONFIG_BK_DISPLAY=y
+CONFIG_MIPI_DSI=y
+CONFIG_DPU_FLUSH_TIMER_DEBUG=y
+CONFIG_FRAME_BUFFER=y
+CONFIG_FATFS=y
+CONFIG_FATFS_SDCARD=y
+CONFIG_SDCARD=y
+# SCH-7259_V1.0 wires the SD card to SDIO1 (P14-P19), 4-line. Keep the v2 FATFS
+# storage stack (no LittleFS / USB-MTP); only the host controller pins differ.
+CONFIG_SDCARD_HOST_ID=1
+CONFIG_SDCARD_BUSWIDTH_4LINE=y
+CONFIG_SDCARD_MAX_BLOCKS_PER_XFER=4
+CONFIG_BK_NETWORK_PROVISIONING=y
+CONFIG_BK_BLE_PROVISIONING=y
+CONFIG_BK_PERIPHERAL=y
+CONFIG_CSI_CAMERA=y
+CONFIG_CSI_GC2053=y
+CONFIG_CSI_CV2005=y
+CONFIG_LCD_DSI=y
+# CONFIG_LCD_HX8399C_MIPI_1080x1920 is not set
+# CONFIG_LCD_HX8394F_MIPI_720x1280=y
+# CONFIG_LCD_ER68576B_MIPI_720x1280 is not set
+CONFIG_LCD_EK79007AD_MIPI_1024x600=y
+# CONFIG_TP is not set
+CONFIG_FREERTOS_USE_QUEUE_SETS=y
+# CONFIG_WIFI_CLI_DEBUG is not set
+CONFIG_DUMP_BY_LOG_UART=y
+CONFIG_EASY_FLASH_V4=y
+CONFIG_CJSON_USE=y
+CONFIG_LVGL=y
+CONFIG_LVGL_V9=y
+CONFIG_LV_COLOR_DEPTH=16
+CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=1
+CONFIG_LV_DRAW_THREAD_STACK_SIZE=8192
+CONFIG_LV_USE_DRAW_VG_LITE=n
+CONFIG_LV_VG_LITE_FLUSH_MAX_COUNT=8
+CONFIG_LV_VG_LITE_GRAD_CACHE_CNT=32
+CONFIG_LV_VG_LITE_STROKE_CACHE_CNT=32
+CONFIG_LV_USE_PERF_MONITOR=y
+CONFIG_LV_FONT_SOURCE_HAN_SANS_SC_14_CJK=y
+CONFIG_LV_FONT_SOURCE_HAN_SANS_SC_16_CJK=y
+CONFIG_LVGL_TASK_PRIORITY=5
+CONFIG_LVGL_TASK_STACK_SIZE=8192
+CONFIG_LVGL_FRAME_BUFFER_NUM=2
+CONFIG_MEDIA_SERVICE=y
+CONFIG_BLUETOOTH_BSC_UART_ID=1
+# BK3515NS on the SCH-7259_V1.0 board: BT_EN=P71, RTS1=P2, CTS1=P3 (dashboard v1 wiring).
+CONFIG_BLUETOOTH_BSC_RESET_PIN=71
+CONFIG_BLUETOOTH_BSC_CTS_PIN=3
+CONFIG_BLUETOOTH_BSC_RTS_PIN=2
+CONFIG_BLUETOOTH_BSC_INIT_BAUD=115200
+CONFIG_BLUETOOTH_BSC_NEGO_BAUD=921600
+CONFIG_UART1=y
+CONFIG_UART_LOW_VOLTAGE_SUPPORT=y
+CONFIG_UART_ERR_INTERRUPT=y
+# CONFIG_UART_SW_FLOW_CTRL=y
+# CONFIG_SPI is not set
+# CONFIG_SPI_DMA is not set
+CONFIG_PSRAM=y
+CONFIG_TASK_STACK_IN_PSRAM=y
+CONFIG_QUEUE_IN_PSRAM=y
+CONFIG_ADK=y
+CONFIG_ADK_USE_PSRAM=y
+CONFIG_ADK_MIX_ALGORITHM=y
+# CONFIG_ADK_VFS_UTIL is not set
+# CONFIG_ADK_SBC_DECODER is not set
+CONFIG_SW_SBC_DECODER=y
+CONFIG_ADK_AAC_DECODER=y
+CONFIG_ADK_RAW_STREAM=y
+CONFIG_ADK_ONBOARD_SPEAKER_STREAM=y
+CONFIG_ADK_ONBOARD_SPEAKER_STREAM_V2=y
+CONFIG_BLUE_AUDIO_PLAYER_SERVICE=y
+CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_AAC_DECODER=y
+CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX=y
+# CONFIG_PIPELINE_DEBUG_PCM_TAP is not set
+# CONFIG_PIPELINE_DEBUG_USE_NULL_SINK is not set
+CONFIG_DMA_LOGIC_CHAN_CNT=16
+CONFIG_DMA_LOGIC_CHAN_ID_MIN=0
+CONFIG_AUDIO=y
+CONFIG_AUDIO_ADC=y
+CONFIG_AUDIO_DAC=y
+CONFIG_AUDIO_PLAYER=y
+CONFIG_AUDIO_PLAYER_USE_PSRAM=y
+CONFIG_TIMER_SUPPORT_ID_BITS=63
+CONFIG_FLASH=y
+CONFIG_BUTTON=y
+# SCH-7259_V1.0 CAN0: TX=P22, RX=P23, STBY=P21 (see usr_gpio_cfg.h).
+CONFIG_CAN=y
+CONFIG_CAN_TEST=y
+CONFIG_MEDIA_RECEIVE_DEMO=y
+CONFIG_MEDIA_DEMO_MODE_TCP=y
+CONFIG_MEDIA_PIPELINE=y
+CONFIG_BK_NTWK_TRANSFER=y
+CONFIG_NEW_MAC_POLICY=y
+CONFIG_BK_MAC_ADDR_CHECK=y
+CONFIG_UART1_TX_PIN=1
+CONFIG_UART1_RX_PIN=0
+CONFIG_HFP_HF_DEMO=y
+CONFIG_PBAP_CONTACTS=y
+CONFIG_ADK_ONBOARD_MIC_STREAM=y
+CONFIG_ADK_SBC_ENCODER=y
+CONFIG_BLUE_AUDIO_RECORDER_SERVICE=y
+CONFIG_BLUE_AUDIO_RECORDER_SERVICE_SUPPORT_MSBC_ENCODER=y
+CONFIG_SCOOTER_LVGL_HOR_RES=1024
+CONFIG_SCOOTER_LVGL_VER_RES=600
+CONFIG_SCOOTER_UI_ROTATION=180
+CONFIG_SCOOTER_UI_CANVAS_WIDTH=1024
+CONFIG_SCOOTER_UI_CANVAS_HEIGHT=600
+CONFIG_SCOOTER_BOOT_BG_FILENAME="home_bg_tech_1024_600.jpg"
+CONFIG_SCOOTER_CAST_JPEG_SRC_WIDTH=1024
+CONFIG_SCOOTER_CAST_JPEG_SRC_HEIGHT=600
+CONFIG_SCOOTER_CAST_JPEG_DST_WIDTH=1024
+CONFIG_SCOOTER_CAST_JPEG_DST_HEIGHT=600
+CONFIG_SCOOTER_CAST_JPEG_ROTATE_DEG=180
+CONFIG_P2P=y
+CONFIG_SOC_SMP=y
+# CONFIG_FREERTOS_V10 is not set
+CONFIG_FREERTOS_SMP=y
+CONFIG_VG_LITE_GPU=y
+# Sized between the SDK default 0x20000 (128KB) and the too-small 0x8000 (32KB).
+# vg_lite_init() carves its heap FROM this contiguous buffer and needs, per
+# vg_lite_kernel.c init_vglite(): 2x command_buffer (~8KB each = 16KB) PLUS a
+# mandatory 32KB power/backup command context (power_context_capacity = 32<<10),
+# i.e. ~48KB minimum. 0x8000 (32KB) only fits the 2 command buffers and then OOMs
+# on the power context (init_vglite:459) -> vg_lite_init fails but leaves
+# s_context.rtbuffer set, so every later vg_lite_init() short-circuits with
+# "already initialized" WITHOUT binding command_buffer[] -> set_render_target
+# spams VG_LITE_NO_CONTEXT and the assist view shows nothing. That OOM first
+# fires at boot from boot_avi's GPU splash path (jsp/bk_gpu_init).
+# Budget at assist-view entry (measured): ~114KB free HSRAM must hold THREE
+# separate HSRAM allocations from gpu_ctlr_open():
+#   1) vg_lite contiguous heap  = this value
+#   2) pingpong output buffers  = ~40KB (bk_get_gpu_output_buffer)
+#   3) GPU flexa worker stack    = 10KB (rtos_create_hsram_thread, 1024*10)
+# 0x10000 (64KB) let vg_lite + pingpong fit but left only ~10KB, so the 10KB
+# worker stack alloc failed (gpu_ctlr_open:1387 rtos_create_hsram_thread failed).
+# 0xD000 (52KB) keeps vg_lite safely above its ~48.2KB need (2x8KB cmd + 32KB
+# power context) while dropping the total to 52+40+10 = ~102KB, leaving ~12KB
+# headroom for the worker stack + heap overhead. 128KB starves pingpong; 32KB
+# OOMs vg_lite's power context (see boot_avi splash path).
+# NOTE: 0x20000 (128KB, SoC default) was A/B tested on 2026-07-14 and did NOT
+# fix the boot_avi JPEG decode failure (every frame still status=0x00010500),
+# so this heap size is NOT the cause of that failure. Kept at 0xD000 (52KB)
+# which is the size the assist-view HSRAM budget (vg_lite + pingpong + worker
+# stack) needs; see the assist-view budget analysis below.
+CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ=0xD000
+CONFIG_PSA_MBEDTLS=y
+CONFIG_SW_CRYPTO=y
+CONFIG_AUD_DRIVER_V2=y
+CONFIG_BLUETOOTH_BTDM_COMPONENT_ENABLE=y
+CONFIG_ADK_SBC_DECODER=y
+CONFIG_AUDIO_PLAY=y
+CONFIG_AUDIO_RECORD=y
+
+CONFIG_GENERAL_DMA=y
+CONFIG_GENERAL_DMA_V2P6=y
+CONFIG_ADK_ONBOARD_MIC_STREAM_V2=y
+
+CONFIG_BLUETOOTH_BTDM_COMPONENT_BLE_GATT=y
+CONFIG_BLUETOOTH_BTDM_COMPONENT_BLE_GATTS_TEST_ATTR=n
+CONFIG_BLUETOOTH_BTDM_COMPONENT_BLE_HOGPD=y
+
+CONFIG_FTP_SERVER=y
+CONFIG_VFS=y
+CONFIG_FATFS=y
+CONFIG_NTP_SYNC_RTC=y
+
+# Main/init task runs beken_ui_init()->lv_image_set_src("S:/home_bg.jpg"), whose
+# LVGL TJPGD decoder_info puts a 4KB work buffer + JDEC on the stack. The 4096B
+# default overflows (UsageFault). Bump to give headroom for JPEG header probe.
+CONFIG_APP_MAIN_TASK_STACK_SIZE=12288
+
+# Full BT + Wi-Fi + LVGL + dashcam ISP initialization consumes more than the
+# default 160 dynamic spinlocks (FreeRTOS queues/semaphores/mutexes each hold one).
+CONFIG_SPINLOCK_DYNAMIC_CNT=256
+
+# Board identity = dashboard V1.0 (SCH-7259_V1.0): selects the V1.0 key map
+# (P27/P30/P32/P31/P29) and the LCD power/backlight enable (P45/P46) in
+# display_ui.c. The v2 application code (dashcam/home/ota/beken_ui) is not gated
+# by this macro, so full v2 functionality is retained on the v1 hardware.
+CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0=y
+CONFIG_PROJECT_LCD_RESET_PIN=42
+CONFIG_SUPPORT_WWDT=y
+CONFIG_TASK_WDT=y
+CONFIG_LVGL_MEM_USE_PSRAM=y
+CONFIG_LWIP_MAX_LISTENING_SOCKETS_TCP=6
+
+
+# USB device MTP: expose the SD card to a PC over MTP. Protocol engine lives in
+# the SDK (bk_usb/bk_mtp/bk_usbd_mtp.c); the runtime start/stop control layer is
+# solution/components/sdcard_mtp. Toggle at runtime via the `mtp start|stop` CLI.
+#
+# NOTE 1: USB_HOST is required even though MTP is a device-only gadget.
+# usb_driver.c::bk_analog_layer_usb_sys_related_ops() (called from MTP bring-up to
+# power the USB PHY/clock/OTG) and usb_dc_low_level_init() reference
+# sys_ana_usb_phy_op / usb_clk_config / spitrig_toggle / usb_hc_riscv_ipi_enable,
+# which are only defined in the host port file usb_hc_beken_musb.c (compiled under
+# CONFIG_USB_HOST). The host stack stays dormant; only the device (MTP) path is
+# ever brought up at runtime.
+#
+# NOTE 2: CONFIG_USB_RISCV_BRIDGE is deliberately OFF. Its device path is
+# immature: usb_dc_riscv_device_prepare() now returns 0 (not the -1 stub the SDK
+# comment claims), so the bridge takes over the USBD IRQ and the CP relays USB
+# events to the AP via IPI -> usb_dc_riscv_poll_events() -> usbd_event_*_handler,
+# which MemFaults on the first SUSPEND (bad pointer). With the bridge off,
+# usb_dc_low_level_init() falls back to registering the mature M55-resident
+# USBD_IRQHandler on INT_SRC_USB_HS -- the same path BK7259 uses for MSC U-disk.
+CONFIG_USB=y
+CONFIG_BK_USB_CHERRYUSB_V1_6=y
+CONFIG_USB_DEVICE=y
+CONFIG_USB_HOST=y
+# CONFIG_USB_RISCV_BRIDGE is not set
+CONFIG_USBD_MTP=y
+CONFIG_USBD_MTP_PRODUCT_NAME="BekenMTP"
+CONFIG_USBD_MTP_DEVICE_TYPE="1"
+CONFIG_LVGL_USE_KEYPAD=y

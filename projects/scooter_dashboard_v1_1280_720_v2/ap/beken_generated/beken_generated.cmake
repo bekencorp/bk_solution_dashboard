@@ -8,6 +8,7 @@ file(GLOB_RECURSE BEKEN_GENERATOR_SOURCES
     "${BEKEN_GENERATED_DIR}/*.c"
 )
 
+# Keep unchanged-page resources in the build; only generated Home files are refreshed.
 list(REMOVE_ITEM BEKEN_GENERATOR_SOURCES
     "${BEKEN_GENERATED_DIR}/nav_cast_init.c"
     "${BEKEN_GENERATED_DIR}/image/dash_bg_clean_1280x720_RGB565A8_NONE.c"

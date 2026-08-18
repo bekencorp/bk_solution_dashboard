@@ -875,6 +875,13 @@ void beken_ui_key_home(void)
         return;
     }
 
+    /* While a dashcam clip is playing, a MIDDLE double-press stops playback and
+     * returns to the dashcam list page instead of jumping to HOME. */
+    if (dashcam_ui_handle_key_home())
+    {
+        return;
+    }
+
     lv_async_call(home_menu_return_home_async_cb, NULL);
 }
 
