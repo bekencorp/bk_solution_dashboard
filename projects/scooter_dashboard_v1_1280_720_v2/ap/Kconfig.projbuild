@@ -89,4 +89,26 @@ menu "Scooter media / display configuration"
         int "Cast JPEG rotate degree"
         default 90
         range 0 270
+
+    comment "Music player volume (digital gain in dB)"
+
+    config MUSIC_PLAYER_VOLUME_DB_MIN
+        int "Minimum music player volume"
+        default -100
+        range -100 12
+
+    config MUSIC_PLAYER_VOLUME_DB_MAX
+        int "Maximum music player volume"
+        default 12
+        range -100 12
+
+    config MUSIC_PLAYER_INITIAL_VOLUME_DB
+        int "Initial music player volume"
+        default -40
+        range -100 12
+
+    config MUSIC_PLAYER_VOLUME_STEP_DB
+        int "Music player volume adjustment step"
+        default 3
+        range 1 112
 endmenu

@@ -1277,10 +1277,10 @@ static bk_audio_player_handle_t mp_player_ensure(void)
     bk_audio_player_register_decoder(s_player, bk_audio_player_get_aac_decoder_ops());
 
     bk_audio_player_set_play_mode(s_player, AUDIO_PLAYER_MODE_SEQUENCE_LOOP);
-    /* Deliberately no bk_audio_player_set_volume(): its 0..100 range maps to
-     * 0..63 dB of DAC *digital gain* (amplify-only, min 0 dB), louder than the
-     * pipeline default (-7 dB), and being a cross-core call into the sink it
-     * also raced a NULL sink. Leave the pipeline at its built-in gain. */
+    if (bk_audio_player_set_volume(s_player, CONFIG_MUSIC_PLAYER_INITIAL_VOLUME_DB) != AUDIO_PLAYER_OK)
+    {
+        LOGE("set initial volume %d dB failed\n", CONFIG_MUSIC_PLAYER_INITIAL_VOLUME_DB);
+    }
 
     mp_player_sync_list();
     return s_player;
@@ -1339,6 +1339,37 @@ bool music_player_ui_handle_key_single(void)
 
 /* Trigger the action of the currently highlighted np-panel button. Runs on the
  * key/LVGL task, same context as the playlist long-press play. */
+static void mp_volume_adjust(int delta_db)
+{
+    int volume_db = bk_audio_player_get_volume(s_player);
+    int target_db = volume_db + delta_db;
+    int ret;
+
+    if (target_db < CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN)
+    {
+        target_db = CONFIG_MUSIC_PLAYER_VOLUME_DB_MIN;
+    }
+    else if (target_db > CONFIG_MUSIC_PLAYER_VOLUME_DB_MAX)
+    {
+        target_db = CONFIG_MUSIC_PLAYER_VOLUME_DB_MAX;
+    }
+
+    if (target_db == volume_db)
+    {
+        LOGI("np: volume already at limit %d dB\n", volume_db);
+        return;
+    }
+
+    ret = bk_audio_player_set_volume(s_player, target_db);
+    if (ret != AUDIO_PLAYER_OK)
+    {
+        LOGE("np: set volume %d dB failed, ret=%d\n", target_db, ret);
+        return;
+    }
+
+    LOGI("np: volume %d -> %d dB\n", volume_db, target_db);
+}
+
 static void mp_np_activate(int sel)
 {
     if (mp_player_ensure() == NULL)
@@ -1406,12 +1437,12 @@ static void mp_np_activate(int sel)
         LOGI("np: next -> %d\n", s_now_idx);
         break;
 
-    case 4:  /* btn_vol_down: TODO volume control not wired yet */
-        LOGI("np: vol- (stub)\n");
+    case 4:  /* btn_vol_down */
+        mp_volume_adjust(-CONFIG_MUSIC_PLAYER_VOLUME_STEP_DB);
         break;
 
-    case 5:  /* btn_vol_up: TODO volume control not wired yet */
-        LOGI("np: vol+ (stub)\n");
+    case 5:  /* btn_vol_up */
+        mp_volume_adjust(CONFIG_MUSIC_PLAYER_VOLUME_STEP_DB);
         break;
 
     default:
