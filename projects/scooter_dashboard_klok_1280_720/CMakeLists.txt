@@ -8,6 +8,7 @@ include($ENV{ARMINO_TOOLS_PATH}/build_tools/cmake/project.cmake)
 
 set(EXTRA_COMPONENTS_DIRS
     $ENV{ARMINO_TOOLS_PATH}/../projects/common_components/multimedia_device_service
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/key_app
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/sdcard_mtp
 )
 

@@ -25,6 +25,13 @@
 #define KLOK_OSD_OUTPUT_SLOTS         (2U)
 #define KLOK_OSD_FRAME_DONE_TIMEOUT_MS (3000U)
 
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+void lv_gpu_init(uint32_t tess_width, uint32_t tess_height);
+void lv_gpu_deinit(void);
+void disp_enable_update(void);
+void disp_disable_update(void);
+#endif
+
 typedef struct {
     volatile bool used;
     void *frame_buffer;
@@ -40,6 +47,8 @@ typedef struct {
     volatile bool entering;
     bool stopping;
     bool display_refresh_paused;
+    bool lvgl_gpu_suspended;
+    bool flexa_first_frame_logged;
     uint32_t osd_users;
     uint32_t render_users;
     bool decoded_frame_pending;
@@ -68,9 +77,9 @@ static void klok_pp_osd_pause_display_refresh_locked(void)
     lv_timer_t *refresh_timer = lv_display_get_refr_timer(NULL);
     if (refresh_timer != NULL) {
         /*
-         * PP-OSD owns DPU output while active. Keep LVGL input/timers running,
-         * but stop its compressed flush from submitting concurrent VG-Lite
-         * work against the video postprocess worker.
+         * Full-screen video owns DPU output while active. Keep LVGL
+         * input/timers running, but stop its compressed flush from submitting
+         * concurrent work against either PP-OSD or Flexa direct display.
          */
         lv_timer_pause(refresh_timer);
         s_osd.display_refresh_paused = true;
@@ -224,21 +233,61 @@ static int klok_pp_osd_output_done_cb(void *args)
         }
     }
 
-    return free_cb != NULL ? free_cb(args) : BK_OK;
+    int free_ret = free_cb != NULL ? free_cb(args) : BK_OK;
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_osd.frame_done_sem != NULL) {
+        (void)rtos_set_semaphore(&s_osd.frame_done_sem);
+    }
+#endif
+
+    return free_ret;
 }
 
-static bk_err_t klok_pp_osd_display_compressed_frame(void *frame_buffer)
+static bk_err_t klok_h264_display_compressed_frame(void *frame_buffer)
 {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    avdk_err_t ret = bk_display_flush(
+        s_osd.lcd_handle,
+        frame_buffer,
+        bk_video_player_hw_h264_decoder_free_output_frame);
+    if (ret != AVDK_ERR_OK) {
+        (void)bk_video_player_hw_h264_decoder_free_output_frame(frame_buffer);
+        return BK_FAIL;
+    }
+    return BK_OK;
+#else
     int slot = -1;
 
-    for (uint32_t i = 0; i < KLOK_OSD_OUTPUT_SLOTS; i++) {
-        if (!s_osd.output_slots[i].used) {
-            s_osd.output_slots[i].frame_buffer = frame_buffer;
-            s_osd.output_slots[i].free_cb = video_play_gpu_postprocess_free_frame;
-            s_osd.output_slots[i].used = true;
-            slot = (int)i;
+    for (;;) {
+        for (uint32_t i = 0; i < KLOK_OSD_OUTPUT_SLOTS; i++) {
+            if (!s_osd.output_slots[i].used) {
+                s_osd.output_slots[i].frame_buffer = frame_buffer;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+                s_osd.output_slots[i].free_cb =
+                    bk_video_player_hw_h264_decoder_free_output_frame;
+#else
+                s_osd.output_slots[i].free_cb =
+                    video_play_gpu_postprocess_free_frame;
+#endif
+                s_osd.output_slots[i].used = true;
+                slot = (int)i;
+                break;
+            }
+        }
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+        if (slot >= 0) {
             break;
         }
+        if (rtos_get_semaphore(&s_osd.frame_done_sem,
+                               KLOK_OSD_FRAME_DONE_TIMEOUT_MS) != BK_OK) {
+            (void)bk_video_player_hw_h264_decoder_free_output_frame(frame_buffer);
+            return BK_FAIL;
+        }
+#else
+        break;
+#endif
     }
 
     if (slot < 0) {
@@ -250,15 +299,20 @@ static bk_err_t klok_pp_osd_display_compressed_frame(void *frame_buffer)
                                       frame_buffer,
                                       klok_pp_osd_output_done_cb);
     if (ret != AVDK_ERR_OK && s_osd.output_slots[slot].used) {
+        avdk_err_t (*free_cb)(void *frame) =
+            s_osd.output_slots[slot].free_cb;
         s_osd.output_slots[slot].used = false;
         s_osd.output_slots[slot].frame_buffer = NULL;
         s_osd.output_slots[slot].free_cb = NULL;
-        (void)video_play_gpu_postprocess_free_frame(frame_buffer);
+        if (free_cb != NULL) {
+            (void)free_cb(frame_buffer);
+        }
         return BK_FAIL;
     }
 
     /* A synchronous callback may already have consumed the frame on failure. */
     return (ret == AVDK_ERR_OK || !s_osd.output_slots[slot].used) ? BK_OK : BK_FAIL;
+#endif
 }
 
 static void klok_pp_osd_mark_dirty_event_cb(lv_event_t *event)
@@ -429,6 +483,7 @@ static bk_err_t klok_pp_osd_refresh_overlay_locked(void)
 static void klok_pp_osd_overlay_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
     if (s_osd.active) {
         (void)klok_pp_osd_refresh_overlay_locked();
     }
@@ -439,6 +494,7 @@ static void klok_pp_osd_overlay_timer_cb(lv_timer_t *timer)
      * preview continues to update.
      */
     video_play_display_process_one();
+#endif
 }
 
 bk_err_t klok_h264_pp_osd_init(bk_display_ctlr_handle_t lcd_handle)
@@ -472,6 +528,7 @@ bk_err_t klok_h264_pp_osd_init(bk_display_ctlr_handle_t lcd_handle)
         s_osd.mutex = NULL;
         return ret;
     }
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
     if (video_play_gpu_postprocess_reserve_lvgl_context() != AVDK_ERR_OK) {
         rtos_deinit_semaphore(&s_osd.frame_done_sem);
         rtos_deinit_semaphore(&s_osd.idle_sem);
@@ -496,6 +553,7 @@ bk_err_t klok_h264_pp_osd_init(bk_display_ctlr_handle_t lcd_handle)
         s_osd.mutex = NULL;
         return BK_FAIL;
     }
+#endif
 
     return BK_OK;
 }
@@ -528,6 +586,7 @@ bk_err_t klok_h264_pp_osd_enter_locked(void)
     }
     rtos_unlock_mutex(&s_osd.mutex);
 
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
     bk_err_t ret = klok_pp_osd_allocate_buffer();
     if (ret != BK_OK) {
         s_osd.entering = false;
@@ -552,23 +611,63 @@ bk_err_t klok_h264_pp_osd_enter_locked(void)
         BK_LOGE(TAG, "initial OSD snapshot failed, ret=%d\n", ret);
         return ret;
     }
+#endif
     klok_pp_osd_pause_display_refresh_locked();
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    /*
+     * LVGL and Flexa share the same VG-Lite HSRAM arena (identical base
+     * address), so LVGL's instance must be closed before the decoder creates
+     * the Flexa GPU controller. The LVGL task, however, keeps running
+     * lv_task_handler and may still render the (now hidden) UI. Its partial
+     * flush would then execute vg_lite compression against a closed instance
+     * and block in lv_wait_ready_frame_buffer while holding g_disp_mutex,
+     * wedging every other thread that needs the display lock (e.g. the return
+     * key path). Disabling flush updates turns any stray refresh into a cheap
+     * no-op (SW draw + lv_disp_flush_ready), so the display lock always stays
+     * releasable.
+     */
+    disp_disable_update();
+    lv_gpu_deinit();
+    s_osd.lvgl_gpu_suspended = true;
+
+    const bk_display_pixel_format_config_t display_format = {
+        .format = BK_PIXEL_FORMAT_ARGB8888,
+        .decompress = true,
+    };
+    bk_err_t ret = bk_display_pixel_format_set(s_osd.lcd_handle, &display_format);
+    if (ret != BK_OK) {
+        lv_gpu_init(KLOK_OSD_UI_WIDTH / 4U, KLOK_OSD_UI_HEIGHT / 4U);
+        s_osd.lvgl_gpu_suspended = false;
+        disp_enable_update();
+        klok_pp_osd_resume_display_refresh_locked();
+        s_osd.entering = false;
+        BK_LOGE(TAG, "Flexa DPU format sync failed, ret=%d\n", ret);
+        return ret;
+    }
+#endif
 
     rtos_lock_mutex(&s_osd.mutex);
     s_osd.stopping = false;
     s_osd.active = true;
     s_osd.entering = false;
+    s_osd.flexa_first_frame_logged = false;
     s_osd.decoded_frame_pending = false;
     while (rtos_get_semaphore(&s_osd.frame_done_sem, BEKEN_NO_WAIT) == BK_OK) {
     }
     rtos_unlock_mutex(&s_osd.mutex);
 
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
     if (s_osd.overlay_timer == NULL) {
         s_osd.overlay_timer = lv_timer_create(klok_pp_osd_overlay_timer_cb, 33, NULL);
     } else {
         lv_timer_resume(s_osd.overlay_timer);
     }
+#endif
 
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    BK_LOGI(TAG, "Flexa direct display entered (OSD snapshot disabled)\n");
+#endif
     return BK_OK;
 }
 
@@ -616,6 +715,16 @@ void klok_h264_pp_osd_leave_locked(void)
         lv_obj_delete(s_osd.overlay_obj);
     }
     s_osd.overlay_obj = NULL;
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_osd.lvgl_gpu_suspended) {
+        lv_gpu_init(KLOK_OSD_UI_WIDTH / 4U, KLOK_OSD_UI_HEIGHT / 4U);
+        s_osd.lvgl_gpu_suspended = false;
+        /* LVGL owns VG-Lite and the DPU again; re-enable its flush pipeline. */
+        disp_enable_update();
+    }
+#endif
+
     klok_pp_osd_resume_display_refresh_locked();
 }
 
@@ -712,10 +821,34 @@ bool klok_h264_pp_osd_push_video_take(void *pixel,
     }
 
     (void)pts_ms;
-    bk_err_t display_ret = klok_pp_osd_display_compressed_frame(output.data);
+    bk_err_t display_ret = klok_h264_display_compressed_frame(output.data);
 
     if (display_ret != BK_OK) {
         BK_LOGW(TAG, "display submit failed, ret=%d\n", (int)display_ret);
+    }
+    return true;
+}
+
+bool klok_h264_flexa_display_take(void *frame_buffer)
+{
+    if (frame_buffer == NULL || s_osd.mutex == NULL) {
+        return false;
+    }
+
+    rtos_lock_mutex(&s_osd.mutex);
+    bool output_allowed = s_osd.active && !s_osd.stopping;
+    rtos_unlock_mutex(&s_osd.mutex);
+    if (!output_allowed) {
+        return false;
+    }
+
+    bk_err_t display_ret = klok_h264_display_compressed_frame(frame_buffer);
+    if (display_ret != BK_OK) {
+        BK_LOGW(TAG, "Flexa direct display submit failed, ret=%d\n",
+                (int)display_ret);
+    } else if (!s_osd.flexa_first_frame_logged) {
+        s_osd.flexa_first_frame_logged = true;
+        BK_LOGI(TAG, "Flexa direct first frame submitted to DPU\n");
     }
     return true;
 }

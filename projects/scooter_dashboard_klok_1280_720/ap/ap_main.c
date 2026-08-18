@@ -21,11 +21,13 @@
 #include "driver/drv_tp.h"
 #include "event_runtime.h"
 #include "gpio_driver.h"
+#include "key_app_service.h"
 #include "klok_mv_render.h"
 #include "klok_player_adapter.h"
 #include "lv_vendor.h"
 #include "media_service.h"
 #include "sdcard_mtp.h"
+#include "video_play_engine_api.h"
 #include "video_player_cli.h"
 
 #include <lcd/lcd_mipi_fl7703np_720x1280.h>
@@ -132,7 +134,7 @@ static void klok_cli_usage(void)
     bk_printf("  klok back\r\n");
     bk_printf("  klok play [file]\r\n");
     bk_printf("  klok full | fullscreen\r\n");
-    bk_printf("  klok next | replay | stop | pause | resume | playpause\r\n");
+    bk_printf("  klok next | prev | replay | stop | pause | resume | playpause\r\n");
     bk_printf("  klok audio <0|1> | accompany | vocal\r\n");
     bk_printf("  klok mute | volup | voldown\r\n");
 }
@@ -312,6 +314,9 @@ static void klok_cli_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, cha
     } else if (os_strcmp(argv[1], "next") == 0) {
         (void)klok_player_next();
         (void)klok_ui_navigate("play");
+    } else if (os_strcmp(argv[1], "prev") == 0 || os_strcmp(argv[1], "previous") == 0) {
+        (void)klok_player_previous();
+        (void)klok_ui_navigate("play");
     } else if (os_strcmp(argv[1], "pause") == 0) {
         (void)klok_player_pause();
     } else if (os_strcmp(argv[1], "resume") == 0) {
@@ -443,6 +448,284 @@ static void lvgl_ui_init(void)
     s_klok_current_page = KLOK_UI_PAGE_HOME;
 }
 
+static bool klok_key_playback_active(void)
+{
+    return s_klok_ui_ready && klok_player_is_started();
+}
+
+static bool klok_play_page_active(void)
+{
+    return s_klok_ui_ready &&
+           (s_klok_current_page == KLOK_UI_PAGE_PLAY ||
+            klok_mv_render_is_active());
+}
+
+static volatile bool s_key_return_pending = false;
+
+static void klok_key_return_on_ui_thread(void *user_data)
+{
+    (void)user_data;
+    bk_printf("klok key return UI begin: started=%d pending=%d switching=%d\r\n",
+              (int)klok_player_is_started(),
+              (int)s_key_return_pending,
+              (int)klok_player_is_switching());
+
+    if (!klok_play_page_active()) {
+        s_key_return_pending = false;
+        bk_printf("klok key return UI canceled: play page inactive\r\n");
+        return;
+    }
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    int prepared = -1;
+    if (klok_player_is_started()) {
+        prepared = klok_player_begin_output_switch(
+            KLOK_PLAYER_OUTPUT_FRAME_PREVIEW);
+    }
+    if (prepared < 0) {
+        /*
+         * The engine may already be FINISHED even when the visual last frame
+         * has only just appeared. A hot switch is invalid in that state, so
+         * use a full stop as the reliable return fallback.
+         */
+        (void)klok_player_stop();
+    }
+
+    lv_vendor_disp_lock();
+    klok_mv_render_leave_locked();
+    navigate_to_screen(&bk_lv_tool_ui.song_list,
+                       LV_SCR_LOAD_ANIM_NONE,
+                       300,
+                       0,
+                       false,
+                       init_page_song_list);
+    if (prepared == 0) {
+        (void)klok_player_complete_output_switch(NULL);
+    }
+    lv_vendor_disp_unlock();
+#else
+    lv_vendor_disp_lock();
+    klok_mv_render_leave_locked();
+    (void)video_play_engine_api_reassert_audio_format();
+    navigate_to_screen(&bk_lv_tool_ui.song_list,
+                       LV_SCR_LOAD_ANIM_NONE,
+                       300,
+                       0,
+                       false,
+                       init_page_song_list);
+    lv_vendor_disp_unlock();
+#endif
+    s_klok_current_page = KLOK_UI_PAGE_LIST;
+    s_key_return_pending = false;
+    bk_printf("klok key return UI complete\r\n");
+}
+
+typedef enum {
+    KLOK_KEY_ACTION_RETURN = 0,
+    KLOK_KEY_ACTION_PAUSE_TOGGLE,
+    KLOK_KEY_ACTION_AUDIO_TRACK_TOGGLE,
+    KLOK_KEY_ACTION_REPLAY,
+    KLOK_KEY_ACTION_NEXT,
+    KLOK_KEY_ACTION_PLAYBACK_FINISHED,
+} klok_key_action_t;
+
+#define KLOK_KEY_CONTROL_QUEUE_DEPTH  (5U)
+#define KLOK_KEY_CONTROL_STACK_SIZE   (8U * 1024U)
+
+static beken_queue_t s_key_control_queue = NULL;
+static beken_thread_t s_key_control_thread = NULL;
+
+static void klok_playback_finished(const char *file_path, void *user_data)
+{
+    (void)user_data;
+    bk_printf("klok playback finished callback: %s\r\n",
+              file_path != NULL ? file_path : "(null)");
+
+    if (s_key_control_queue == NULL) {
+        return;
+    }
+
+    klok_key_action_t action = KLOK_KEY_ACTION_PLAYBACK_FINISHED;
+    if (rtos_push_to_queue(&s_key_control_queue,
+                           &action,
+                           BEKEN_NO_WAIT) != BK_OK) {
+        bk_printf("klok playback finished queue push failed\r\n");
+    }
+}
+
+static void klok_key_action_process(klok_key_action_t action)
+{
+    if (action != KLOK_KEY_ACTION_PLAYBACK_FINISHED &&
+        !klok_key_playback_active() &&
+        !klok_play_page_active()) {
+        return;
+    }
+
+    switch (action) {
+    case KLOK_KEY_ACTION_RETURN:
+        /*
+         * Flexa direct mode suspends LVGL's GPU/refresh path, so the LVGL task
+         * is not a reliable executor for an asynchronous return callback. Follow the
+         * same locking model as CLI navigation: serialize UI access with the
+         * display mutex and perform the return on this control worker.
+         */
+        klok_key_return_on_ui_thread(NULL);
+        break;
+    case KLOK_KEY_ACTION_PAUSE_TOGGLE:
+        (void)klok_player_pause_toggle();
+        break;
+    case KLOK_KEY_ACTION_AUDIO_TRACK_TOGGLE:
+        if (klok_player_is_accompany()) {
+            (void)klok_player_vocal();
+        } else {
+            (void)klok_player_accompany();
+        }
+        break;
+    case KLOK_KEY_ACTION_REPLAY:
+        (void)klok_player_replay();
+        break;
+    case KLOK_KEY_ACTION_NEXT:
+        (void)klok_player_next();
+        break;
+    case KLOK_KEY_ACTION_PLAYBACK_FINISHED:
+        if (!klok_play_page_active()) {
+            break;
+        }
+        /*
+         * EOF leaves the engine in FINISHED, where decoder hot-switching is
+         * no longer valid. Tear down the finished runtime, then restore LVGL
+         * ownership of the display and return to the song list.
+         */
+        (void)klok_player_stop();
+        lv_vendor_disp_lock();
+        klok_mv_render_leave_locked();
+        navigate_to_screen(&bk_lv_tool_ui.song_list,
+                           LV_SCR_LOAD_ANIM_NONE,
+                           300,
+                           0,
+                           false,
+                           init_page_song_list);
+        s_klok_current_page = KLOK_UI_PAGE_LIST;
+        s_key_return_pending = false;
+        lv_vendor_disp_unlock();
+        bk_printf("klok playback finished: returned to song list\r\n");
+        break;
+    default:
+        break;
+    }
+}
+
+static void klok_key_control_thread(void *arg)
+{
+    (void)arg;
+
+    while (true) {
+        klok_key_action_t action;
+        if (rtos_pop_from_queue(&s_key_control_queue,
+                                &action,
+                                BEKEN_WAIT_FOREVER) == BK_OK) {
+            klok_key_action_process(action);
+        }
+    }
+}
+
+static void klok_key_schedule(klok_key_action_t action)
+{
+    const bool play_page_active = klok_play_page_active();
+    if ((!klok_key_playback_active() && !play_page_active) ||
+        s_key_control_queue == NULL) {
+        return;
+    }
+
+    (void)rtos_push_to_queue(&s_key_control_queue, &action, BEKEN_NO_WAIT);
+}
+
+static void klok_key_return(void)
+{
+    const bool playback_active = klok_key_playback_active();
+    const bool play_page_active = klok_play_page_active();
+    const bool switching = klok_player_is_switching();
+    if ((!playback_active && !play_page_active) ||
+        s_key_control_queue == NULL ||
+        s_key_return_pending ||
+        switching) {
+        bk_printf("klok key return ignored: active=%d play_page=%d queue=%p pending=%d switching=%d\r\n",
+                  (int)playback_active,
+                  (int)play_page_active,
+                  s_key_control_queue,
+                  (int)s_key_return_pending,
+                  (int)switching);
+        return;
+    }
+    s_key_return_pending = true;
+    klok_key_action_t action = KLOK_KEY_ACTION_RETURN;
+    if (rtos_push_to_queue(&s_key_control_queue,
+                           &action,
+                           BEKEN_NO_WAIT) != BK_OK) {
+        s_key_return_pending = false;
+        bk_printf("klok key return queue push failed\r\n");
+    } else {
+        bk_printf("klok key return queued\r\n");
+    }
+}
+
+static void klok_key_pause_toggle(void)
+{
+    klok_key_schedule(KLOK_KEY_ACTION_PAUSE_TOGGLE);
+}
+
+static void klok_key_audio_track_toggle(void)
+{
+    klok_key_schedule(KLOK_KEY_ACTION_AUDIO_TRACK_TOGGLE);
+}
+
+static void klok_key_replay(void)
+{
+    klok_key_schedule(KLOK_KEY_ACTION_REPLAY);
+}
+
+static void klok_key_next(void)
+{
+    klok_key_schedule(KLOK_KEY_ACTION_NEXT);
+}
+
+static void app_key_init(void)
+{
+#if CONFIG_BUTTON
+    static const key_action_cfg_t key_actions[] = {
+        { .pin_id = KEY_PIN_DOWN,   .short_callback = klok_key_return },
+        { .pin_id = KEY_PIN_MIDDLE, .short_callback = klok_key_pause_toggle },
+        { .pin_id = KEY_PIN_UP,     .short_callback = klok_key_audio_track_toggle },
+        { .pin_id = KEY_PIN_LEFT,   .short_callback = klok_key_replay },
+        { .pin_id = KEY_PIN_RIGHT,  .short_callback = klok_key_next },
+    };
+
+    if (rtos_init_queue(&s_key_control_queue,
+                        "klok_key_ctrl_q",
+                        sizeof(klok_key_action_t),
+                        KLOK_KEY_CONTROL_QUEUE_DEPTH) != BK_OK) {
+        s_key_control_queue = NULL;
+        bk_printf("klok key control queue init failed\r\n");
+        return;
+    }
+
+    if (rtos_create_thread(&s_key_control_thread,
+                           BEKEN_DEFAULT_WORKER_PRIORITY,
+                           "klok_key_ctrl",
+                           (beken_thread_function_t)klok_key_control_thread,
+                           KLOK_KEY_CONTROL_STACK_SIZE,
+                           NULL) != BK_OK) {
+        s_key_control_thread = NULL;
+        rtos_deinit_queue(&s_key_control_queue);
+        s_key_control_queue = NULL;
+        bk_printf("klok key control thread init failed\r\n");
+        return;
+    }
+
+    bk_key_service_init(key_actions, sizeof(key_actions) / sizeof(key_actions[0]));
+#endif
+}
+
 int main(void)
 {
     bk_init();
@@ -486,6 +769,8 @@ int main(void)
     cli_klok_init();
     (void)sdcard_mtp_init();
     lvgl_ui_init();
+    app_key_init();
+    klok_player_set_finished_callback(klok_playback_finished, NULL);
 
     return 0;
 }

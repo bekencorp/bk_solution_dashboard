@@ -22,6 +22,8 @@ bool klok_h264_pp_osd_push_video_take(void *pixel,
                                      uint16_t width,
                                      uint16_t height,
                                      uint64_t pts_ms);
+/* Flexa direct-display input: takes ownership of a compressed ARGB8888 frame. */
+bool klok_h264_flexa_display_take(void *frame_buffer);
 void klok_h264_pp_osd_cancel_pending_frame(void);
 void klok_h264_pp_osd_overlay_dirty(void);
 

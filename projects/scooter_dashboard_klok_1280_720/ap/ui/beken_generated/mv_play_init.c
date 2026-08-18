@@ -229,9 +229,31 @@ static void anim_set_style_pad_column(void * var, int32_t v) { lv_obj_set_style_
  * @brief Event callback for mv_play_back_btn - handles all events
  * @param e LVGL event object
  */
+static bool s_mv_return_pending = false;
+
 static void mv_play_return_to_song_list_async(void *user_data)
 {
     (void)user_data;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    int prepared = klok_player_begin_output_switch(
+        KLOK_PLAYER_OUTPUT_FRAME_PREVIEW);
+    if (prepared < 0) {
+        s_mv_return_pending = false;
+        return;
+    }
+
+    klok_mv_render_leave_locked();
+    navigate_to_screen(&bk_lv_tool_ui.song_list,
+                       LV_SCR_LOAD_ANIM_NONE,
+                       300,
+                       0,
+                       false,
+                       init_page_song_list);
+    if (prepared == 0) {
+        (void)klok_player_complete_output_switch(NULL);
+    }
+    s_mv_return_pending = false;
+#else
     klok_mv_render_leave_locked();
     (void)video_play_engine_api_reassert_audio_format();
     navigate_to_screen(&bk_lv_tool_ui.song_list,
@@ -240,6 +262,7 @@ static void mv_play_return_to_song_list_async(void *user_data)
                        0,
                        false,
                        init_page_song_list);
+#endif
 }
 
 void mv_play_back_btn_event_cb(lv_event_t *e)
@@ -248,7 +271,17 @@ void mv_play_back_btn_event_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if (code == LV_EVENT_CLICKED) {
-        lv_async_call(mv_play_return_to_song_list_async, NULL);
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+        if (s_mv_return_pending || klok_player_is_switching()) {
+            return;
+        }
+        s_mv_return_pending = true;
+#endif
+        if (lv_async_call(mv_play_return_to_song_list_async, NULL) != LV_RESULT_OK) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+            s_mv_return_pending = false;
+#endif
+        }
     }
 }
 
@@ -318,7 +351,17 @@ static void mv_play_ctrl_duet_event_cb(lv_event_t *e)
 static void mv_play_ctrl_queue_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        lv_async_call(mv_play_return_to_song_list_async, NULL);
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+        if (s_mv_return_pending || klok_player_is_switching()) {
+            return;
+        }
+        s_mv_return_pending = true;
+#endif
+        if (lv_async_call(mv_play_return_to_song_list_async, NULL) != LV_RESULT_OK) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+            s_mv_return_pending = false;
+#endif
+        }
     }
 }
 
@@ -327,8 +370,6 @@ static void mv_play_blend_lifecycle_event_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_SCREEN_LOAD_START) {
         klok_mv_render_prepare_locked();
-    } else if (code == LV_EVENT_SCREEN_LOADED) {
-        (void)klok_mv_render_enter_locked();
     } else if (code == LV_EVENT_SCREEN_UNLOADED) {
         klok_mv_render_leave_locked();
     }

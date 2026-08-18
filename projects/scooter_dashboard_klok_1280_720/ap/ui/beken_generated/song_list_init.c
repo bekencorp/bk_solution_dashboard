@@ -20,8 +20,11 @@
 #include <string.h>
 #include "bk_posix.h"
 #include "klok_lvgl_preview.h"
+#include "klok_mv_render.h"
 #include "klok_player_adapter.h"
 #include "os/mem.h"
+#include "os/os.h"
+#include "lv_vendor.h"
 #include "video_play_engine_api.h"
 /* Animation exec wrappers for style properties */
 typedef void (*anim_color_setter_cb_t)(lv_obj_t * obj, lv_color_t color, lv_opa_t opa);
@@ -229,6 +232,87 @@ static void anim_set_style_pad_column(void * var, int32_t v) { lv_obj_set_style_
 #define KLOK_SONG_LIST_MAX_ITEMS 64
 #define KLOK_SONG_PATH_MAX 256
 
+typedef struct {
+    char file_path[KLOK_SONG_PATH_MAX];
+} klok_song_play_request_t;
+
+static volatile bool s_song_video_transition_pending = false;
+
+#define KLOK_SONG_VIDEO_SWITCH_STACK_SIZE (8U * 1024U)
+
+static void klok_song_list_start_video_worker(void *user_data)
+{
+    klok_song_play_request_t *request = (klok_song_play_request_t *)user_data;
+    if (request == NULL) {
+        rtos_delete_thread(NULL);
+        return;
+    }
+
+    /*
+     * Do not deinitialize LVGL's VG-Lite instance from inside lv_task_handler.
+     * Running the ownership transfer on a worker lets the current LVGL callback
+     * return first; the display mutex then serializes all LVGL object/timer
+     * access while the frame decoder is replaced by the Flexa decoder.
+     */
+    lv_vendor_disp_lock();
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    int prepared = klok_player_begin_output_switch(
+        KLOK_PLAYER_OUTPUT_FLEXA_DIRECT);
+    if (prepared >= 0) {
+        /*
+         * The old video decoder is now quiesced and destroyed, while the
+         * engine/parser/audio pipeline remains live. Flexa can take VG-Lite
+         * before the target decoder handle is created.
+         */
+        if (klok_mv_render_enter_locked() == BK_OK) {
+            if (prepared == 0) {
+                (void)klok_player_complete_output_switch(
+                    request->file_path[0] != '\0'
+                        ? request->file_path
+                        : NULL);
+            } else if (request->file_path[0] != '\0') {
+                (void)klok_player_play_file(request->file_path);
+            } else if (!klok_player_is_started()) {
+                (void)klok_player_play_default();
+            } else if (klok_player_is_paused()) {
+                (void)klok_player_resume();
+            }
+        } else if (prepared == 0) {
+            klok_player_cancel_output_switch();
+        }
+    }
+
+    s_song_video_transition_pending = false;
+#else
+    if (klok_mv_render_enter_locked() == BK_OK) {
+        if (request->file_path[0] != '\0') {
+            (void)klok_player_play_file(request->file_path);
+        } else if (!klok_player_is_started()) {
+            (void)klok_player_play_default();
+        } else if (klok_player_is_paused()) {
+            (void)klok_player_resume();
+        }
+    }
+#endif
+    os_free(request);
+    lv_vendor_disp_unlock();
+    rtos_delete_thread(NULL);
+}
+
+static void klok_song_list_start_video_async(void *user_data)
+{
+    beken_thread_t worker = NULL;
+    if (rtos_create_thread(&worker,
+                           BEKEN_DEFAULT_WORKER_PRIORITY,
+                           "klok_video_switch",
+                           (beken_thread_function_t)klok_song_list_start_video_worker,
+                           KLOK_SONG_VIDEO_SWITCH_STACK_SIZE,
+                           (beken_thread_arg_t)user_data) != BK_OK) {
+        s_song_video_transition_pending = false;
+        os_free(user_data);
+    }
+}
+
 static bool klok_song_list_has_media_ext(const char *name)
 {
     const char *dot = strrchr(name, '.');
@@ -281,9 +365,21 @@ static void klok_song_list_item_event_cb(lv_event_t *e)
     {
         return;
     }
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_song_video_transition_pending || klok_player_is_switching()) {
+        return;
+    }
+#endif
 
-    char file_path[KLOK_SONG_PATH_MAX];
-    snprintf(file_path, sizeof(file_path), "%s", path);
+    klok_song_play_request_t *request =
+        (klok_song_play_request_t *)os_malloc(sizeof(*request));
+    if (request == NULL) {
+        return;
+    }
+    snprintf(request->file_path, sizeof(request->file_path), "%s", path);
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    s_song_video_transition_pending = true;
+#endif
 
     init_page_mv_play(&bk_lv_tool_ui);
     navigate_to_screen(&bk_lv_tool_ui.mv_play,
@@ -293,7 +389,12 @@ static void klok_song_list_item_event_cb(lv_event_t *e)
                        false,
                        init_page_mv_play);
 
-    (void)klok_player_play_file(file_path);
+    if (lv_async_call(klok_song_list_start_video_async, request) != LV_RESULT_OK) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+        s_song_video_transition_pending = false;
+#endif
+        os_free(request);
+    }
 }
 
 static void klok_song_list_show_message(lv_obj_t *panel, const char *text)
@@ -481,15 +582,21 @@ static void song_list_update_play_button(void)
 
 static void song_list_open_fullscreen(void)
 {
-    int ret = 0;
-    if (!klok_player_is_started()) {
-        ret = klok_player_play_default();
-    } else if (klok_player_is_paused()) {
-        ret = klok_player_resume();
-    }
-    if (ret != 0) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_song_video_transition_pending || klok_player_is_switching()) {
         return;
     }
+#endif
+
+    klok_song_play_request_t *request =
+        (klok_song_play_request_t *)os_malloc(sizeof(*request));
+    if (request == NULL) {
+        return;
+    }
+    request->file_path[0] = '\0';
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    s_song_video_transition_pending = true;
+#endif
 
     init_page_mv_play(&bk_lv_tool_ui);
     navigate_to_screen(&bk_lv_tool_ui.mv_play,
@@ -498,6 +605,12 @@ static void song_list_open_fullscreen(void)
                        0,
                        false,
                        init_page_mv_play);
+    if (lv_async_call(klok_song_list_start_video_async, request) != LV_RESULT_OK) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+        s_song_video_transition_pending = false;
+#endif
+        os_free(request);
+    }
 }
 
 

@@ -14,6 +14,7 @@ typedef struct {
     audio_player_device_handle_t audio_player_handle;
     uint8_t audio_volume;
     bool audio_muted;
+    bool frame_preview_mode;
 } video_play_user_ctx_t;
 
 typedef enum {
@@ -32,6 +33,8 @@ void video_play_video_packet_buffer_free_cb(void *user_data,
 
 avdk_err_t video_play_video_frame_buffer_alloc_cb(void *user_data,
                                                    video_player_buffer_t *buffer);
+avdk_err_t video_play_video_flexa_placeholder_alloc_cb(void *user_data,
+                                                        video_player_buffer_t *buffer);
 void video_play_video_frame_buffer_free_cb(void *user_data,
                                             video_player_buffer_t *buffer);
 

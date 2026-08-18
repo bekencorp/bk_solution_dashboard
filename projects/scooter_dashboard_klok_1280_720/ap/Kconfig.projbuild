@@ -6,4 +6,10 @@ config PROJECT_LCD_RESET_PIN
 	help
 	  New scooter dashboard board uses GPIO_42 for LCD reset.
 
+config PROJECT_SCOOTER_DASHBOARD_V_1_0
+	bool "SCH-7259 V1.0 board"
+	default y
+	help
+	  Select the five-key GPIO layout used by the SCH-7259 V1.0 board.
+
 endmenu

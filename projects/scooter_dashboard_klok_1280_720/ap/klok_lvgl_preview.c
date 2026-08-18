@@ -52,10 +52,24 @@ static bool klok_preview_ensure_buffers_locked(void)
 
 static bool klok_preview_ensure_image_locked(void)
 {
-    lv_obj_t *panel = bk_lv_tool_ui.song_list_sl_video;
-    if (lv_screen_active() != bk_lv_tool_ui.song_list ||
-        !klok_preview_obj_valid(panel)) {
+    lv_obj_t *active = lv_screen_active();
+    lv_obj_t *panel = NULL;
+
+    if (active == bk_lv_tool_ui.song_list) {
+        panel = bk_lv_tool_ui.song_list_sl_video;
+    } else if (active == bk_lv_tool_ui.klok_main) {
+        panel = bk_lv_tool_ui.klok_main_video_box;
+    }
+
+    if (!klok_preview_obj_valid(panel)) {
         return false;
+    }
+
+    if (klok_preview_obj_valid(s_preview_image) &&
+        lv_obj_get_parent(s_preview_image) != panel) {
+        lv_image_set_src(s_preview_image, NULL);
+        lv_obj_delete(s_preview_image);
+        s_preview_image = NULL;
     }
 
     if (!klok_preview_obj_valid(s_preview_image)) {

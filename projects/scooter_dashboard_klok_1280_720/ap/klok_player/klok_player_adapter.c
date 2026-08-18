@@ -33,6 +33,30 @@ static bool s_media_cache_valid = false;
 static uint16_t s_media_count = 0;
 static int s_current_media_index = -1;
 static char s_media_names[KLOK_PLAYER_MAX_MEDIA_FILES][KLOK_PLAYER_MEDIA_NAME_MAX];
+static bool s_output_switching = false;
+static klok_player_finished_cb_t s_finished_callback = NULL;
+static void *s_finished_user_data = NULL;
+
+static void klok_player_on_finished(const char *file_path, void *user_data)
+{
+    (void)user_data;
+
+    if (file_path != NULL &&
+        strcmp(file_path, s_current_file_path) != 0) {
+        bk_printf("klok player: ignore stale finish event: %s\r\n", file_path);
+        return;
+    }
+
+    s_started = false;
+    s_paused = false;
+    s_output_switching = false;
+    bk_printf("klok player: playback finished: %s\r\n",
+              file_path != NULL ? file_path : s_current_file_path);
+
+    if (s_finished_callback != NULL) {
+        s_finished_callback(file_path, s_finished_user_data);
+    }
+}
 
 static int klok_player_result(avdk_err_t ret)
 {
@@ -166,7 +190,7 @@ static int klok_player_ensure_media_cache(void)
     return 0;
 }
 
-static int klok_player_find_next_file(char *path, size_t path_size)
+static int klok_player_find_relative_file(int direction, char *path, size_t path_size)
 {
     if (klok_player_ensure_media_cache() != 0) {
         return -1;
@@ -186,8 +210,16 @@ static int klok_player_find_next_file(char *path, size_t path_size)
         current_index = klok_player_find_cached_media_index(klok_player_current_file_name());
     }
 
-    uint16_t next_index = (current_index < 0) ? 0U : (uint16_t)((current_index + 1) % s_media_count);
-    return klok_player_build_media_path(s_media_names[next_index], path, path_size);
+    uint16_t target_index;
+    if (current_index < 0) {
+        target_index = (direction < 0) ? (uint16_t)(s_media_count - 1U) : 0U;
+    } else if (direction < 0) {
+        target_index = (uint16_t)((current_index + (int)s_media_count - 1) % (int)s_media_count);
+    } else {
+        target_index = (uint16_t)((current_index + 1) % (int)s_media_count);
+    }
+
+    return klok_player_build_media_path(s_media_names[target_index], path, path_size);
 }
 
 static int klok_player_start_file(const char *file_path)
@@ -232,6 +264,17 @@ void klok_player_adapter_init(void)
     s_media_cache_valid = false;
     s_media_count = 0;
     s_current_media_index = -1;
+    s_output_switching = false;
+    s_finished_callback = NULL;
+    s_finished_user_data = NULL;
+    video_play_engine_api_set_finished_callback(klok_player_on_finished, NULL);
+}
+
+void klok_player_set_finished_callback(klok_player_finished_cb_t callback,
+                                       void *user_data)
+{
+    s_finished_callback = callback;
+    s_finished_user_data = user_data;
 }
 
 int klok_player_play_default(void)
@@ -283,7 +326,7 @@ int klok_player_pause(void)
 int klok_player_resume(void)
 {
     if (!s_started) {
-        return klok_player_play_default();
+        return klok_player_start_file(s_current_file);
     }
     if (!s_paused) {
         return 0;
@@ -299,7 +342,7 @@ int klok_player_resume(void)
 int klok_player_pause_toggle(void)
 {
     if (!s_started) {
-        return klok_player_play_default();
+        return klok_player_start_file(s_current_file);
     }
 
     if (s_paused) {
@@ -326,6 +369,7 @@ int klok_player_stop(void)
     if (ret == 0) {
         s_started = false;
         s_paused = false;
+        s_output_switching = false;
     }
 
     return ret;
@@ -335,11 +379,22 @@ int klok_player_next(void)
 {
     char next_file[KLOK_PLAYER_PATH_MAX] = {0};
 
-    if (klok_player_find_next_file(next_file, sizeof(next_file)) != 0) {
+    if (klok_player_find_relative_file(1, next_file, sizeof(next_file)) != 0) {
         return -1;
     }
 
     return klok_player_start_file(next_file);
+}
+
+int klok_player_previous(void)
+{
+    char previous_file[KLOK_PLAYER_PATH_MAX] = {0};
+
+    if (klok_player_find_relative_file(-1, previous_file, sizeof(previous_file)) != 0) {
+        return -1;
+    }
+
+    return klok_player_start_file(previous_file);
 }
 
 int klok_player_set_volume(uint8_t volume)
@@ -431,4 +486,90 @@ int klok_player_vocal(void)
 bool klok_player_is_accompany(void)
 {
     return s_audio_track == KLOK_PLAYER_ACCOMPANY_TRACK;
+}
+
+klok_player_output_mode_t klok_player_get_output_mode(void)
+{
+    return video_play_engine_api_get_output_mode() ==
+                   VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+               ? KLOK_PLAYER_OUTPUT_FRAME_PREVIEW
+               : KLOK_PLAYER_OUTPUT_FLEXA_DIRECT;
+}
+
+bool klok_player_is_switching(void)
+{
+    return s_output_switching || video_play_engine_api_is_switching();
+}
+
+int klok_player_begin_output_switch(klok_player_output_mode_t target_mode)
+{
+    if (klok_player_is_switching()) {
+        return -1;
+    }
+
+    video_play_output_mode_t engine_mode =
+        target_mode == KLOK_PLAYER_OUTPUT_FRAME_PREVIEW
+            ? VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+            : VIDEO_PLAY_OUTPUT_FLEXA_DIRECT;
+    if (video_play_engine_api_get_output_mode() == engine_mode) {
+        return 1;
+    }
+
+    avdk_err_t ret = video_play_engine_api_begin_output_switch(engine_mode);
+    if (ret != AVDK_ERR_OK) {
+        return -1;
+    }
+    s_output_switching = true;
+    return 0;
+}
+
+int klok_player_complete_output_switch(const char *new_file_path)
+{
+    if (!s_output_switching || !video_play_engine_api_is_switching()) {
+        return -1;
+    }
+
+    bool changing_file =
+        new_file_path != NULL && new_file_path[0] != '\0';
+    avdk_err_t ret = video_play_engine_api_complete_output_switch(
+        changing_file ? new_file_path : NULL,
+        s_paused);
+    s_output_switching = false;
+    if (ret != AVDK_ERR_OK) {
+        s_started = false;
+        return -1;
+    }
+
+    if (changing_file) {
+        snprintf(s_current_file_path,
+                 sizeof(s_current_file_path),
+                 "%s",
+                 new_file_path);
+        s_current_file = s_current_file_path;
+        s_started = true;
+        s_paused = false;
+        klok_player_update_current_media_index();
+    }
+
+    if (s_started) {
+        /*
+         * A same-file output switch keeps the active audio decoder/track and
+         * audio device alive. Re-select audio only for a new file; doing it for
+         * a video-only switch would reset the audio half-pipeline.
+         */
+        if (changing_file && s_audio_track != KLOK_PLAYER_VOCAL_TRACK) {
+            (void)video_play_engine_api_select_audio_track(s_audio_track);
+        }
+        (void)video_play_engine_api_set_volume(s_volume);
+        if (s_muted) {
+            (void)video_play_engine_api_set_mute(true);
+        }
+    }
+    return 0;
+}
+
+void klok_player_cancel_output_switch(void)
+{
+    video_play_engine_api_cancel_output_switch();
+    s_output_switching = false;
 }

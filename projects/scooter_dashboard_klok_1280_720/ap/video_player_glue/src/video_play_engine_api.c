@@ -3,6 +3,7 @@
 #include <common/bk_include.h>
 #include <os/mem.h>
 #include <os/os.h>
+#include <stdio.h>
 
 #include "audio_player_device.h"
 #include "bk_partition.h"
@@ -25,12 +26,39 @@
 #define KLOK_VIDEO_WIDTH             (1280U)
 #define KLOK_VIDEO_HEIGHT            (720U)
 #define KLOK_VIDEO_DEFAULT_VOLUME    (8U)
+#define KLOK_VIDEO_PATH_MAX          (256U)
 
 static bk_video_player_engine_handle_t s_player = NULL;
 static bool s_player_opened = false;
 static bool s_sd_mounted = false;
 static audio_player_device_handle_t s_audio_player = NULL;
 static video_play_user_ctx_t s_play_ctx;
+static video_play_output_mode_t s_output_mode = VIDEO_PLAY_OUTPUT_FLEXA_DIRECT;
+static video_play_output_mode_t s_switch_target_mode = VIDEO_PLAY_OUTPUT_FLEXA_DIRECT;
+static video_play_output_mode_t s_switch_source_mode = VIDEO_PLAY_OUTPUT_FLEXA_DIRECT;
+static bool s_output_switching = false;
+static bool s_video_switch_prepared = false;
+static video_player_video_decoder_ops_t *s_flexa_decoder_ops = NULL;
+static video_player_video_decoder_ops_t *s_frame_decoder_ops = NULL;
+static char s_current_file_path[KLOK_VIDEO_PATH_MAX];
+static video_play_finished_cb_t s_finished_callback = NULL;
+static void *s_finished_user_data = NULL;
+
+static void video_play_finished_cb(void *user_data, const char *file_path)
+{
+    (void)user_data;
+    LOGI("playback finished: %s\n", file_path != NULL ? file_path : "(null)");
+    if (s_finished_callback != NULL) {
+        s_finished_callback(file_path, s_finished_user_data);
+    }
+}
+
+void video_play_engine_api_set_finished_callback(video_play_finished_cb_t callback,
+                                                 void *user_data)
+{
+    s_finished_callback = callback;
+    s_finished_user_data = user_data;
+}
 
 static avdk_err_t video_play_audio_set_volume_cb(void *user_data, uint8_t volume)
 {
@@ -162,9 +190,22 @@ static avdk_err_t video_play_register_modules(void)
 {
     video_player_container_parser_ops_t *avi = bk_video_player_get_avi_parser_ops();
     video_player_container_parser_ops_t *mp4 = bk_video_player_get_mp4_parser_ops();
-    video_player_video_decoder_ops_t *h264 =
-        bk_video_player_get_hw_h264_decoder_frame_ops();
-    if (avi == NULL || mp4 == NULL || h264 == NULL) {
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    s_flexa_decoder_ops = bk_video_player_get_hw_h264_decoder_ops();
+    s_frame_decoder_ops = bk_video_player_get_hw_h264_decoder_frame_ops();
+    video_player_video_decoder_ops_t *initial_h264 =
+        s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+            ? s_frame_decoder_ops
+            : s_flexa_decoder_ops;
+    video_player_video_decoder_ops_t *alternate_h264 =
+        s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+            ? s_flexa_decoder_ops
+            : s_frame_decoder_ops;
+#else
+    s_frame_decoder_ops = bk_video_player_get_hw_h264_decoder_frame_ops();
+    video_player_video_decoder_ops_t *initial_h264 = s_frame_decoder_ops;
+#endif
+    if (avi == NULL || mp4 == NULL || initial_h264 == NULL) {
         return AVDK_ERR_UNSUPPORTED;
     }
 
@@ -173,8 +214,21 @@ static avdk_err_t video_play_register_modules(void)
         ret = bk_video_player_engine_register_container_parser(s_player, mp4);
     }
     if (ret == AVDK_ERR_OK) {
-        ret = bk_video_player_engine_register_video_decoder(s_player, h264);
+        /*
+         * Register the explicitly selected initial decoder first. The
+         * controller records the successful template as its preference, so
+         * later file opens do not depend on list order after a hot switch.
+         */
+        ret = bk_video_player_engine_register_video_decoder(s_player,
+                                                             initial_h264);
     }
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (ret == AVDK_ERR_OK && alternate_h264 != NULL &&
+        alternate_h264 != initial_h264) {
+        ret = bk_video_player_engine_register_video_decoder(s_player,
+                                                             alternate_h264);
+    }
+#endif
 
 #if CONFIG_BK_VIDEO_PLAYER_ENABLE_AAC_AUDIO_DECODER
     if (ret == AVDK_ERR_OK) {
@@ -189,12 +243,45 @@ static avdk_err_t video_play_register_modules(void)
     return ret;
 }
 
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+static avdk_err_t video_play_make_switch_profile(
+    video_play_output_mode_t mode,
+    bk_video_player_video_switch_profile_t *profile)
+{
+    if (profile == NULL) {
+        return AVDK_ERR_INVAL;
+    }
+
+    os_memset(profile, 0, sizeof(*profile));
+    if (mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW) {
+        profile->decoder_ops = s_frame_decoder_ops;
+        profile->output_format = PIXEL_FMT_RGB565;
+        profile->rotate_degree = 0U;
+        profile->display_width = KLOK_VIDEO_WIDTH;
+        profile->display_height = KLOK_VIDEO_HEIGHT;
+        profile->buffer_alloc_cb = video_play_video_frame_buffer_alloc_cb;
+    } else if (mode == VIDEO_PLAY_OUTPUT_FLEXA_DIRECT) {
+        profile->decoder_ops = s_flexa_decoder_ops;
+        profile->output_format = PIXEL_FMT_NV12;
+        profile->rotate_degree = 90U;
+        profile->display_width = KLOK_VIDEO_HEIGHT;
+        profile->display_height = KLOK_VIDEO_WIDTH;
+        profile->buffer_alloc_cb =
+            video_play_video_flexa_placeholder_alloc_cb;
+    } else {
+        return AVDK_ERR_INVAL;
+    }
+    profile->buffer_free_cb = video_play_video_frame_buffer_free_cb;
+    return profile->decoder_ops != NULL ? AVDK_ERR_OK : AVDK_ERR_UNSUPPORTED;
+}
+#endif
+
 static void video_play_destroy_runtime(void)
 {
     /*
      * Stop accepting/displaying decoded frames before joining the decoder.
-     * A queued PP-OSD frame otherwise leaves the decoder waiting for LVGL,
-     * while the LVGL caller is synchronously waiting for stop to complete.
+     * This drains either a Flexa direct frame or a PP-OSD frame with the
+     * allocator and completion path that owns it before decoder teardown.
      */
     video_play_display_prepare_restart();
 
@@ -234,13 +321,17 @@ static avdk_err_t video_play_open(void)
         return ret;
     }
 
+    os_memset(&s_play_ctx, 0, sizeof(s_play_ctx));
+    s_play_ctx.audio_volume = KLOK_VIDEO_DEFAULT_VOLUME;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    s_play_ctx.frame_preview_mode =
+        s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW;
+#endif
+
     ret = video_play_display_worker_init();
     if (ret != AVDK_ERR_OK) {
         return ret;
     }
-
-    os_memset(&s_play_ctx, 0, sizeof(s_play_ctx));
-    s_play_ctx.audio_volume = KLOK_VIDEO_DEFAULT_VOLUME;
 
     bk_video_player_config_t cfg;
     os_memset(&cfg, 0, sizeof(cfg));
@@ -251,13 +342,39 @@ static avdk_err_t video_play_open(void)
 
     cfg.video.packet_buffer_alloc_cb = video_play_video_packet_buffer_alloc_cb;
     cfg.video.packet_buffer_free_cb = video_play_video_packet_buffer_free_cb;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    cfg.video.buffer_alloc_cb =
+        s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+            ? video_play_video_frame_buffer_alloc_cb
+            : video_play_video_flexa_placeholder_alloc_cb;
+#else
     cfg.video.buffer_alloc_cb = video_play_video_frame_buffer_alloc_cb;
+#endif
     cfg.video.buffer_free_cb = video_play_video_frame_buffer_free_cb;
     cfg.video.decode_complete_cb = video_play_video_decode_complete_cb;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    cfg.video.output_format =
+        s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW
+            ? PIXEL_FMT_RGB565
+            : PIXEL_FMT_NV12;
+#else
     cfg.video.output_format = PIXEL_FMT_RGB565;
+#endif
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW) {
+        cfg.video.rotate_degree = 0U;
+        cfg.video.display_width = KLOK_VIDEO_WIDTH;
+        cfg.video.display_height = KLOK_VIDEO_HEIGHT;
+    } else {
+        cfg.video.rotate_degree = 90U;
+        cfg.video.display_width = KLOK_VIDEO_HEIGHT;
+        cfg.video.display_height = KLOK_VIDEO_WIDTH;
+    }
+#else
     cfg.video.rotate_degree = 0U;
     cfg.video.display_width = KLOK_VIDEO_WIDTH;
     cfg.video.display_height = KLOK_VIDEO_HEIGHT;
+#endif
 
     cfg.audio.buffer_alloc_cb = video_play_audio_buffer_alloc_cb;
     cfg.audio.buffer_free_cb = video_play_audio_buffer_free_cb;
@@ -266,6 +383,8 @@ static avdk_err_t video_play_open(void)
     cfg.audio.audio_set_mute_cb = video_play_audio_set_mute_cb;
     cfg.audio.audio_output_config_cb = video_play_audio_output_config_cb;
     cfg.user_data = &s_play_ctx;
+    cfg.playback_finished_cb = video_play_finished_cb;
+    cfg.playback_finished_user_data = NULL;
 
     ret = bk_video_player_engine_new(&s_player, &cfg);
     if (ret != AVDK_ERR_OK || s_player == NULL) {
@@ -292,9 +411,21 @@ static avdk_err_t video_play_open(void)
     }
 
     s_player_opened = true;
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_output_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW) {
+        LOGI("Frame preview player opened: RGB565 %ux%u, decoder rotate=0\n",
+             (unsigned)KLOK_VIDEO_WIDTH,
+             (unsigned)KLOK_VIDEO_HEIGHT);
+    } else {
+        LOGI("Flexa direct player opened: compressed ARGB8888 %ux%u, decoder rotate=90\n",
+             (unsigned)KLOK_VIDEO_HEIGHT,
+             (unsigned)KLOK_VIDEO_WIDTH);
+    }
+#else
     LOGI("OSD player opened: H264 frame RGB565 %ux%u, decoder rotate=0\n",
          (unsigned)KLOK_VIDEO_WIDTH,
          (unsigned)KLOK_VIDEO_HEIGHT);
+#endif
     return AVDK_ERR_OK;
 }
 
@@ -303,7 +434,7 @@ static bool video_play_is_ready(void)
     return s_player != NULL && s_player_opened;
 }
 
-avdk_err_t video_play_engine_api_start(const char *file_path)
+static avdk_err_t video_play_start_internal(const char *file_path)
 {
     if (file_path == NULL || file_path[0] == '\0') {
         return AVDK_ERR_INVAL;
@@ -327,12 +458,26 @@ avdk_err_t video_play_engine_api_start(const char *file_path)
         return ret;
     }
 
+    (void)snprintf(s_current_file_path,
+                   sizeof(s_current_file_path),
+                   "%s",
+                   file_path);
     LOGI("playing %s\n", file_path);
     return AVDK_ERR_OK;
 }
 
+avdk_err_t video_play_engine_api_start(const char *file_path)
+{
+    if (s_output_switching) {
+        return AVDK_ERR_BUSY;
+    }
+    return video_play_start_internal(file_path);
+}
+
 avdk_err_t video_play_engine_api_stop(void)
 {
+    s_output_switching = false;
+    s_video_switch_prepared = false;
     video_play_destroy_runtime();
     return AVDK_ERR_OK;
 }
@@ -405,4 +550,176 @@ avdk_err_t video_play_engine_api_select_audio_track(uint8_t index)
     avdk_err_t ret = bk_video_player_engine_select_audio_track(s_player, index);
     video_play_display_resume_handoff();
     return ret;
+}
+
+video_play_output_mode_t video_play_engine_api_get_output_mode(void)
+{
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    return s_output_mode;
+#else
+    return VIDEO_PLAY_OUTPUT_FRAME_PREVIEW;
+#endif
+}
+
+bool video_play_engine_api_is_switching(void)
+{
+    return s_output_switching;
+}
+
+avdk_err_t video_play_engine_api_begin_output_switch(video_play_output_mode_t target_mode)
+{
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
+    (void)target_mode;
+    return AVDK_ERR_UNSUPPORTED;
+#else
+    if (target_mode != VIDEO_PLAY_OUTPUT_FLEXA_DIRECT &&
+        target_mode != VIDEO_PLAY_OUTPUT_FRAME_PREVIEW) {
+        return AVDK_ERR_INVAL;
+    }
+    if (s_output_switching) {
+        return AVDK_ERR_BUSY;
+    }
+    if (target_mode == s_output_mode) {
+        return AVDK_ERR_RDYDONE;
+    }
+
+    s_output_switching = true;
+    s_switch_source_mode = s_output_mode;
+    s_switch_target_mode = target_mode;
+    s_video_switch_prepared = false;
+
+    if (video_play_is_ready()) {
+        /*
+         * Reject and drain display handoff first. The core call then waits for
+         * the video parser and the in-flight decoder call to acknowledge
+         * quiescence before it destroys only active_video_decoder.
+         */
+        video_play_display_prepare_restart();
+        avdk_err_t ret =
+            bk_video_player_engine_prepare_video_decoder_switch(s_player);
+        if (ret != AVDK_ERR_OK) {
+            video_play_display_resume_handoff();
+            s_output_switching = false;
+            return ret;
+        }
+        s_video_switch_prepared = true;
+    }
+
+    LOGI("video-only output switch prepared: %d -> %d\n",
+         (int)s_output_mode,
+         (int)target_mode);
+    return AVDK_ERR_OK;
+#endif
+}
+
+avdk_err_t video_play_engine_api_complete_output_switch(const char *file_path,
+                                                        bool remain_paused)
+{
+#if !KLOK_VIDEO_FLEXA_DIRECT_MODE
+    (void)file_path;
+    (void)remain_paused;
+    return AVDK_ERR_UNSUPPORTED;
+#else
+    if (!s_output_switching) {
+        return AVDK_ERR_INVAL;
+    }
+
+    avdk_err_t ret = AVDK_ERR_OK;
+    bk_video_player_video_switch_profile_t profile;
+    ret = video_play_make_switch_profile(s_switch_target_mode, &profile);
+    if (ret == AVDK_ERR_OK && s_video_switch_prepared) {
+        s_play_ctx.frame_preview_mode =
+            s_switch_target_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW;
+        ret = bk_video_player_engine_complete_video_decoder_switch(s_player,
+                                                                    &profile);
+        if (ret == AVDK_ERR_OK) {
+            s_video_switch_prepared = false;
+        }
+    }
+
+    if (ret == AVDK_ERR_OK) {
+        s_output_mode = s_switch_target_mode;
+        const bool changing_file =
+            file_path != NULL && file_path[0] != '\0';
+        if (changing_file) {
+            /*
+             * A new file intentionally uses the normal full play_file path.
+             * The just-selected decoder template remains the controller's
+             * explicit preference for decoder selection.
+             */
+            ret = video_play_start_internal(file_path);
+        }
+        if (ret == AVDK_ERR_OK && remain_paused && changing_file) {
+            ret = bk_video_player_engine_set_pause(s_player, true);
+        }
+        if (ret == AVDK_ERR_OK) {
+            video_play_display_resume_handoff();
+        }
+    }
+
+    if (ret != AVDK_ERR_OK) {
+        LOGE("video-only output switch failed, target=%d ret=%d\n",
+             (int)s_switch_target_mode,
+             ret);
+        /*
+         * A failed target create/init leaves the core intentionally prepared
+         * so the source decoder can be rebuilt without touching parser/audio.
+         * Never clear the product flag while the core is still quiesced.
+         */
+        if (s_video_switch_prepared) {
+            bk_video_player_video_switch_profile_t rollback;
+            avdk_err_t rollback_ret =
+                video_play_make_switch_profile(s_switch_source_mode, &rollback);
+            if (rollback_ret == AVDK_ERR_OK) {
+                s_play_ctx.frame_preview_mode =
+                    s_switch_source_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW;
+                rollback_ret =
+                    bk_video_player_engine_complete_video_decoder_switch(
+                        s_player, &rollback);
+            }
+            if (rollback_ret == AVDK_ERR_OK) {
+                s_video_switch_prepared = false;
+                s_output_mode = s_switch_source_mode;
+                video_play_display_resume_handoff();
+                LOGI("video-only output switch rolled back to %d\n",
+                     (int)s_switch_source_mode);
+            } else {
+                LOGE("video-only output rollback failed, source=%d ret=%d\n",
+                     (int)s_switch_source_mode, rollback_ret);
+            }
+        }
+    }
+
+    s_output_switching = s_video_switch_prepared;
+    return ret;
+#endif
+}
+
+void video_play_engine_api_cancel_output_switch(void)
+{
+    if (!s_output_switching) {
+        return;
+    }
+
+#if KLOK_VIDEO_FLEXA_DIRECT_MODE
+    if (s_video_switch_prepared) {
+        bk_video_player_video_switch_profile_t profile;
+        if (video_play_make_switch_profile(s_switch_source_mode, &profile) ==
+            AVDK_ERR_OK) {
+            s_play_ctx.frame_preview_mode =
+                s_switch_source_mode == VIDEO_PLAY_OUTPUT_FRAME_PREVIEW;
+            if (bk_video_player_engine_complete_video_decoder_switch(
+                    s_player, &profile) == AVDK_ERR_OK) {
+                s_video_switch_prepared = false;
+                video_play_display_resume_handoff();
+            }
+        }
+    }
+#endif
+    if (s_video_switch_prepared) {
+        LOGE("video-only output cancel rollback remains prepared\n");
+        return;
+    }
+    s_output_mode = s_switch_source_mode;
+    s_output_switching = false;
 }

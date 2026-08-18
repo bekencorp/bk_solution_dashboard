@@ -222,6 +222,18 @@ static void anim_set_style_pad_row(void * var, int32_t v) { lv_obj_set_style_pad
 static void anim_set_style_pad_column(void * var, int32_t v) { lv_obj_set_style_pad_column((lv_obj_t *)var, v, LV_PART_MAIN); }
 
 
+static void klok_main_back_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        navigate_to_screen(&bk_lv_tool_ui.home,
+                           LV_SCR_LOAD_ANIM_NONE,
+                           300,
+                           0,
+                           false,
+                           init_page_home);
+    }
+}
+
 /**
  * @brief Event callback for klok_main_name_card - handles all events
  * @param e LVGL event object
@@ -459,6 +471,11 @@ void init_page_klok_main(bk_lv_ui_t *bk_ui)
     lv_obj_set_width(bk_ui->klok_main_km_back, 160);
     lv_obj_set_height(bk_ui->klok_main_km_back, 30);
     lv_obj_remove_flag(bk_ui->klok_main_km_back, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_add_flag(bk_ui->klok_main_km_back, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(bk_ui->klok_main_km_back,
+                        klok_main_back_event_cb,
+                        LV_EVENT_CLICKED,
+                        NULL);
     lv_obj_set_style_bg_color(bk_ui->klok_main_km_back, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->klok_main_km_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_grad_dir(bk_ui->klok_main_km_back, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);

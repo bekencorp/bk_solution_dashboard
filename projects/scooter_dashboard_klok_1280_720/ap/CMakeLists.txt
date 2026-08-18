@@ -49,6 +49,7 @@ set(priv_req
     lvgl
     bk_cli
     bk_video_player
+    key_app
     sdcard_mtp
 )
 
@@ -59,6 +60,9 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     AUDIO_PLAYER_PA_CTRL_ENABLE=1
     AUDIO_PLAYER_PA_CTRL_GPIO=13
     AUDIO_PLAYER_PA_ON_LEVEL=1
+    # 1: Flexa decoder rotates/compresses and submits directly to DPU.
+    # 0: frame decoder with LVGL snapshot/VCDEC OSD fusion.
+    KLOK_VIDEO_FLEXA_DIRECT_MODE=1
 )
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-variable)
 
