@@ -133,6 +133,10 @@ extern "C" {
 #define DASHCAM_RECYCLE_MIN_FREE_MB    200u
 #endif
 
+#ifndef DASHCAM_RECYCLE_UNLINK_RETRY_MAX
+#define DASHCAM_RECYCLE_UNLINK_RETRY_MAX   8u
+#endif
+
 /*
  * Wall-clock naming/labels (plan A, req5 §9.2/§11). Only enabled on a release
  * build that also has the SNTP->RTC sync feature compiled in; otherwise plan B

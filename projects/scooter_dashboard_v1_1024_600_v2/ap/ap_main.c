@@ -396,6 +396,15 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
         dashcam_app_record_stop();
         LOGI("dashcam_rec_stop: rec=%d\n", (int)dashcam_app_rec_state());
     }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_clean_idx") == 0))
+    {
+        uint32_t removed = 0;
+        uint32_t failed = 0;
+        bk_err_t ret = dashcam_storage_cleanup_orphan_idx(&removed, &failed);
+
+        LOGI("dashcam_clean_idx: ret=%d removed=%u failed=%u\n",
+             ret, (unsigned)removed, (unsigned)failed);
+    }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_turn_left") == 0))
     {
         LOGI("turn dashcam left\n");
@@ -413,7 +422,7 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else
     {
-        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop\n");
+        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop | dashcam_clean_idx\n");
     }
 }
 
