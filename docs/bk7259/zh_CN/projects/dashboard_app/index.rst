@@ -27,8 +27,9 @@ dashboard app使用指南
 - reset 按键：复位开发板
 - k1按键: 清除配网信息并复位开发板
 
-.. figure:: ../../../_static/dashboard_app/board.png
+.. figure:: ../../../_static/dashboard_app/dashboard_v1.jpg
    :alt: board
+   :width: 30%
 
    示例开发板
 

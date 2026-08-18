@@ -27,8 +27,9 @@ The following development board is used as an example.
 - Reset button: Reset the development board
 - K1 button: Clear network configuration information and reset the development board
 
-.. figure:: ../../../_static/dashboard_app/board.png
+.. figure:: ../../../_static/dashboard_app/dashboard_v1.jpg
    :alt: board
+   :width: 30%
 
    Example Development Board
 
