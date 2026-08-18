@@ -23,10 +23,19 @@
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 
+#if defined(CONFIG_SCOOTER_UI_CANVAS_WIDTH) && defined(CONFIG_SCOOTER_UI_CANVAS_HEIGHT)
+#define BG_W        CONFIG_SCOOTER_UI_CANVAS_WIDTH
+#define BG_H        CONFIG_SCOOTER_UI_CANVAS_HEIGHT
+#else
 #define BG_W        1280
 #define BG_H        720
+#endif
 #define BG_SIZE     ((uint32_t)BG_W * BG_H * 2u) /* RGB565 */
+#if defined(CONFIG_SCOOTER_BOOT_BG_FILENAME)
+#define BG_PATH     "1:/" CONFIG_SCOOTER_BOOT_BG_FILENAME
+#else
 #define BG_PATH     "1:/home_bg.jpg"
+#endif
 
 /* TJPGD working pool (huffman/quant tables + MCU + input buffer). 4KB is the
  * size LVGL's own lv_tjpgd decoder uses and is enough for a 1280-wide image. */

@@ -337,7 +337,8 @@ bk_err_t boot_avi_play(void)
     long total_frames, frame_len;
     int avi_w, avi_h;
     uint16_t dpu_w, dpu_h;
-    bool need_rotate;
+    uint16_t gpu_dst_w, gpu_dst_h;
+    uint16_t gpu_rotate_degree;
     uint32_t consecutive_fail = 0;
     uint32_t ok_count = 0;
     bool dht_checked = false, dht_present = false;
@@ -388,8 +389,46 @@ bk_err_t boot_avi_play(void)
         return BK_OK;
     }
 
-    need_rotate = (avi_w == dpu_h && avi_h == dpu_w);
-
+    gpu_dst_w = dpu_w;
+    gpu_dst_h = dpu_h;
+#if defined(CONFIG_SCOOTER_UI_ROTATION)
+    switch (CONFIG_SCOOTER_UI_ROTATION)
+    {
+        case 0:
+            gpu_rotate_degree = 0;
+            break;
+        case 90:
+            gpu_rotate_degree = 270;
+            break;
+        case 180:
+            gpu_rotate_degree = 180;
+            break;
+        case 270:
+            gpu_rotate_degree = 90;
+            break;
+        default:
+            LOGW("unsupported UI rotation=%d, disable boot AVI rotation\n",
+                 CONFIG_SCOOTER_UI_ROTATION);
+            gpu_rotate_degree = 0;
+            break;
+    }
+    if ((gpu_rotate_degree == 90 || gpu_rotate_degree == 270) &&
+        (avi_w != dpu_h || avi_h != dpu_w))
+    {
+        LOGW("UI rotation=%d but AVI %dx%d does not match rotated DPU %ux%u\n",
+             CONFIG_SCOOTER_UI_ROTATION, avi_w, avi_h, dpu_w, dpu_h);
+        gpu_rotate_degree = 0;
+    }
+#else
+    gpu_rotate_degree = (avi_w == dpu_h && avi_h == dpu_w) ? 90 : 0;
+#endif
+    if (gpu_rotate_degree == 90 || gpu_rotate_degree == 270)
+    {
+        gpu_dst_w = (uint16_t)avi_w;
+        gpu_dst_h = (uint16_t)avi_h;
+    }
+    LOGI("boot AVI GPU rotation=%u dst=%ux%u\n",
+         gpu_rotate_degree, gpu_dst_w, gpu_dst_h);
     /*
      * Buffer layout for zero-copy DHT injection:
      *   [0 .. MJPEG_DHT_SIZE-1]       = reserved for SOI(2) + DHT(420-2=418)
@@ -416,16 +455,16 @@ bk_err_t boot_avi_play(void)
     dpu_switch_to_argb8888_decompress();
 
     /*
-     * GPU FLEXA rotate=90 requires dst = src (same dimensions).
+     * GPU FLEXA quarter-turn rotation requires dst = src (same dimensions).
      * The rotation is handled purely by the GPU matrix transform + DPU decompress.
      * This matches the cast pipeline config (defconfig: CAST_JPEG_DST = CAST_JPEG_SRC).
      */
     os_memset(&jsp_cfg, 0, sizeof(jsp_cfg));
     jsp_cfg.src_width  = (uint16_t)avi_w;
     jsp_cfg.src_height = (uint16_t)avi_h;
-    jsp_cfg.dst_width  = (uint16_t)avi_w;
-    jsp_cfg.dst_height = (uint16_t)avi_h;
-    jsp_cfg.rotate_degree = need_rotate ? 90 : 0;
+    jsp_cfg.dst_width  = gpu_dst_w;
+    jsp_cfg.dst_height = gpu_dst_h;
+    jsp_cfg.rotate_degree = gpu_rotate_degree;
     jsp_cfg.dst_format = BK_PIXEL_FORMAT_ARGB8888;
     jsp_cfg.compress = true;
     jsp_cfg.scale = true;

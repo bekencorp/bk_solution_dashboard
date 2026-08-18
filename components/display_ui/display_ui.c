@@ -23,6 +23,9 @@
 #if CONFIG_LCD_ER68576B_MIPI_720x1280
 #include <lcd/lcd_mipi_er68576b_720x1280.h>
 #endif
+#if CONFIG_LCD_EK79007AD_MIPI_1024x600
+#include <lcd/lcd_mipi_ek79007ad_1024x600.h>
+#endif
 #include <common/avdk_pixel_types.h>
 #include <driver/gpio.h>
 #include "gpio_driver.h"
@@ -84,10 +87,10 @@ static const bk_display_dsi_panel_t *scooter_get_mipi_panel(void)
     return &lcd_device_fl7703np_mipi_720x1280;
 #elif CONFIG_LCD_ER68576B_MIPI_720x1280
     return &lcd_device_er68576b_mipi_720x1280;
+#elif CONFIG_LCD_EK79007AD_MIPI_1024x600
+    return &lcd_device_ek79007ad_mipi_1024x600;
 #elif CONFIG_LCD_LT8912B_MIPI_BRIDGE
     return &lcd_device_lt8912b_mipi;
-#elif CONFIG_LCD_ER68576B_MIPI_720x1280
-    return &lcd_device_er68576b_mipi_720x1280;
 #else
     return NULL;
 #endif

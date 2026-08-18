@@ -55,7 +55,7 @@
  /* Defaults                                                            */
  /* ------------------------------------------------------------------ */
  #define JSP_FLEXA_LINES_DEFAULT       16U
- #define JSP_FLEXA_BUFF_CNT_DEFAULT    2U
+ #define JSP_FLEXA_BUFF_CNT_DEFAULT    3U
  #define JSP_DECODE_TIMEOUT_DEFAULT    1000U   /* ms */
  #define JSP_TASK_STACK_DEFAULT        (4U * 1024U)
  #define JSP_TASK_PRIORITY_DEFAULT     BEKEN_DEFAULT_WORKER_PRIORITY
@@ -332,9 +332,9 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 	 if (ctx->cfg.task_priority     == 0) ctx->cfg.task_priority     = JSP_TASK_PRIORITY_DEFAULT;
 	 if (ctx->cfg.queue_depth       == 0) ctx->cfg.queue_depth       = JSP_QUEUE_DEPTH_DEFAULT;
  
-	 /* ---- Step 1: FLEXA ring buffer ---- */
-	 uint16_t aligned_w = (config->src_width + 15U) & ~15U;
-	 ctx->ring_size = bk_image_size_get(aligned_w,
+	/* ---- Step 1: FLEXA ring buffer ---- */
+	uint16_t aligned_w = (config->src_width + 15U) & ~15U;
+	ctx->ring_size = bk_image_size_get(aligned_w,
 										(uint16_t)(ctx->cfg.flexa_lines * ctx->cfg.flexa_buff_cnt),
 										BK_PIXEL_FORMAT_NV12);
  
@@ -359,9 +359,9 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 jpeg_cfg.frame_done_cb  = jsp_jpeg_frame_done;
 		 jpeg_cfg.flexa_done_cb  = NULL; /* Injected by bond */
 		 jpeg_cfg.timeout_ms     = ctx->cfg.decode_timeout_ms;
-		 jpeg_cfg.out_width      = config->dst_width;
-		 jpeg_cfg.out_height     = config->dst_height;
-		 jpeg_cfg.out_format     = config->dst_format;
+		 jpeg_cfg.out_width      = config->src_width;
+		 jpeg_cfg.out_height     = config->src_height;
+		 jpeg_cfg.out_format     = BK_PIXEL_FORMAT_NV12;
 		 jpeg_cfg.segment_height = (uint16_t)(ctx->cfg.flexa_lines / 16U);
 		 jpeg_cfg.segment_number = ctx->cfg.flexa_buff_cnt;
  
