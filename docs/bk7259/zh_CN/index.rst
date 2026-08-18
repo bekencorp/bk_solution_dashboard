@@ -1,11 +1,11 @@
-博通集成 Armino Dashboard解决方案
+博通集成 Armino 两轮车解决方案
 =====================================
 
 :link_to_translation:`en:[English]`
 
-这是博通集成 Armino Dashboard解决方案的官方文档。
+这是博通集成 Armino 两轮车解决方案的官方文档。
 
-Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
+Armino 两轮车解决方案基于Armino SMP架构, 帮助用户开发应用;
 代码下载及版本编译方法如下:
 
 1. Armino SDK 代码下载
@@ -17,17 +17,17 @@ Armino Dashboard解决方案基于Armino SMP架构, 帮助用户开发应用;
     cd ~/armino
     git clone https://gitlab.bekencorp.com/armino/bk_avdk_smp.git -b release/v3.1.1
 
-2. Armino Dashboard解决方案 代码下载
+2. Armino 两轮车解决方案 代码下载
 ------------------------------------
 
-您可从 gitlab 上下载 Armino Dashboard解决方案 代码::
+您可从 gitlab 上下载 Armino 两轮车解决方案 代码::
 
     mkdir -p ~/armino
     cd ~/armino
     git clone https://gitlab.bekencorp.com/armino/smp_solution/bk_solution_dashboard.git -b release/v3.1.1
 
 
-3. Armino Dashboard解决方案 版本编译
+3. Armino 两轮车解决方案 版本编译
 ------------------------------------
 
 版本编译方法如下::
