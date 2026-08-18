@@ -1,7 +1,7 @@
 include(${CMAKE_CURRENT_LIST_DIR}/beken_generated/beken_generated.cmake)
 
 set(MULTIMEDIA_DEVICE_SERVICE_DIR
-    $ENV{ARMINO_TOOLS_PATH}/../projects/common_components/multimedia_device_service
+    ${CMAKE_CURRENT_LIST_DIR}/../../../components/multimedia_device_service
 )
 
 # SDK audio-player component root (sits beside the Solution tree; see project
