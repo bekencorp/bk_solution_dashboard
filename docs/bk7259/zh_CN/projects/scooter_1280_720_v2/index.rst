@@ -221,7 +221,7 @@ CLI 命令
    dashboard pet_double               # 模拟中键双击
    dashboard pet_enter                # 模拟中键长按
    dashboard dashcam_count            # 显示录像数量与 SD 卡剩余空间
-   dashboard dashcam_trim [target]    # 删除最旧录像，保留到指定数量
+   dashboard dashcam_trim             # 停止录像并删除整个 /sd0/dashcam 录像目录
    dashboard dashcam_rec_start        # 启动后台录像
    dashboard dashcam_rec_stop         # 停止后台录像
    dashboard dashcam_turn_left        # 启动转向辅助视图

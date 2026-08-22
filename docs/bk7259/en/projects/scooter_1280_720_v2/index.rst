@@ -232,7 +232,7 @@ The project exports the ``dashboard`` command through ``.cli_cmdtabl``:
    dashboard pet_double               # Simulate a middle-key double press
    dashboard pet_enter                # Simulate a middle-key long press
    dashboard dashcam_count            # Show recording count and SD-card free space
-   dashboard dashcam_trim [target]    # Delete oldest recordings down to the target count
+   dashboard dashcam_trim             # Stop recording and delete the entire /sd0/dashcam directory
    dashboard dashcam_rec_start        # Start background recording
    dashboard dashcam_rec_stop         # Stop background recording
    dashboard dashcam_turn_left        # Start the turn assist view

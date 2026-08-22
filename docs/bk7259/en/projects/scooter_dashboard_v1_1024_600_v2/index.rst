@@ -1,4 +1,4 @@
-Scooter Dashboard V1.0 1280×720 V2 User Guide
+Scooter Dashboard V1.0 1024×600 V2 User Guide
 =================================================
 
 
@@ -8,7 +8,7 @@ Development Board Guide
 ---------------------------
 
 
-This guide applies to Dashboard V1.0 hardware with a 1280×720 landscape UI and corresponds to the ``scooter_dashboard_v1_1280_720_v2`` project.
+This guide applies to Dashboard V1.0 hardware equipped with a 1024×600 display and corresponds to the ``scooter_dashboard_v1_1024_600_v2`` project.
 
 > :strong:`Note`: The board requires a DC 12V power supply to boot normally.
 
@@ -21,29 +21,29 @@ Project-Specific Configuration
 +===============================+==============================================================================================================+
 | SoC                           | BK7259                                                                                                       |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| LCD                           | ER68576B MIPI, native resolution 720×1280                                                                    |
+| LCD                           | EK79007AD MIPI, 1024×600                                                                                     |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| LVGL framebuffer              | 720×1280                                                                                                     |
+| LVGL framebuffer              | 1024×600                                                                                                     |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| LVGL canvas                   | 1280×720 landscape                                                                                           |
+| LVGL canvas                   | 1024×600                                                                                                     |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| UI rotation                   | 270°, mapping the portrait panel to a landscape UI                                                           |
+| UI rotation                   | 180°                                                                                                         |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| Boot background               | ``/sd0/home_bg.jpg`` on the SD card                                                                          |
+| Boot background               | ``/sd0/home_bg_tech_1024_600.jpg`` on the SD card                                                            |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| Cast JPEG                     | 1280×720 input/output, rotated 90°                                                                           |
+| Cast JPEG                     | 1024×600 input/output, rotated 180°                                                                          |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
 | Dashcam capture and recording | ISP MP at 1280×720; H.264 recording at 25 FPS                                                                |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| Assist View                   | 1280×720 output with the camera image rotated 90°                                                            |
+| Assist View                   | 1024×600 output, rotated 180° and scaled to the display                                                      |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| Recording playback            | 720×1280 pre-swap decode target, producing 1280×720 after the pipeline's 90° rotation                        |
+| Recording playback            | 1024×600 output, rotated 180°                                                                                |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
-| Resolution-specific resources | Background images whose names contain ``1280x720``, plus layouts, icons, and fonts sized for this resolution |
+| Resolution-specific resources | Background images whose names contain ``1024x600``, plus layouts, icons, and fonts sized for this resolution |
 +-------------------------------+--------------------------------------------------------------------------------------------------------------+
 
 
-The firmware and UI resources in this project are intended only for the 1280×720 landscape UI. Do not mix them with firmware or generated resources from ``scooter_dashboard_v1_1024_600_v2``.
+The firmware and UI resources in this project are intended only for the 1024×600 display. Do not mix them with firmware or generated resources from ``scooter_dashboard_v1_1280_720_v2``.
 
 Jumper Configuration
 ,,,,,,,,,,,,,,,,,,,,,,,,
@@ -74,7 +74,7 @@ Feature Overview
 --------------------
 
 
-This project targets the Dashboard V1.0 1280×720 landscape-UI variant and provides home-page navigation, Dashcam loop recording and playback, local SD-card music playback, a phone book, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
+This project targets Dashboard V1.0 1024×600 hardware and provides home-page navigation, Dashcam loop recording and playback, local SD-card music playback, a phone book, Assist View, Bluetooth call controls, network provisioning, and SD-card MTP export.
 
 - Recording files are stored in ``/sd0/dashcam``.
 - After entering the Dashcam page, the active recording is stopped and finalized asynchronously before the SD-card recording list is loaded, preventing SD-card contention between recording and playback.
