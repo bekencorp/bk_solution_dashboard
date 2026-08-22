@@ -20,6 +20,7 @@
 #define PB_LIST_WIDTH   592
 #define PB_ROW_HEIGHT   92
 #define PB_NAME_WIDTH   430
+#define PB_NAME_HEIGHT  42
 #define PB_NUM_WIDTH    220
 
 /* Upper bound on rows created at once. LVGL objects are allocated from the small
@@ -510,7 +511,7 @@ static void phone_book_add_contact_row(lv_obj_t *list, const char *name,
                                LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(nm, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_pos(nm, 68, 8);
-    lv_obj_set_width(nm, PB_NAME_WIDTH);
+    lv_obj_set_size(nm, PB_NAME_WIDTH, PB_NAME_HEIGHT);
     lv_label_set_long_mode(nm, LV_LABEL_LONG_MODE_DOTS);
     lv_label_set_text(nm, name ? name : "");
 
@@ -632,7 +633,7 @@ static void phone_book_add_recent_row(lv_obj_t *list, const pbap_recent_info_t *
                                LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(nm, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_pos(nm, 48, 8);
-    lv_obj_set_width(nm, 280);
+    lv_obj_set_size(nm, 280, PB_NAME_HEIGHT);
     lv_label_set_long_mode(nm, LV_LABEL_LONG_MODE_DOTS);
     lv_label_set_text(nm, r->name);
 
