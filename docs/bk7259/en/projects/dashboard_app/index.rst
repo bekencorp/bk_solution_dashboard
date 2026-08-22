@@ -10,10 +10,16 @@ dashboard app User Guide
 Scan the QR code to download and install.
 
 .. figure:: ../../../_static/dashboard_app/download_qr_code_v2.png
-   :alt: downlaod_qr_code
-   :width: 30%
-   
-   Download QR Code
+   :alt: android_download_qr_code
+   :width: 240px
+
+   Android App
+
+.. figure:: ../../../_static/dashboard_app/download_qr_code_ios.png
+   :alt: ios_download_qr_code
+   :width: 240px
+
+   iOS App
 
 2 Introduction
 ------------------

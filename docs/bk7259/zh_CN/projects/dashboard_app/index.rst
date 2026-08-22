@@ -10,10 +10,16 @@ dashboard app使用指南
 扫描二维码，下载安装。
 
 .. figure:: ../../../_static/dashboard_app/download_qr_code_v2.png
-   :alt: downlaod_qr_code
-   :width: 30%
-   
-   下载二维码
+   :alt: android_download_qr_code
+   :width: 240px
+
+   Android App
+
+.. figure:: ../../../_static/dashboard_app/download_qr_code_ios.png
+   :alt: ios_download_qr_code
+   :width: 240px
+
+   iOS App
 
 2 简介
 ------------------
