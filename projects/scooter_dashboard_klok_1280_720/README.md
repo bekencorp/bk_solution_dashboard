@@ -4,7 +4,9 @@
 
 ## Development Board Guide
 
-This project targets the SCH-7259 V1.0 five-key board with a BK7259 SoC.
+This project is fixed to the BK7259 + ER68576B legacy-panel board. The FL7703
+panel uses the independent `scooter_dashboard_klok_fl7703_1280_720` project;
+the two projects do not switch hardware through profile macros.
 
 > **Note**: The board requires a DC 12V power supply to boot normally.
 
@@ -199,11 +201,11 @@ started automatically.
 
 ## Key Configuration
 
-- The default MIPI panel is ER68576B. Its physical resolution is 720x1280;
+- The MIPI panel is fixed to ER68576B. Its physical resolution is 720x1280;
   LVGL uses a rotated 1280x720 logical resolution.
-- The touch controller is GT911.
-- SCH-7259 V1.0 SD-NAND uses SDIO1. The project fixes it to 20 MHz 1-bit
-  mode because sustained 4-bit reads can report `DATA_END_BIT` errors.
+- Touch uses the SDK GT911 driver: RST=P40, INT=P41, SDA=P43, SCL=P44.
+- The onboard BK3515NS uses UART1 P0/P1, RTS=P2, CTS=P3, and enable=P71.
+- The SD card uses SDIO1 on P14/P15/P16 in 20 MHz 1-bit mode with P39 power.
 - `KLOK_VIDEO_FLEXA_DIRECT_MODE=1` enables switching between full-screen
   Flexa output and RGB565 preview output.
 

@@ -4,7 +4,8 @@
 
 ## 开发板使用说明
 
-本工程适用于 SCH-7259 V1.0 五键开发板，目标芯片为 BK7259。
+本工程固定用于 BK7259 + ER68576B 老屏板卡。FL7703 新屏使用独立的
+`scooter_dashboard_klok_fl7703_1280_720` 工程，两套工程不通过宏切换。
 
 > **备注**：板子正常启动需要使用 DC 12V 供电。
 
@@ -187,11 +188,11 @@ ap_cmd klok play /sd0/demo.mp4
 
 ## 关键配置
 
-- 默认 MIPI 面板为 ER68576B，物理分辨率为 720x1280，LVGL
+- MIPI 面板固定为 ER68576B，物理分辨率为 720x1280，LVGL
   旋转后使用 1280x720 逻辑分辨率。
-- 触摸控制器为 GT911。
-- SCH-7259 V1.0 的 SD-NAND 使用 SDIO1。为避免持续 4-bit
-  读取出现 `DATA_END_BIT` 错误，工程固定使用 20 MHz 1-bit 模式。
+- 触摸控制器固定为 SDK GT911：RST=P40、INT=P41、SDA=P43、SCL=P44。
+- 板载 BK3515NS 使用 UART1 P0/P1、RTS=P2、CTS=P3、使能=P71。
+- SD 卡固定使用 SDIO1：P14/P15/P16、20 MHz、1-bit，P39 供电。
 - `KLOK_VIDEO_FLEXA_DIRECT_MODE=1` 用于启用全屏 Flexa 输出和
   RGB565 预览之间的切换。
 

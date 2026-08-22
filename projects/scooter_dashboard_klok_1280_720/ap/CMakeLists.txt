@@ -4,6 +4,7 @@ set(beken_generated_dir ${CMAKE_CURRENT_SOURCE_DIR}/ui/beken_generated)
 set(incs
     .
     klok_player
+    music_player
     ${video_player_glue_dir}/include
     ${beken_generated_dir}
     ${beken_generated_dir}/fonts
@@ -16,6 +17,7 @@ set(srcs
     klok_h264_pp_osd.c
     klok_lvgl_preview.c
     klok_player/klok_player_adapter.c
+    music_player/music_player_ui.c
     ${video_player_glue_dir}/src/video_player_cli.c
     ${video_player_glue_dir}/src/video_play_engine_api.c
     ${video_player_glue_dir}/src/video_play_callbacks.c
@@ -51,6 +53,12 @@ set(priv_req
     bk_video_player
     key_app
     sdcard_mtp
+    fatfs
+    audio_play
+    bk_audio_player
+    bk_bluetooth
+    bluetooth_dual
+    bluetooth_secondary_controller
 )
 
 armino_component_register(SRCS "${srcs}" INCLUDE_DIRS "${incs}" PRIV_REQUIRES "${priv_req}")

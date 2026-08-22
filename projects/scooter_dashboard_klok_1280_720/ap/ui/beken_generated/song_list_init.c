@@ -18,6 +18,7 @@
 #include "event_runtime.h"
 #include <stdio.h>
 #include <string.h>
+#include <components/system.h>
 #include "bk_posix.h"
 #include "klok_lvgl_preview.h"
 #include "klok_mv_render.h"
@@ -254,7 +255,12 @@ static void klok_song_list_start_video_worker(void *user_data)
      * return first; the display mutex then serializes all LVGL object/timer
      * access while the frame decoder is replaced by the Flexa decoder.
      */
+    if (request->file_path[0] != '\0' || !klok_player_is_started()) {
+        klok_player_acquire_ktv_audio_focus();
+    }
+    bk_printf("KTV_SWITCH_TRACE display lock wait\r\n");
     lv_vendor_disp_lock();
+    bk_printf("KTV_SWITCH_TRACE display lock acquired\r\n");
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
     int prepared = klok_player_begin_output_switch(
         KLOK_PLAYER_OUTPUT_FLEXA_DIRECT);
@@ -377,10 +383,15 @@ static void klok_song_list_item_event_cb(lv_event_t *e)
         return;
     }
     snprintf(request->file_path, sizeof(request->file_path), "%s", path);
+    /*
+     * Flexa direct mode covers the complete display and returns to the song
+     * list when playback ends. Keep the song-list screen alive underneath it:
+     * rebuilding mv_play here makes lv_task_handler render the new screen
+     * while the output-switch worker is waiting for the display mutex.
+     */
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
     s_song_video_transition_pending = true;
-#endif
-
+#else
     init_page_mv_play(&bk_lv_tool_ui);
     navigate_to_screen(&bk_lv_tool_ui.mv_play,
                        LV_SCR_LOAD_ANIM_NONE,
@@ -388,6 +399,7 @@ static void klok_song_list_item_event_cb(lv_event_t *e)
                        0,
                        false,
                        init_page_mv_play);
+#endif
 
     if (lv_async_call(klok_song_list_start_video_async, request) != LV_RESULT_OK) {
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
@@ -433,6 +445,9 @@ static void klok_song_list_create_item(lv_obj_t *panel,
     lv_obj_set_style_border_color(row, lv_color_hex(0xc9d8ee), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(row, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(row, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_flag(row,
+                    LV_OBJ_FLAG_SCROLL_CHAIN_VER |
+                    LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(row, klok_song_list_item_event_cb, LV_EVENT_CLICKED, path_copy);
     lv_obj_add_event_cb(row, klok_song_list_free_path_cb, LV_EVENT_DELETE, path_copy);
 
@@ -596,8 +611,7 @@ static void song_list_open_fullscreen(void)
     request->file_path[0] = '\0';
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
     s_song_video_transition_pending = true;
-#endif
-
+#else
     init_page_mv_play(&bk_lv_tool_ui);
     navigate_to_screen(&bk_lv_tool_ui.mv_play,
                        LV_SCR_LOAD_ANIM_MOVE_LEFT,
@@ -605,6 +619,7 @@ static void song_list_open_fullscreen(void)
                        0,
                        false,
                        init_page_mv_play);
+#endif
     if (lv_async_call(klok_song_list_start_video_async, request) != LV_RESULT_OK) {
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
         s_song_video_transition_pending = false;
@@ -690,9 +705,18 @@ void song_list_vocal_btn_event_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if (code == LV_EVENT_CLICKED) {
-        if (klok_player_vocal() == 0) {
-            lv_obj_set_style_bg_color(bk_ui->song_list_vocal_btn, lv_color_hex(0x356eda), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(bk_ui->song_list_vocal_btn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+        bool is_accompany = klok_player_is_accompany();
+        int ret = is_accompany ? klok_player_vocal()
+                               : klok_player_accompany();
+        if (ret == 0) {
+            lv_label_set_text(bk_ui->song_list_vocal_btn_label,
+                              is_accompany ? "伴唱" : "原唱");
+            lv_obj_set_style_text_font(
+                bk_ui->song_list_vocal_btn_label,
+                is_accompany
+                    ? &lv_font_Alibaba_PuHuiTi_2_0_65_Medium_65_Medium_17
+                    : &lv_font_Alibaba_PuHuiTi_2_0_65_Medium_65_Medium_18,
+                LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }
 }
@@ -709,8 +733,6 @@ void song_list_replay_btn_event_cb(lv_event_t *e)
     if (code == LV_EVENT_CLICKED) {
         if (klok_player_replay() == 0) {
             song_list_update_play_button();
-            lv_obj_set_style_bg_color(bk_ui->song_list_replay_btn, lv_color_hex(0x356eda), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(bk_ui->song_list_replay_btn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }
 }
@@ -846,9 +868,9 @@ void init_page_song_list(bk_lv_ui_t *bk_ui)
     lv_label_set_text(bk_ui->song_list_sl_back, "返回点歌");
     lv_label_set_long_mode(bk_ui->song_list_sl_back, LV_LABEL_LONG_MODE_CLIP);
     lv_obj_set_x(bk_ui->song_list_sl_back, 28);
-    lv_obj_set_y(bk_ui->song_list_sl_back, 38);
+    lv_obj_set_y(bk_ui->song_list_sl_back, 20);
     lv_obj_set_width(bk_ui->song_list_sl_back, 240);
-    lv_obj_set_height(bk_ui->song_list_sl_back, 30);
+    lv_obj_set_height(bk_ui->song_list_sl_back, 68);
     lv_obj_remove_flag(bk_ui->song_list_sl_back, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_add_flag(bk_ui->song_list_sl_back, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(bk_ui->song_list_sl_back,
@@ -864,7 +886,7 @@ void init_page_song_list(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_border_side(bk_ui->song_list_sl_back, LV_BORDER_SIDE_FULL, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(bk_ui->song_list_sl_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_clip_corner(bk_ui->song_list_sl_back, false, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(bk_ui->song_list_sl_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(bk_ui->song_list_sl_back, 18, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(bk_ui->song_list_sl_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(bk_ui->song_list_sl_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_right(bk_ui->song_list_sl_back, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -3281,7 +3303,8 @@ void init_page_song_list(bk_lv_ui_t *bk_ui)
 
     bk_ui->song_list_vocal_btn = lv_btn_create(bk_ui->song_list_bot_actions);
     bk_ui->song_list_vocal_btn_label = lv_label_create(bk_ui->song_list_vocal_btn);
-    lv_label_set_text_static(bk_ui->song_list_vocal_btn_label, "原唱");
+    lv_label_set_text(bk_ui->song_list_vocal_btn_label,
+                      klok_player_is_accompany() ? "原唱" : "伴唱");
     lv_label_set_long_mode(bk_ui->song_list_vocal_btn_label, LV_LABEL_LONG_MODE_CLIP);
     lv_obj_align(bk_ui->song_list_vocal_btn_label, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_x(bk_ui->song_list_vocal_btn, 486);
@@ -3299,7 +3322,12 @@ void init_page_song_list(bk_lv_ui_t *bk_ui)
     lv_obj_set_style_clip_corner(bk_ui->song_list_vocal_btn, false, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bk_ui->song_list_vocal_btn, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(bk_ui->song_list_vocal_btn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(bk_ui->song_list_vocal_btn, &lv_font_Alibaba_PuHuiTi_2_0_65_Medium_65_Medium_18, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(
+        bk_ui->song_list_vocal_btn,
+        klok_player_is_accompany()
+            ? &lv_font_Alibaba_PuHuiTi_2_0_65_Medium_65_Medium_18
+            : &lv_font_Alibaba_PuHuiTi_2_0_65_Medium_65_Medium_17,
+        LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(bk_ui->song_list_vocal_btn, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space(bk_ui->song_list_vocal_btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_color(bk_ui->song_list_vocal_btn, lv_color_hex(0x1e7fcf), LV_PART_MAIN | LV_STATE_DEFAULT);

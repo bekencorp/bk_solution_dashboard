@@ -1,10 +1,8 @@
 menu "Klok"
 
 config PROJECT_LCD_RESET_PIN
-	int "LCD RESET PIN"
+	int
 	default 42
-	help
-	  New scooter dashboard board uses GPIO_42 for LCD reset.
 
 config PROJECT_SCOOTER_DASHBOARD_V_1_0
 	bool "SCH-7259 V1.0 board"
