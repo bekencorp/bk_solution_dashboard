@@ -10,6 +10,7 @@ set(MULTIMEDIA_DEVICE_SERVICE_DIR
 set(srcs
     src/dashcam_app.c
     src/dashcam_camera.c
+    src/dashcam_fat_reclaim.c
     src/dashcam_h264_flexa_decoder.c
     src/dashcam_player.c
     src/dashcam_recorder.c

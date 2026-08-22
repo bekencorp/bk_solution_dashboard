@@ -113,7 +113,11 @@ static bk_err_t dashcam_app_begin_segment(void)
     LOGD("begin_segment\n");
 
 #if DASHCAM_RELEASE_BUILD
-    (void)dashcam_storage_recycle_for_release();
+    if (dashcam_storage_ensure_record_space() != BK_OK)
+    {
+        LOGE("insufficient SD space after adaptive cleanup\n");
+        return BK_FAIL;
+    }
 #endif
 
     if (dashcam_storage_make_record_path(path, sizeof(path)) != BK_OK)

@@ -47,6 +47,13 @@ bk_err_t dashcam_storage_free_mb(uint32_t *free_mb);
 bk_err_t dashcam_storage_delete_oldest(void);
 /* Reclaim space by deleting oldest clips until under the ring file cap. */
 bk_err_t dashcam_storage_recycle_for_release(void);
+/*
+ * Adaptive cleanup before a new segment: orphan idx, zero-byte zombies, ring
+ * delete, lost-cluster reclaim, then re-check until free >= floor or give up.
+ */
+bk_err_t dashcam_storage_ensure_record_space(void);
+/* Drop a failed MP4 open (0-byte / header-less zombie) so recycle can recover. */
+void dashcam_storage_discard_failed_clip(const char *path);
 /* Build the primary human-readable list label for one clip. */
 void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, size_t size);
 /* Validate finalized top-level MP4 structure before handing a clip to the player. */

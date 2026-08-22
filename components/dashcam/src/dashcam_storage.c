@@ -12,6 +12,10 @@
 #include "os/os.h"
 #include "boot_sd_mount.h"
 
+#ifndef DASHCAM_RECYCLE_MAX_DELETE
+#define DASHCAM_RECYCLE_MAX_DELETE         32u
+#endif
+
 #if DASHCAM_USE_WALL_CLOCK
 #include "components/app_time_intf.h"
 #endif
@@ -25,6 +29,8 @@
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+
+extern bk_err_t dashcam_fat_reclaim_lost(uint32_t *reclaimed_clusters);
 
 static bool s_storage_ready = false;
 static bool s_ftp_started = false;
@@ -578,6 +584,138 @@ static bk_err_t dashcam_storage_delete_oldest_skip(const char skip_names[][DASHC
     return dashcam_storage_unlink_clip(oldest);
 }
 
+static bk_err_t dashcam_storage_space_meets_floor(uint32_t *free_mb_out)
+{
+    uint32_t free_mb = 0;
+
+    if (dashcam_storage_free_mb(&free_mb) != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    if (free_mb_out != NULL)
+    {
+        *free_mb_out = free_mb;
+    }
+
+    return (free_mb >= DASHCAM_RECYCLE_MIN_FREE_MB) ? BK_OK : BK_FAIL;
+}
+
+static bk_err_t dashcam_storage_unlink_path(const char *path)
+{
+    int ret;
+
+    if (path == NULL || path[0] == '\0')
+    {
+        return BK_ERR_PARAM;
+    }
+
+    ret = bk_vfs_unlink(path);
+    if (ret != 0)
+    {
+        return BK_FAIL;
+    }
+
+    dashcam_storage_unlink_sidecar_idx(path);
+    return BK_OK;
+}
+
+static uint32_t dashcam_storage_cleanup_zero_byte_clips(void)
+{
+    DIR *dir;
+    struct dirent *entry;
+    uint32_t removed = 0;
+
+    if (dashcam_storage_init() != BK_OK)
+    {
+        return 0;
+    }
+
+    dir = bk_vfs_opendir(DASHCAM_STORAGE_DIR);
+    if (dir == NULL)
+    {
+        return 0;
+    }
+
+    while ((entry = bk_vfs_readdir(dir)) != NULL)
+    {
+        char path[DASHCAM_STORAGE_MAX_PATH];
+        struct stat st;
+
+        if (!dashcam_storage_has_video_suffix(entry->d_name))
+        {
+            continue;
+        }
+
+        snprintf(path, sizeof(path), "%s/%s", DASHCAM_STORAGE_DIR, entry->d_name);
+        if (bk_vfs_stat(path, &st) != 0)
+        {
+            continue;
+        }
+
+        if (st.st_size > 0)
+        {
+            continue;
+        }
+
+        if (dashcam_storage_unlink_path(path) == BK_OK)
+        {
+            removed++;
+            LOGI("removed zero-byte clip: %s\n", path);
+        }
+    }
+
+    bk_vfs_closedir(dir);
+    return removed;
+}
+
+static bk_err_t dashcam_storage_delete_until_space(void)
+{
+    char skip_names[DASHCAM_RECYCLE_UNLINK_RETRY_MAX][DASHCAM_STORAGE_MAX_NAME];
+    char attempted[DASHCAM_STORAGE_MAX_NAME] = {0};
+    uint32_t skip_count = 0;
+    uint32_t unlink_fail_streak = 0;
+    uint32_t pass;
+
+    for (pass = 0; pass < DASHCAM_RECYCLE_MAX_DELETE; pass++)
+    {
+        uint32_t free_mb = 0;
+
+        if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
+        {
+            return BK_OK;
+        }
+
+        if (dashcam_storage_delete_oldest_skip(skip_count ? skip_names : NULL,
+                                               skip_count,
+                                               attempted, sizeof(attempted)) == BK_OK)
+        {
+            skip_count = 0;
+            unlink_fail_streak = 0;
+            continue;
+        }
+
+        if (attempted[0] != '\0' &&
+            !dashcam_storage_skip_list_has(skip_names, skip_count, attempted) &&
+            skip_count < DASHCAM_RECYCLE_UNLINK_RETRY_MAX)
+        {
+            snprintf(skip_names[skip_count], sizeof(skip_names[skip_count]), "%s", attempted);
+            skip_count++;
+        }
+
+        unlink_fail_streak++;
+        LOGW("recycle unlink fail streak=%u (skipped %s)\n",
+             (unsigned)unlink_fail_streak, attempted);
+        if (unlink_fail_streak >= DASHCAM_RECYCLE_UNLINK_RETRY_MAX)
+        {
+            LOGE("recycle: too many unlink failures, stop this round\n");
+            break;
+        }
+    }
+
+    return dashcam_storage_space_meets_floor(NULL);
+}
+
 bk_err_t dashcam_storage_delete_oldest(void)
 {
     return dashcam_storage_delete_oldest_skip(NULL, 0, NULL, 0);
@@ -612,69 +750,95 @@ bk_err_t dashcam_storage_free_mb(uint32_t *free_mb)
 
 bk_err_t dashcam_storage_recycle_for_release(void)
 {
-    uint32_t count = 0;
-    uint32_t guard;
-    char skip_names[DASHCAM_RECYCLE_UNLINK_RETRY_MAX][DASHCAM_STORAGE_MAX_NAME];
-    char attempted[DASHCAM_STORAGE_MAX_NAME] = {0};
-    uint32_t skip_count = 0;
-    uint32_t unlink_fail_streak = 0;
+    return dashcam_storage_ensure_record_space();
+}
 
-    if (dashcam_storage_count(&count) != BK_OK)
+bk_err_t dashcam_storage_ensure_record_space(void)
+{
+    uint32_t free_mb = 0;
+    uint32_t orphan_removed = 0;
+    uint32_t orphan_failed = 0;
+    uint32_t reclaimed = 0;
+    uint32_t zombies;
+
+    if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
     {
-        return BK_FAIL;
+        return BK_OK;
     }
 
-    /*
-     * Release ring (req5 §11): no fixed file-count cap. Delete the oldest clips
-     * one at a time until the card's free space climbs back above the floor.
-     * Free MB is re-queried each pass so deletions are reflected; if statfs is
-     * unsupported we cannot judge space, so stop. The guard bounds deletions to
-     * the snapshot count so a card that never recovers space cannot loop.
-     *
-     * On unlink failure (e.g. FR_DENIED while FTP holds the file open), skip that
-     * clip and try the next oldest instead of aborting the whole recycle pass.
-     */
-    for (guard = count; guard > 0; guard--)
+    LOGW("ensure space: free=%u MB target=%u MB\n",
+         (unsigned)free_mb, (unsigned)DASHCAM_RECYCLE_MIN_FREE_MB);
+
+    (void)dashcam_storage_cleanup_orphan_idx(&orphan_removed, &orphan_failed);
+    if (orphan_removed > 0)
     {
-        uint32_t free_mb = 0;
-
-        if (dashcam_storage_free_mb(&free_mb) != BK_OK)
-        {
-            break;
-        }
-        if (free_mb >= DASHCAM_RECYCLE_MIN_FREE_MB)
-        {
-            break;
-        }
-
-        if (dashcam_storage_delete_oldest_skip(skip_count ? skip_names : NULL,
-                                               skip_count,
-                                               attempted, sizeof(attempted)) == BK_OK)
-        {
-            skip_count = 0;
-            unlink_fail_streak = 0;
-            continue;
-        }
-
-        if (attempted[0] != '\0' &&
-            !dashcam_storage_skip_list_has(skip_names, skip_count, attempted) &&
-            skip_count < DASHCAM_RECYCLE_UNLINK_RETRY_MAX)
-        {
-            snprintf(skip_names[skip_count], sizeof(skip_names[skip_count]), "%s", attempted);
-            skip_count++;
-        }
-
-        unlink_fail_streak++;
-        LOGW("recycle unlink fail streak=%u (skipped %s)\n",
-             (unsigned)unlink_fail_streak, attempted);
-        if (unlink_fail_streak >= DASHCAM_RECYCLE_UNLINK_RETRY_MAX)
-        {
-            LOGE("recycle: too many unlink failures, stop this round\n");
-            break;
-        }
+        LOGI("orphan idx cleanup: removed=%u failed=%u\n",
+             (unsigned)orphan_removed, (unsigned)orphan_failed);
     }
 
-    return BK_OK;
+    zombies = dashcam_storage_cleanup_zero_byte_clips();
+    if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
+    {
+        LOGI("space OK after cleanup (free=%u MB)\n", (unsigned)free_mb);
+        return BK_OK;
+    }
+
+    if (dashcam_storage_delete_until_space() == BK_OK)
+    {
+        (void)dashcam_storage_free_mb(&free_mb);
+        LOGI("space OK after ring delete (free=%u MB)\n", (unsigned)free_mb);
+        return BK_OK;
+    }
+
+    (void)dashcam_fat_reclaim_lost(&reclaimed);
+    if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
+    {
+        LOGI("space OK after lost-cluster reclaim (free=%u MB)\n", (unsigned)free_mb);
+        return BK_OK;
+    }
+
+    if (dashcam_storage_delete_until_space() == BK_OK)
+    {
+        (void)dashcam_storage_free_mb(&free_mb);
+        LOGI("space OK after reclaim+delete (free=%u MB)\n", (unsigned)free_mb);
+        return BK_OK;
+    }
+
+    if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
+    {
+        return BK_OK;
+    }
+
+    LOGE("ensure space failed: free=%u MB target=%u MB zombies=%u reclaimed=%u\n",
+         (unsigned)free_mb, (unsigned)DASHCAM_RECYCLE_MIN_FREE_MB,
+         (unsigned)zombies, (unsigned)reclaimed);
+    return BK_FAIL;
+}
+
+void dashcam_storage_discard_failed_clip(const char *path)
+{
+    struct stat st;
+
+    if (path == NULL || path[0] == '\0')
+    {
+        return;
+    }
+
+    if (bk_vfs_stat(path, &st) != 0)
+    {
+        return;
+    }
+
+    /* Failed mp4_record_start leaves FA_CREATE_ALWAYS entries with no payload. */
+    if (st.st_size > 32)
+    {
+        return;
+    }
+
+    if (dashcam_storage_unlink_path(path) == BK_OK)
+    {
+        LOGW("discarded failed clip: %s (%ld bytes)\n", path, (long)st.st_size);
+    }
 }
 
 void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, size_t size)

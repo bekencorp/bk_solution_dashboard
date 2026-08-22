@@ -207,6 +207,7 @@ bk_err_t dashcam_recorder_start(const char *path)
     if (ret != AVDK_ERR_OK)
     {
         LOGE("bk_video_recorder_start failed: %d\n", ret);
+        dashcam_storage_discard_failed_clip(s_current_path);
         /* Keep the object alive: only the per-segment start failed. Full teardown
          * is done in dashcam_recorder_destroy(). */
         return BK_FAIL;
