@@ -142,6 +142,11 @@ extern "C" {
 #define DASHCAM_RECYCLE_UNLINK_RETRY_MAX   8u
 #endif
 
+/* Max oldest-clip deletions per ensure_record_space() pass (not snapshot-limited). */
+#ifndef DASHCAM_RECYCLE_MAX_DELETE
+#define DASHCAM_RECYCLE_MAX_DELETE         32u
+#endif
+
 /*
  * Wall-clock naming/labels (plan A, req5 §9.2/§11). Only enabled on a release
  * build that also has the SNTP->RTC sync feature compiled in; otherwise plan B
