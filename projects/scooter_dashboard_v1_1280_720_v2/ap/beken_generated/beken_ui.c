@@ -38,6 +38,7 @@
 #include "boot_bg_preload.h"
 #include "dashcam_ui.h"
 #include "dashcam_config.h"
+#include "dashcam_storage.h"
 #include "dashcam_assitview.h"
 #include "ota_ui.h"
 #include "home_ui.h"
@@ -714,6 +715,9 @@ static void beken_ui_schedule_dashcam_boot(void)
     {
         return;
     }
+
+    /* Overlap lost-cluster reclaim with the UI settle delay (unnoticeable). */
+    (void)dashcam_storage_boot_reclaim_start();
 
     s_dashcam_boot_timer = lv_timer_create(beken_ui_dashcam_boot_timer_cb,
                                            DASHCAM_BOOT_RECORD_DELAY_MS, NULL);
