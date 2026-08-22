@@ -214,6 +214,7 @@ bk_err_t dashcam_recorder_start(const char *path)
     }
 
     s_recording = true;
+    dashcam_storage_mark_recording_dirty();
     LOGI("recording started: %s\n", s_current_path);
     return BK_OK;
 }
@@ -237,6 +238,10 @@ bk_err_t dashcam_recorder_stop(void)
     if (ret != AVDK_ERR_OK)
     {
         LOGW("bk_video_recorder_stop failed: %d\n", ret);
+    }
+    else
+    {
+        dashcam_storage_clear_recording_dirty();
     }
 
     s_recording = false;
@@ -263,7 +268,10 @@ void dashcam_recorder_destroy(void)
 
     if (s_recording)
     {
-        (void)bk_video_recorder_stop(s_recorder);
+        if (bk_video_recorder_stop(s_recorder) == AVDK_ERR_OK)
+        {
+            dashcam_storage_clear_recording_dirty();
+        }
         s_recording = false;
     }
 

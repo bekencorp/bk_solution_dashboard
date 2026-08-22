@@ -429,6 +429,8 @@ void dashcam_app_boot_start(void)
     }
 
     (void)dashcam_storage_init();
+    /* Must run before camera/recorder open: continuous recording never idles. */
+    (void)dashcam_storage_boot_reclaim();
     dashcam_app_start_capture();
     dashcam_app_start_tick();
     LOGI("continuous recording started, rec=%d\n", (int)s_rec);
@@ -445,6 +447,7 @@ bk_err_t dashcam_app_record_start(void)
     }
 
     (void)dashcam_storage_init();
+    (void)dashcam_storage_boot_reclaim();
     dashcam_app_start_capture();
     dashcam_app_start_tick();
 
@@ -506,6 +509,7 @@ void dashcam_app_attach(lv_obj_t *preview_parent)
      * running in the background and the page is used for clip playback. */
     if (s_rec == DASHCAM_REC_IDLE)
     {
+        (void)dashcam_storage_boot_reclaim();
         dashcam_app_start_capture();
         dashcam_app_start_tick();
     }

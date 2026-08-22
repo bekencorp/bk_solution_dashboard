@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include "bk_std_header.h"
 #include "bk_vfs.h"
 #include "bk_filesystem.h"
@@ -15,6 +16,19 @@
 #ifndef DASHCAM_RECYCLE_MAX_DELETE
 #define DASHCAM_RECYCLE_MAX_DELETE         32u
 #endif
+#ifndef DASHCAM_BOOT_RECLAIM_LOST
+#define DASHCAM_BOOT_RECLAIM_LOST          1
+#endif
+/* 1: reclaim on boot only if the previous session left a dirty marker (power-cut). */
+#ifndef DASHCAM_BOOT_RECLAIM_ONLY_IF_DIRTY
+#define DASHCAM_BOOT_RECLAIM_ONLY_IF_DIRTY 1
+#endif
+
+#define DASHCAM_REC_DIRTY_MARKER           DASHCAM_STORAGE_DIR "/.rec_dirty"
+#define DASHCAM_RECLAIM_MIGRATED_MARKER    DASHCAM_STORAGE_DIR "/.reclaim_ok"
+#define DASHCAM_RECLAIM_THREAD_STACK       4096
+#define DASHCAM_RECLAIM_THREAD_PRIO        5
+#define DASHCAM_RECLAIM_WAIT_MS            10000u
 
 #if DASHCAM_USE_WALL_CLOCK
 #include "components/app_time_intf.h"
@@ -35,6 +49,9 @@ extern bk_err_t dashcam_fat_reclaim_lost(uint32_t *reclaimed_clusters);
 static bool s_storage_ready = false;
 static bool s_ftp_started = false;
 static uint32_t s_record_index = 0;
+static bool s_boot_reclaim_done = false;
+static volatile bool s_reclaim_async_running = false;
+static beken_semaphore_t s_reclaim_done_sem = NULL;
 
 static bool dashcam_storage_has_video_suffix(const char *name)
 {
@@ -845,6 +862,216 @@ bk_err_t dashcam_storage_free_mb(uint32_t *free_mb)
     return BK_OK;
 }
 
+static bool dashcam_storage_marker_present(const char *path)
+{
+    struct stat st;
+
+    return (path != NULL && bk_vfs_stat(path, &st) == 0);
+}
+
+static void dashcam_storage_touch_marker(const char *path)
+{
+    int fd;
+    char mark = '1';
+
+    if (path == NULL)
+    {
+        return;
+    }
+
+    fd = bk_vfs_open(path, O_CREAT | O_WRONLY | O_TRUNC);
+    if (fd < 0)
+    {
+        return;
+    }
+
+    (void)bk_vfs_write(fd, &mark, 1);
+    (void)bk_vfs_fsync(fd);
+    (void)bk_vfs_close(fd);
+}
+
+void dashcam_storage_mark_recording_dirty(void)
+{
+    if (dashcam_storage_init() != BK_OK)
+    {
+        return;
+    }
+
+    dashcam_storage_touch_marker(DASHCAM_REC_DIRTY_MARKER);
+}
+
+void dashcam_storage_clear_recording_dirty(void)
+{
+    if (dashcam_storage_init() != BK_OK)
+    {
+        return;
+    }
+
+    if (bk_vfs_unlink(DASHCAM_REC_DIRTY_MARKER) == 0)
+    {
+        LOGD("cleared recording dirty marker\n");
+    }
+}
+
+static bk_err_t dashcam_storage_run_reclaim(void)
+{
+    uint32_t reclaimed = 0;
+    uint32_t free_before = 0;
+    uint32_t free_after = 0;
+
+    (void)dashcam_storage_free_mb(&free_before);
+    if (dashcam_fat_reclaim_lost(&reclaimed) != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    (void)dashcam_storage_free_mb(&free_after);
+    LOGI("reclaim done: clusters=%u free %u->%u MB\n",
+         (unsigned)reclaimed, (unsigned)free_before, (unsigned)free_after);
+    dashcam_storage_clear_recording_dirty();
+    dashcam_storage_touch_marker(DASHCAM_RECLAIM_MIGRATED_MARKER);
+    return BK_OK;
+}
+
+static bool dashcam_storage_boot_reclaim_should_run(void)
+{
+#if !DASHCAM_BOOT_RECLAIM_LOST
+    return false;
+#elif DASHCAM_BOOT_RECLAIM_ONLY_IF_DIRTY
+    /* Dirty: last session was cut mid-record. Missing .reclaim_ok: one-shot
+     * migration for cards that already had lost clusters before dirty tracking. */
+    return dashcam_storage_marker_present(DASHCAM_REC_DIRTY_MARKER) ||
+           !dashcam_storage_marker_present(DASHCAM_RECLAIM_MIGRATED_MARKER);
+#else
+    return true;
+#endif
+}
+
+static void dashcam_storage_reclaim_async_thread(void *arg)
+{
+    (void)arg;
+
+    if (dashcam_storage_boot_reclaim_should_run())
+    {
+        if (dashcam_storage_marker_present(DASHCAM_REC_DIRTY_MARKER))
+        {
+            LOGI("boot reclaim (async): dirty marker, scanning lost clusters\n");
+        }
+        else
+        {
+            LOGI("boot reclaim (async): one-shot migration, scanning lost clusters\n");
+        }
+        (void)dashcam_storage_run_reclaim();
+    }
+    else
+    {
+        LOGD("boot reclaim (async): skip (clean)\n");
+    }
+
+    s_boot_reclaim_done = true;
+    s_reclaim_async_running = false;
+    if (s_reclaim_done_sem != NULL)
+    {
+        rtos_set_semaphore(&s_reclaim_done_sem);
+    }
+    rtos_delete_thread(NULL);
+}
+
+bk_err_t dashcam_storage_boot_reclaim_start(void)
+{
+    bk_err_t ret;
+
+    if (s_boot_reclaim_done || s_reclaim_async_running)
+    {
+        return BK_OK;
+    }
+
+    if (dashcam_storage_init() != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    if (!dashcam_storage_boot_reclaim_should_run())
+    {
+        s_boot_reclaim_done = true;
+        LOGD("boot reclaim: skip (clean)\n");
+        return BK_OK;
+    }
+
+    if (s_reclaim_done_sem == NULL)
+    {
+        ret = rtos_init_semaphore(&s_reclaim_done_sem, 1);
+        if (ret != BK_OK)
+        {
+            LOGW("reclaim sem init failed, run sync\n");
+            ret = dashcam_storage_run_reclaim();
+            s_boot_reclaim_done = true;
+            return ret;
+        }
+    }
+
+    s_reclaim_async_running = true;
+    ret = rtos_create_thread(NULL,
+                             DASHCAM_RECLAIM_THREAD_PRIO,
+                             "dcam_reclaim",
+                             (beken_thread_function_t)dashcam_storage_reclaim_async_thread,
+                             DASHCAM_RECLAIM_THREAD_STACK,
+                             NULL);
+    if (ret != BK_OK)
+    {
+        s_reclaim_async_running = false;
+        LOGW("reclaim thread create failed, run sync\n");
+        ret = dashcam_storage_run_reclaim();
+        s_boot_reclaim_done = true;
+        return ret;
+    }
+
+    LOGI("boot reclaim: started in background (overlap boot delay)\n");
+    return BK_OK;
+}
+
+bk_err_t dashcam_storage_boot_reclaim(void)
+{
+    bk_err_t ret;
+
+    if (s_boot_reclaim_done)
+    {
+        return BK_OK;
+    }
+
+    if (s_reclaim_async_running && s_reclaim_done_sem != NULL)
+    {
+        (void)rtos_get_semaphore(&s_reclaim_done_sem, DASHCAM_RECLAIM_WAIT_MS);
+        if (s_boot_reclaim_done)
+        {
+            return BK_OK;
+        }
+        /* Timed out or race: fall through to sync. */
+    }
+
+#if !DASHCAM_BOOT_RECLAIM_LOST
+    s_boot_reclaim_done = true;
+    return BK_OK;
+#else
+    if (dashcam_storage_init() != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    if (!dashcam_storage_boot_reclaim_should_run())
+    {
+        s_boot_reclaim_done = true;
+        LOGD("boot reclaim: skip (clean)\n");
+        return BK_OK;
+    }
+
+    LOGI("boot reclaim: scanning lost clusters before first record\n");
+    ret = dashcam_storage_run_reclaim();
+    s_boot_reclaim_done = true;
+    return ret;
+#endif
+}
+
 bk_err_t dashcam_storage_recycle_for_release(void)
 {
     return dashcam_storage_ensure_record_space();
@@ -887,7 +1114,13 @@ bk_err_t dashcam_storage_ensure_record_space(void)
         return BK_OK;
     }
 
+    /* Last resort only when free is still below floor (not opportunistic). */
     (void)dashcam_fat_reclaim_lost(&reclaimed);
+    if (reclaimed > 0)
+    {
+        dashcam_storage_clear_recording_dirty();
+        dashcam_storage_touch_marker(DASHCAM_RECLAIM_MIGRATED_MARKER);
+    }
     if (dashcam_storage_space_meets_floor(&free_mb) == BK_OK)
     {
         LOGI("space OK after lost-cluster reclaim (free=%u MB)\n", (unsigned)free_mb);

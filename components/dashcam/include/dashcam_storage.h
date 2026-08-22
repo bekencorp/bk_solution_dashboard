@@ -57,9 +57,21 @@ bk_err_t dashcam_storage_delete_oldest(void);
 bk_err_t dashcam_storage_recycle_for_release(void);
 /*
  * Adaptive cleanup before a new segment: orphan idx, zero-byte zombies, ring
- * delete, lost-cluster reclaim, then re-check until free >= floor or give up.
+ * delete, then last-resort lost-cluster reclaim if free is still below floor.
  */
 bk_err_t dashcam_storage_ensure_record_space(void);
+/*
+ * Begin boot-time lost-cluster reclaim in a background thread so it can overlap
+ * DASHCAM_BOOT_RECORD_DELAY_MS. No-op when the dirty marker is absent.
+ */
+bk_err_t dashcam_storage_boot_reclaim_start(void);
+/*
+ * Wait for boot reclaim (async or sync) before opening the first MP4.
+ */
+bk_err_t dashcam_storage_boot_reclaim(void);
+/* Mark / clear unclean-recording marker (power-cut during an open MP4). */
+void dashcam_storage_mark_recording_dirty(void);
+void dashcam_storage_clear_recording_dirty(void);
 /* Drop a failed MP4 open (0-byte / header-less zombie) so recycle can recover. */
 void dashcam_storage_discard_failed_clip(const char *path);
 /* Build the primary human-readable list label for one clip. */
