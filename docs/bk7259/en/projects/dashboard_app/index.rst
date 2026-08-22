@@ -25,7 +25,7 @@ This app allows the development board to play navigation voice and display navig
 The following development board is used as an example.
 
 - Reset button: Reset the development board
-- K1 button: Clear network configuration information and reset the development board
+- Press and hold the Down button: Clear network configuration information and reset the development board
 
 .. figure:: ../../../_static/dashboard_app/dashboard_v1.jpg
    :alt: board
@@ -43,13 +43,13 @@ Images are transmitted via WiFi, and voice is transmitted via classic Bluetooth.
 4.1 Reset Development Board
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-Press the K1 button to reset the development board.
+Press and hold the Down button to reset the development board.
 
 
 4.2 Configuration
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-Select configuration as needed.
+Select the configuration as needed. Ensure that the width and height match the development board's screen resolution.
 
 
 .. figure:: ../../../_static/dashboard_app/config_center_0701.jpg
@@ -142,7 +142,7 @@ Images are transmitted via BLE, and voice is transmitted via classic Bluetooth.
 5.1 Reset Development Board
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-Press the K1 button to reset the development board.
+Press and hold the Down button to reset the development board.
 
 5.2 Settings
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
