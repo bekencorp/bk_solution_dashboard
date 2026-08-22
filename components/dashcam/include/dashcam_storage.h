@@ -53,6 +53,8 @@ bk_err_t dashcam_storage_count(uint32_t *count);
 bk_err_t dashcam_storage_free_mb(uint32_t *free_mb);
 /* Delete the oldest clip (smallest filename); used for release ring-recycle. */
 bk_err_t dashcam_storage_delete_oldest(void);
+/* Delete every entry in the recording directory, then remove the directory. */
+bk_err_t dashcam_storage_delete_directory(uint32_t *deleted, uint32_t *failed);
 /* Reclaim space by deleting oldest clips until under the ring file cap. */
 bk_err_t dashcam_storage_recycle_for_release(void);
 /*

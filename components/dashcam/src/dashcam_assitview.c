@@ -94,24 +94,23 @@ void dashcam_assitview_gpu_bond_attach(void)
     /* The GPU flexa bond consumes ISP MP line-done events, so the MP channel
      * MUST be streaming (MP flexa) before we turn the GPU on.
      *
-     * Continue-recording path: the assist view is entered WITHOUT tearing the
-     * recorder down (before_lvgl_teardown hook), so the camera is
-     * still open (MP->H264) and app_isp_handle_get() is valid. We simply add a
-     * SECOND MP flexa bond (MP->GPU) on the same ISP MP output -> recording
-     * keeps running while the GPU drives the full-screen view.
+     * Continue-recording path: the camera is already open with MP->H264, and we
+     * add MP->GPU on the same ISP output. Assist-only path opens ISP MP without
+     * creating an H264 encoder or bond.
      *
-     * dashcam_camera_open() is idempotent: if the recorder already brought the
-     * camera up it just returns BK_OK; otherwise it opens it here. */
-    ret = dashcam_camera_open();
+     * The assist ownership API is idempotent and keeps ISP alive independently
+     * of the recording owner. */
+    ret = dashcam_camera_open_for_assist();
     if (ret != BK_OK)
     {
-        LOGE("dashcam_camera_open failed, ret: %d", ret);
+        LOGE("dashcam_camera_open_for_assist failed, ret: %d", ret);
         return;
     }
 
     if (app_isp_handle_get() == NULL)
     {
         LOGE("isp handle NULL after camera open; cannot bond GPU");
+        dashcam_camera_close_for_assist();
         return;
     }
 
@@ -139,6 +138,7 @@ void dashcam_assitview_gpu_bond_attach(void)
     if (ret != 0)
     {
         LOGE("app_gpu_turn_on failed, ret: %d", ret);
+        dashcam_camera_close_for_assist();
         return;
     }
 
@@ -149,6 +149,7 @@ void dashcam_assitview_gpu_bond_attach(void)
         LOGE("bk_flexa_isp_gpu_bond_start failed, ret: %d", ret);
         (void)app_gpu_turn_off(app_gpu_handle_get());
         s_gpu_bond = NULL;
+        dashcam_camera_close_for_assist();
         return;
     }
     LOGI("assitview gpu bond attached (src %dx%d dst %dx%d)\n",
@@ -273,6 +274,7 @@ void dashcam_assitview_stop(void)
     {
         (void)app_gpu_turn_off(app_gpu_handle_get());
     }
+    dashcam_camera_close_for_assist();
     /* app_gpu_turn_off() closed vg_lite; re-acquire it for LVGL BEFORE resuming
      * the LVGL task, otherwise LVGL's first compressed flush faults on the freed
      * context. */

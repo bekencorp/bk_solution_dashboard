@@ -106,18 +106,20 @@ static bool dashcam_app_record_allowed(void)
 #endif
 }
 
-static bk_err_t dashcam_app_begin_segment(void)
+static bk_err_t dashcam_app_begin_segment(bool ensure_space)
 {
     char path[DASHCAM_STORAGE_MAX_PATH];
 
     LOGD("begin_segment\n");
 
 #if DASHCAM_RELEASE_BUILD
-    if (dashcam_storage_ensure_record_space() != BK_OK)
+    if (ensure_space && dashcam_storage_ensure_record_space() != BK_OK)
     {
         LOGE("insufficient SD space after adaptive cleanup\n");
         return BK_FAIL;
     }
+#else
+    (void)ensure_space;
 #endif
 
     if (dashcam_storage_make_record_path(path, sizeof(path)) != BK_OK)
@@ -182,11 +184,25 @@ static void dashcam_app_start_capture(void)
     LOGI("start_capture: record_allowed=%d viewer=%p\n",
          (int)allowed, (void *)s_parent);
 
+#if DASHCAM_RELEASE_BUILD
+    /*
+     * Space maintenance can take seconds on a card with many directory entries.
+     * Complete it before powering the sensor and encoder so a concurrent stop
+     * cannot observe IDLE while an untracked H.264 pipeline is already running.
+     * Later segment rotations request their own check from begin_segment().
+     */
+    if (allowed && dashcam_storage_ensure_record_space() != BK_OK)
+    {
+        LOGE("start_capture: insufficient SD space before camera open\n");
+        allowed = false;
+    }
+#endif
+
     if (allowed)
     {
         if (dashcam_camera_open() == BK_OK)
         {
-            if (dashcam_app_begin_segment() == BK_OK)
+            if (dashcam_app_begin_segment(false) == BK_OK)
             {
                 s_rec = DASHCAM_REC_RECORDING;
                 LOGI("start_capture: recording ON (rec=RECORDING)\n");
@@ -264,7 +280,7 @@ static void dashcam_app_rotate_segment(void)
         return;
     }
 
-    if (dashcam_app_begin_segment() != BK_OK)
+    if (dashcam_app_begin_segment(true) != BK_OK)
     {
         dashcam_app_stop_recording();
     }

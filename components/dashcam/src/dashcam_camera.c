@@ -47,6 +47,8 @@
 #define DASHCAM_CAMERA_SENSOR_FPS     25
 
 static bool s_open = false;
+static bool s_record_user = false;
+static bool s_assist_user = false;
 static void *s_isp_encode_bond = NULL;
 static bool s_encoder_on = false;
 
@@ -131,11 +133,9 @@ static void dashcam_camera_stop_encoder_bond(void)
     }
 }
 
-bk_err_t dashcam_camera_open(void)
+static bk_err_t dashcam_camera_open_isp(void)
 {
     camera_board_config_t cfg;
-
-    LOGD("open req (open=%d)\n", (int)s_open);
 
     if (s_open)
     {
@@ -155,33 +155,108 @@ bk_err_t dashcam_camera_open(void)
         return BK_FAIL;
     }
 
-    if (dashcam_camera_start_encoder_bond() != BK_OK)
-    {
-        dashcam_camera_stop_encoder_bond();
-        (void)app_isp_camera_turn_off();
-        return BK_FAIL;
-    }
-
     s_open = true;
-    LOGI("camera open record=%ux%u\n",
+    LOGI("camera ISP open MP=%ux%u\n",
          (unsigned)DASHCAM_RECORD_WIDTH,
          (unsigned)DASHCAM_RECORD_HEIGHT);
     return BK_OK;
 }
 
-void dashcam_camera_close(void)
+static void dashcam_camera_close_isp_if_unused(void)
 {
-    LOGD("close (open=%d)\n", (int)s_open);
-
-    if (!s_open)
+    if (!s_open || s_record_user || s_assist_user)
     {
         return;
     }
 
-    dashcam_camera_stop_encoder_bond();
     (void)app_isp_camera_turn_off();
     s_open = false;
-    LOGI("camera closed\n");
+    LOGI("camera ISP closed\n");
+}
+
+bk_err_t dashcam_camera_open(void)
+{
+    bool isp_was_open = s_open;
+
+    LOGD("record open req (open=%d record=%d assist=%d)\n",
+         (int)s_open, (int)s_record_user, (int)s_assist_user);
+
+    if (s_record_user)
+    {
+        return BK_OK;
+    }
+
+    if (dashcam_camera_open_isp() != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    if (dashcam_camera_start_encoder_bond() != BK_OK)
+    {
+        dashcam_camera_stop_encoder_bond();
+        if (!isp_was_open && !s_assist_user)
+        {
+            (void)app_isp_camera_turn_off();
+            s_open = false;
+        }
+        return BK_FAIL;
+    }
+
+    s_record_user = true;
+    LOGI("record camera open, ISP->H264 bond active\n");
+    return BK_OK;
+}
+
+void dashcam_camera_close(void)
+{
+    LOGD("record close (open=%d record=%d assist=%d)\n",
+         (int)s_open, (int)s_record_user, (int)s_assist_user);
+
+    if (!s_record_user)
+    {
+        return;
+    }
+
+    s_record_user = false;
+    dashcam_camera_stop_encoder_bond();
+    dashcam_camera_close_isp_if_unused();
+    LOGI("record camera closed\n");
+}
+
+bk_err_t dashcam_camera_open_for_assist(void)
+{
+    LOGD("assist open req (open=%d record=%d assist=%d)\n",
+         (int)s_open, (int)s_record_user, (int)s_assist_user);
+
+    if (s_assist_user)
+    {
+        return BK_OK;
+    }
+
+    if (dashcam_camera_open_isp() != BK_OK)
+    {
+        return BK_FAIL;
+    }
+
+    s_assist_user = true;
+    LOGI("assist camera open, ISP->H264 bond %s\n",
+         s_record_user ? "kept for recording" : "not created");
+    return BK_OK;
+}
+
+void dashcam_camera_close_for_assist(void)
+{
+    LOGD("assist close (open=%d record=%d assist=%d)\n",
+         (int)s_open, (int)s_record_user, (int)s_assist_user);
+
+    if (!s_assist_user)
+    {
+        return;
+    }
+
+    s_assist_user = false;
+    dashcam_camera_close_isp_if_unused();
+    LOGI("assist camera closed\n");
 }
 
 bool dashcam_camera_is_open(void)
