@@ -31,6 +31,14 @@ typedef struct
     uint8_t second;
 } dashcam_file_info_t;
 
+typedef enum
+{
+    DASHCAM_MP4_CHECK_VALID = 0,
+    DASHCAM_MP4_CHECK_EMPTY,
+    DASHCAM_MP4_CHECK_INVALID,
+    DASHCAM_MP4_CHECK_IO_ERROR,
+} dashcam_mp4_check_result_t;
+
 bk_err_t dashcam_storage_init(void);
 bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
                               uint32_t max_files,
@@ -56,8 +64,12 @@ bk_err_t dashcam_storage_ensure_record_space(void);
 void dashcam_storage_discard_failed_clip(const char *path);
 /* Build the primary human-readable list label for one clip. */
 void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, size_t size);
+/* Classify a finalized MP4 without conflating an empty clip with an I/O error. */
+dashcam_mp4_check_result_t dashcam_storage_check_mp4(const char *path);
 /* Validate finalized top-level MP4 structure before handing a clip to the player. */
 bool dashcam_storage_mp4_is_playable(const char *path);
+/* Delete one finalized recording and its optional .idx sidecar. */
+bk_err_t dashcam_storage_delete_record(const char *path);
 /* Unlink orphan .mp4.idx sidecars; removed/failed may be NULL. */
 bk_err_t dashcam_storage_cleanup_orphan_idx(uint32_t *removed, uint32_t *failed);
 

@@ -59,6 +59,29 @@ static bool dashcam_storage_has_video_suffix(const char *name)
             (suffix[3] == '4' || suffix[3] == 'i' || suffix[3] == 'I'));
 }
 
+static bool dashcam_storage_has_mp4_suffix(const char *name)
+{
+    size_t len;
+    const char *suffix;
+
+    if (name == NULL)
+    {
+        return false;
+    }
+
+    len = strlen(name);
+    if (len < 4)
+    {
+        return false;
+    }
+
+    suffix = &name[len - 4];
+    return (suffix[0] == '.' &&
+            (suffix[1] == 'm' || suffix[1] == 'M') &&
+            (suffix[2] == 'p' || suffix[2] == 'P') &&
+            suffix[3] == '4');
+}
+
 static uint32_t dashcam_storage_be32(const uint8_t *data)
 {
     return ((uint32_t)data[0] << 24) |
@@ -73,34 +96,46 @@ static uint64_t dashcam_storage_be64(const uint8_t *data)
            dashcam_storage_be32(data + 4);
 }
 
-bool dashcam_storage_mp4_is_playable(const char *path)
+dashcam_mp4_check_result_t dashcam_storage_check_mp4(const char *path)
 {
     static const uint32_t box_ftyp = 0x66747970U;
     static const uint32_t box_mdat = 0x6D646174U;
     static const uint32_t box_moov = 0x6D6F6F76U;
     uint8_t header[16];
-    bool has_mdat = false;
+    bool saw_mdat = false;
+    bool has_mdat_payload = false;
     bool has_moov = false;
+    bool malformed = false;
     int fd;
     off_t file_size;
     uint64_t offset = 0U;
 
     if (path == NULL || path[0] == '\0')
     {
-        return false;
+        return DASHCAM_MP4_CHECK_INVALID;
     }
 
     fd = bk_vfs_open(path, O_RDONLY);
     if (fd < 0)
     {
-        return false;
+        return DASHCAM_MP4_CHECK_IO_ERROR;
     }
 
     file_size = bk_vfs_lseek(fd, 0, SEEK_END);
-    if (file_size < 8 || bk_vfs_lseek(fd, 0, SEEK_SET) < 0)
+    if (file_size < 0 || bk_vfs_lseek(fd, 0, SEEK_SET) < 0)
     {
         bk_vfs_close(fd);
-        return false;
+        return DASHCAM_MP4_CHECK_IO_ERROR;
+    }
+    if (file_size == 0)
+    {
+        bk_vfs_close(fd);
+        return DASHCAM_MP4_CHECK_EMPTY;
+    }
+    if (file_size < 8)
+    {
+        bk_vfs_close(fd);
+        return DASHCAM_MP4_CHECK_INVALID;
     }
 
     while (offset + 8U <= (uint64_t)file_size)
@@ -112,7 +147,8 @@ bool dashcam_storage_mp4_is_playable(const char *path)
 
         if (bk_vfs_read(fd, header, 8U) != 8)
         {
-            break;
+            bk_vfs_close(fd);
+            return DASHCAM_MP4_CHECK_IO_ERROR;
         }
 
         size32 = dashcam_storage_be32(header);
@@ -122,7 +158,8 @@ bool dashcam_storage_mp4_is_playable(const char *path)
         {
             if (bk_vfs_read(fd, header + 8, 8U) != 8)
             {
-                break;
+                bk_vfs_close(fd);
+                return DASHCAM_MP4_CHECK_IO_ERROR;
             }
             box_size = dashcam_storage_be64(header + 8);
             header_size = 16U;
@@ -132,24 +169,43 @@ bool dashcam_storage_mp4_is_playable(const char *path)
             box_size < header_size ||
             box_size > (uint64_t)file_size - offset)
         {
+            malformed = true;
             break;
         }
 
-        has_mdat = has_mdat || type == box_mdat;
+        if (type == box_mdat)
+        {
+            saw_mdat = true;
+            has_mdat_payload = has_mdat_payload || box_size > header_size;
+        }
         has_moov = has_moov || type == box_moov;
         offset += box_size;
-        if (has_mdat && has_moov)
+        if (has_mdat_payload && has_moov)
         {
             break;
         }
         if (bk_vfs_lseek(fd, (off_t)offset, SEEK_SET) < 0)
         {
-            break;
+            bk_vfs_close(fd);
+            return DASHCAM_MP4_CHECK_IO_ERROR;
         }
     }
 
     bk_vfs_close(fd);
-    return has_mdat && has_moov;
+    if (saw_mdat && !has_mdat_payload)
+    {
+        return DASHCAM_MP4_CHECK_EMPTY;
+    }
+    if (!malformed && has_mdat_payload && has_moov)
+    {
+        return DASHCAM_MP4_CHECK_VALID;
+    }
+    return DASHCAM_MP4_CHECK_INVALID;
+}
+
+bool dashcam_storage_mp4_is_playable(const char *path)
+{
+    return dashcam_storage_check_mp4(path) == DASHCAM_MP4_CHECK_VALID;
 }
 
 static bk_err_t dashcam_storage_mount_sd(void)
@@ -252,6 +308,7 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
     while ((entry = bk_vfs_readdir(dir)) != NULL)
     {
         dashcam_file_info_t item = {0};
+        dashcam_mp4_check_result_t check_result;
 
         if (!dashcam_storage_has_video_suffix(entry->d_name))
         {
@@ -273,6 +330,18 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
         snprintf(item.name, sizeof(item.name), "%s", entry->d_name);
         snprintf(item.path, sizeof(item.path), "%s/%s", DASHCAM_STORAGE_DIR, entry->d_name);
 
+        if (dashcam_storage_has_mp4_suffix(entry->d_name))
+        {
+            check_result = dashcam_storage_check_mp4(item.path);
+            if (check_result == DASHCAM_MP4_CHECK_EMPTY ||
+                check_result == DASHCAM_MP4_CHECK_INVALID)
+            {
+                LOGW("skip unplayable recording: %s check=%d\n",
+                     item.path, (int)check_result);
+                continue;
+            }
+        }
+
         /*
          * FatFs readdir already returns the file size in struct dirent. Calling
          * bk_vfs_stat() here performs another path lookup for every clip and is
@@ -293,10 +362,11 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
             }
         }
 
-#if DASHCAM_USE_WALL_CLOCK
         {
             unsigned int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+            unsigned long uptime = 0;
             unsigned long seq = 0;
+
             if (sscanf(entry->d_name, "dashcam_%4u%2u%2u_%2u%2u%2u_%lu.mp4",
                        &y, &mo, &d, &h, &mi, &s, &seq) == 7)
             {
@@ -308,18 +378,13 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
                 item.second = (uint8_t)s;
                 item.seq = (uint32_t)seq;
             }
-        }
-#else
-        {
-            unsigned long uptime = 0;
-            unsigned long seq = 0;
-            if (sscanf(entry->d_name, "dashcam_%lu_%lu.mp4", &uptime, &seq) == 2)
+            else if (sscanf(entry->d_name, "dashcam_%lu_%lu.mp4",
+                            &uptime, &seq) == 2)
             {
                 item.uptime_ms = (uint32_t)uptime;
                 item.seq = (uint32_t)seq;
             }
         }
-#endif
 
         dashcam_storage_insert_file(files, max_files, file_count, &item);
     }
@@ -481,6 +546,38 @@ static void dashcam_storage_unlink_sidecar_idx(const char *mp4_path)
     {
         LOGW("unlink sidecar %s failed: %d\n", idx_path, ret);
     }
+}
+
+bk_err_t dashcam_storage_delete_record(const char *path)
+{
+    size_t dir_len = strlen(DASHCAM_STORAGE_DIR);
+    int ret;
+
+    if (path == NULL || path[0] == '\0')
+    {
+        return BK_ERR_PARAM;
+    }
+
+    /* Only permit deletion of files directly under the recording directory. */
+    if (strncmp(path, DASHCAM_STORAGE_DIR, dir_len) != 0 ||
+        path[dir_len] != '/' ||
+        strchr(path + dir_len + 1U, '/') != NULL ||
+        !dashcam_storage_has_video_suffix(path))
+    {
+        LOGE("refuse to delete non-record path: %s\n", path);
+        return BK_ERR_PARAM;
+    }
+
+    ret = bk_vfs_unlink(path);
+    if (ret != 0)
+    {
+        LOGE("unlink %s failed: %d\n", path, ret);
+        return BK_FAIL;
+    }
+
+    dashcam_storage_unlink_sidecar_idx(path);
+    LOGI("deleted invalid recording: %s\n", path);
+    return BK_OK;
 }
 
 static bk_err_t dashcam_storage_unlink_clip(const char *clip_name)
@@ -854,8 +951,8 @@ void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, si
         return;
     }
 
-#if DASHCAM_USE_WALL_CLOCK
-    /* Plan A: show the real record date/time parsed from the filename. */
+    /* Show wall-clock recordings as a readable date regardless of the current
+     * naming configuration, so clips created under either mode remain usable. */
     if (info->year >= 2020)
     {
         snprintf(buf, size, "%04u-%02u-%02u %02u:%02u:%02u",
@@ -863,7 +960,14 @@ void dashcam_storage_format_label(const dashcam_file_info_t *info, char *buf, si
                  (unsigned)info->hour, (unsigned)info->minute, (unsigned)info->second);
         return;
     }
-#endif
+
+    /* Uptime-named recordings have no real date; preserve the complete
+     * dashcam_uptime_seq.mp4 filename instead of showing only the sequence. */
+    if (info->name[0] != '\0')
+    {
+        snprintf(buf, size, "%s", info->name);
+        return;
+    }
 
 #if DASHCAM_STORAGE_LABEL_WITH_SIZE
     if (info->size_bytes >= (1024U * 1024U))
