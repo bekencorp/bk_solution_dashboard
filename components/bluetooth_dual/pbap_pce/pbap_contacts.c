@@ -119,6 +119,8 @@ static char            s_peer_name[PBAP_PEER_NAME_MAX];/* remote friendly name *
 /* Pending connect target (set on ACL up, checked by worker). */
 static uint8_t         s_target_addr[BK_BD_ADDR_LEN];
 static uint8_t         s_want_connect;
+static uint8_t         s_retry_pending;
+static uint8_t         s_sync_retried;
 static uint8_t         s_inited;
 static uint8_t         s_bt_manager_index = 0xFF;  /* bt_manager gap callback slot */
 
@@ -641,6 +643,23 @@ static void worker_handle_event(pbap_msg_t *msg)
 
             if (s_pull_stage == PULL_STAGE_CCH) {
                 rtos_lock_mutex(&s_cache_lock);
+                uint8_t all_empty = (s_contact_cnt == 0 && s_recent_cnt == 0);
+                rtos_unlock_mutex(&s_cache_lock);
+
+                if (all_empty && !s_sync_retried && s_want_connect) {
+                    s_sync_retried = 1;
+                    s_retry_pending = 1;
+                    s_pull_stage = PULL_STAGE_NONE;
+                    s_parse_recents = 0;
+                    LOGW("phonebook sync empty, retry once\n");
+                    if (bk_bt_pbap_pce_disconnect(msg->bd_addr) != BK_OK) {
+                        s_retry_pending = 0;
+                        LOGE("pbap disconnect for retry failed\n");
+                    }
+                    break;
+                }
+
+                rtos_lock_mutex(&s_cache_lock);
                 s_recents_valid = 1;
                 LOGI("call history cached: %u entries\n", s_recent_cnt);
                 rtos_unlock_mutex(&s_cache_lock);
@@ -672,6 +691,20 @@ static void worker_handle_event(pbap_msg_t *msg)
 
     case BK_PBAP_PCE_DISCONNECT_CFM_EVT:
         LOGI("PCE disconnect cfm status=%d\n", msg->status);
+        if (s_retry_pending) {
+            pbap_msg_t retry_msg = {0};
+
+            s_retry_pending = 0;
+            if (msg->status != BK_PBAP_PCE_SUCCESS) {
+                LOGE("pbap disconnect for retry cfm failed status=%d\n", msg->status);
+            } else if (s_want_connect && os_memcmp(s_target_addr, msg->bd_addr, BK_BD_ADDR_LEN) == 0) {
+                retry_msg.event = PBAP_MSG_CONNECT_REQ;
+                os_memcpy(retry_msg.bd_addr, msg->bd_addr, BK_BD_ADDR_LEN);
+                if (rtos_push_to_queue(&s_evt_queue, &retry_msg, BEKEN_NO_WAIT) != kNoErr) {
+                    LOGW("failed to queue retry connect req\n");
+                }
+            }
+        }
         break;
 
     default:
@@ -869,6 +902,8 @@ static void pbap_on_acl_connected(const uint8_t *bd_addr)
 
     os_memcpy(s_target_addr, bd_addr, BK_BD_ADDR_LEN);
     s_want_connect = 1;
+    s_retry_pending = 0;
+    s_sync_retried = 0;
 
     msg.event = PBAP_MSG_CONNECT_REQ;
     os_memcpy(msg.bd_addr, bd_addr, BK_BD_ADDR_LEN);
@@ -885,6 +920,8 @@ static void pbap_on_acl_disconnected(const uint8_t *bd_addr)
     }
 
     s_want_connect = 0;
+    s_retry_pending = 0;
+    s_sync_retried = 0;
 
     rtos_lock_mutex(&s_cache_lock);
     if (bd_addr == NULL ||
