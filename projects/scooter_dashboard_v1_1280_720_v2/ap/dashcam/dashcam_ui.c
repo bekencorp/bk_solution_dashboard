@@ -692,7 +692,7 @@ static void dashcam_ui_load_worker(void *arg)
         memset(result, 0, sizeof(*result));
     }
 
-    dashcam_app_record_stop();
+    // dashcam_app_record_stop();
     if (result != NULL)
     {
         result->scan_result = dashcam_storage_scan(result->files,

@@ -1803,7 +1803,7 @@ void music_player_ui_enter(void)
      * SDIO read timeouts / audio glitches. Mirror the dashcam page: pause the
      * background recording on enter (idempotent) so the playlist scan below and
      * subsequent playback own the card. Recording resumes in ..._leave(). */
-    dashcam_app_record_stop();
+    // dashcam_app_record_stop();
 
     /* Allocate the ~26KB track table from PSRAM (never from AP SRAM .bss, which
      * is far too tight - see the declaration). Reuse it if a previous leave did
