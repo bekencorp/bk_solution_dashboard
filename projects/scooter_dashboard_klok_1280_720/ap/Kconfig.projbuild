@@ -4,6 +4,12 @@ config PROJECT_LCD_RESET_PIN
 	int
 	default 42
 
+config PROJECT_LCD_BACKLIGHT_PIN
+	int "LCD BACKLIGHT PIN"
+	default 46
+	help
+	  New scooter dashboard board uses GPIO_46 for LCD backlight.
+
 config PROJECT_SCOOTER_DASHBOARD_V_1_0
 	bool "SCH-7259 V1.0 board"
 	default y

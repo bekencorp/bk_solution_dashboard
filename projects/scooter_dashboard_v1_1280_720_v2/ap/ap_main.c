@@ -475,7 +475,6 @@ static void app_display_init(void)
         /* Load the home background into PSRAM on a worker thread while the boot
          * animation plays, so the UI can switch in instantly afterwards. */
         boot_bg_preload_start();
-        rtos_delay_milliseconds(10);
 
         boot_avi_play();
 

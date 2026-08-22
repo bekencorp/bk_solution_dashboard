@@ -476,7 +476,6 @@ static void app_display_init(void)
          * Full-screen RGB565A8 designer assets are intentionally not linked
          * because five raw 1024x600 backgrounds exceed the AP flash region. */
         boot_bg_preload_start();
-        rtos_delay_milliseconds(10);
 
         boot_avi_play();
 

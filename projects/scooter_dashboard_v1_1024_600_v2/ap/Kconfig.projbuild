@@ -10,6 +10,10 @@ menu "PROJECT Configuration"
     config PROJECT_LCD_RESET_PIN
         int "LCD RESET PIN"
         default 60
+
+    config PROJECT_LCD_BACKLIGHT_PIN
+        int "LCD BACKLIGHT PIN"
+        default 46
 endmenu
 
 menu "LVGL Widgets_v9 Configuration"

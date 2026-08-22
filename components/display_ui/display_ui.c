@@ -106,28 +106,19 @@ static void display_board_lcd_power_enable()
     BK_LOG_ON_ERR(bk_gpio_pull_up(GPIO_45));
     bk_gpio_set_capacity(GPIO_45, GPIO_DRIVER_CAPACITY_3);
     bk_gpio_set_output_high(GPIO_45);
-
-    /* Bring-up: drive the backlight (P46_LCD_BL) high here, BEFORE the DSI/panel
-     * init, so it is not gated behind bk_display_open() success. This makes the
-     * backlight a standalone electrical test: if it stays dark now, the issue is
-     * power/pin/polarity; if it lights but shows no image, the issue is DSI/panel. */
-    gpio_dev_unmap(GPIO_46);
-    BK_LOG_ON_ERR(bk_gpio_enable_output(GPIO_46));
-    BK_LOG_ON_ERR(bk_gpio_pull_up(GPIO_46));
-    bk_gpio_set_capacity(GPIO_46, GPIO_DRIVER_CAPACITY_3);
-    bk_gpio_set_output_high(GPIO_46);
 #endif /* CONFIG_PROJECT_SCOOTER_DASHBOARD_V_1_0 */
 }
 
 
 static bk_err_t display_hw_init_internal(void)
 {
+    display_board_lcd_power_enable();
     s_panel_desc = scooter_get_mipi_panel();
 
     display_board_config_t display_board = {0};
     display_board.mipi.enable = true;
     display_board.mipi.pin_reset = CONFIG_PROJECT_LCD_RESET_PIN;
-    display_board.mipi.pin_backlight = ((uint8_t)-1);
+    display_board.mipi.pin_backlight = CONFIG_PROJECT_LCD_BACKLIGHT_PIN;
     display_board.mipi.panel = s_panel_desc;
     display_board.dpu_video.enable = true;
     /* LVGL outputs GPU-compressed ARGB8888 (VG_LITE_DEC_HV_SAMPLE tiles), so the
@@ -252,7 +243,6 @@ static bk_err_t lvgl_start_internal(void)
 
 static bk_err_t lvgl_app_widgets_init(void)
 {
-    display_board_lcd_power_enable();
     bk_err_t ret = display_hw_init_internal();
     if (ret != BK_OK)
         return ret;
