@@ -343,43 +343,15 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_trim") == 0))
     {
-        uint32_t count = 0;
-        uint32_t target = (DASHCAM_DEV_MAX_FILES > 0) ? (DASHCAM_DEV_MAX_FILES - 1) : 0;
         uint32_t deleted = 0;
+        uint32_t failed = 0;
+        bk_err_t ret;
 
-        if (argc >= 3)
-        {
-            target = (uint32_t)os_strtoul(argv[2], NULL, 10);
-        }
-
-        if (dashcam_storage_count(&count) != BK_OK)
-        {
-            LOGE("dashcam_trim: count failed\n");
-            return;
-        }
-
-        while (count > target)
-        {
-            if (dashcam_storage_delete_oldest() != BK_OK)
-            {
-                LOGE("dashcam_trim: delete oldest failed at count=%u target=%u\n",
-                     (unsigned)count, (unsigned)target);
-                break;
-            }
-            deleted++;
-            if (dashcam_storage_count(&count) != BK_OK)
-            {
-                LOGE("dashcam_trim: recount failed\n");
-                break;
-            }
-        }
-
-        LOGI("dashcam_trim: target=%u deleted=%u count=%u limit=%u allowed=%u\n",
-             (unsigned)target,
-             (unsigned)deleted,
-             (unsigned)count,
-             (unsigned)DASHCAM_DEV_MAX_FILES,
-             (unsigned)(DASHCAM_RELEASE_BUILD || count < DASHCAM_DEV_MAX_FILES));
+        /* Finalize and close the active MP4 before removing its directory. */
+        dashcam_app_record_stop();
+        ret = dashcam_storage_delete_directory(&deleted, &failed);
+        LOGI("dashcam_trim: stop+delete directory ret=%d deleted=%u failed=%u\n",
+             ret, (unsigned)deleted, (unsigned)failed);
     }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_rec_start") == 0))
     {
@@ -417,7 +389,7 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else
     {
-        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim [target] | dashcam_rec_start | dashcam_rec_stop | dashcam_clean_idx\n");
+        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim | dashcam_rec_start | dashcam_rec_stop | dashcam_clean_idx\n");
     }
 }
 

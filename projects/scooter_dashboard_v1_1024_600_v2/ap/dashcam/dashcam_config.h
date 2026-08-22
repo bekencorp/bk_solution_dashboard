@@ -139,6 +139,18 @@ extern "C" {
 #endif
 
 /*
+ * Lost-cluster maintenance for intentional power-cut / dirty reboot tests:
+ * reclaim only when .rec_dirty is set (or one-shot migration), overlapping the
+ * existing DASHCAM_BOOT_RECORD_DELAY_MS window — no segment-boundary reclaim.
+ */
+#ifndef DASHCAM_BOOT_RECLAIM_LOST
+#define DASHCAM_BOOT_RECLAIM_LOST          1
+#endif
+#ifndef DASHCAM_BOOT_RECLAIM_ONLY_IF_DIRTY
+#define DASHCAM_BOOT_RECLAIM_ONLY_IF_DIRTY 1
+#endif
+
+/*
  * Wall-clock naming/labels (plan A, req5 §9.2/§11). Only enabled on a release
  * build that also has the SNTP->RTC sync feature compiled in; otherwise plan B
  * (boot-relative uptime + sequence) is used. Reference DASHCAM_USE_WALL_CLOCK

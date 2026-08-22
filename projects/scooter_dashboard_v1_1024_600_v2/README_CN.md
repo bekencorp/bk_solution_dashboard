@@ -126,7 +126,7 @@ Dashboard V1.0 按键 GPIO 定义如下：
 | `ap_cmd dashboard key_enter` | 模拟中键短按，确认当前选项 |
 | `ap_cmd dashboard key_home` | 模拟中键双击，返回主页 |
 | `ap_cmd dashboard dashcam_count` | 查询录像数量与 SD 卡剩余空间 |
-| `ap_cmd dashboard dashcam_trim [target]` | 删除最旧录像，直到剩余录像数量不大于 `target` |
+| `ap_cmd dashboard dashcam_trim` | 自动停止并完成录像，然后删除整个 `/sd0/dashcam` 录像目录 |
 | `ap_cmd dashboard dashcam_rec_start` | 手动启动录像 |
 | `ap_cmd dashboard dashcam_rec_stop` | 手动停止并完成录像 |
 | `ap_cmd dashboard dashcam_turn_left` | 打开 Assist View |
@@ -134,7 +134,7 @@ Dashboard V1.0 按键 GPIO 定义如下：
 | `ap_cmd dashboard np_erase [reboot]` | 清除网络配网信息；追加 `reboot` 后立即重启 |
 | `ap_cmd dashboard np_start_advertise` | 重新开启 BLE 配网广播 |
 
-> 注意：执行 `ap_cmd dashboard dashcam_trim [target]` 前，先使用 `ap_cmd dashboard dashcam_rec_stop` 停止录像，避免删除文件时与录像写入同时访问 SD 卡。
+> 注意：`dashcam_trim` 会删除全部录像；下次启动录像时会自动重建目录。
 
 ## FTP Server
 

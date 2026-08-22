@@ -126,7 +126,7 @@ Use `ap_cmd dashboard <command>` through the serial CLI:
 | `ap_cmd dashboard key_enter` | Simulate a short press of the middle key to confirm the focused item |
 | `ap_cmd dashboard key_home` | Simulate a double press of the middle key to return to Home |
 | `ap_cmd dashboard dashcam_count` | Show the recording count and free SD-card space |
-| `ap_cmd dashboard dashcam_trim [target]` | Delete the oldest recordings until no more than `target` recordings remain |
+| `ap_cmd dashboard dashcam_trim` | Stop and finalize recording, then delete the entire `/sd0/dashcam` directory |
 | `ap_cmd dashboard dashcam_rec_start` | Start recording manually |
 | `ap_cmd dashboard dashcam_rec_stop` | Stop and finalize recording manually |
 | `ap_cmd dashboard dashcam_turn_left` | Open Assist View |
@@ -134,7 +134,7 @@ Use `ap_cmd dashboard <command>` through the serial CLI:
 | `ap_cmd dashboard np_erase [reboot]` | Clear network provisioning information; add `reboot` to reboot immediately |
 | `ap_cmd dashboard np_start_advertise` | Restart BLE provisioning advertising |
 
-> Before running `ap_cmd dashboard dashcam_trim [target]`, stop recording with `ap_cmd dashboard dashcam_rec_stop` to avoid concurrent SD-card access while files are deleted.
+> `dashcam_trim` deletes all recordings. The directory is recreated when recording starts again.
 
 ## FTP Server
 
