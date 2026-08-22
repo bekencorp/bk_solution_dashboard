@@ -96,6 +96,7 @@ typedef struct
 
 bk_err_t bk_sl_np_init(void);
 bk_err_t bk_sl_np_start_provisioning(void);
+bool bk_sl_np_is_provisioned(void);
 navigation_type_t get_navigation_type(void);
 
 /* Whether BLE-side navigation (casting) is currently active. */

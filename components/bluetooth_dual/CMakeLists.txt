@@ -29,6 +29,7 @@ if (CONFIG_BLE)
     # (see armino_component_register below). Headers such as "dm_gatts.h" are
     # exposed by smp via INCLUDE_DIRS bt_dm/ble/gatt.
     list(APPEND incs
+        ancs
         wifi_boarding
         ble_ota
     )
@@ -39,6 +40,14 @@ if (CONFIG_BLE)
         wifi_boarding/wifi_boarding_demo_cli.c
         wifi_boarding/wifi_boarding_adv.c
     )
+
+    if (CONFIG_BLUETOOTH_ANCS_CLIENT)
+        list(APPEND srcs
+            ancs/ancs_client.c
+            ancs/ancs_protocol.c
+            ancs/ancs_cli.c
+        )
+    endif()
 endif()
 
 if (CONFIG_BT)

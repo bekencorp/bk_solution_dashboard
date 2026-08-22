@@ -1,6 +1,11 @@
 # KCONFIG_GROUP: Solution & Product
 menu "Bluetooth_Dual"
 
+    config BLUETOOTH_ANCS_CLIENT
+        bool "Apple Notification Center Service client"
+        depends on BLE && BLUETOOTH_BTDM_COMPONENT_BLE_GATT
+        default n
+
     config A2DP_SINK_DEMO
         bool "a2dp sink demo"
         depends on BT

@@ -44,6 +44,9 @@
 #include "wifi_boarding_demo_service.h"
 #include "wifi_boarding_demo.h"
 #include "wifi_boarding_adv.h"
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+#include "ancs_client.h"
+#endif
 
 /* Firmware version advertised in the BLE provisioning core header. */
 #define DASHBOARD_FW_MAJOR 1
@@ -79,6 +82,7 @@ static bk_err_t (*s_send)(uint16_t opcode, int status);
 static bk_err_t (*s_send_data)(uint16_t opcode, int status, const char *payload, uint16_t length);
 static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
 static bool s_casting_active = false;
+static bool s_network_provisioned = false;
 static volatile demo_np_state_t s_np_state = DEMO_NP_STATE_INACTIVE;
 static volatile uint16_t s_pending_sta_opcode;
 static volatile bool s_rearm_on_disconnect;
@@ -99,6 +103,11 @@ navigation_type_t get_navigation_type(void)
 bool bk_sl_np_is_navigating(void)
 {
     return s_casting_active;
+}
+
+bool bk_sl_np_is_provisioned(void)
+{
+    return s_network_provisioned;
 }
 
 static uint8_t *demo_np_get_supported_mode(uint8_t os_code, uint8_t *len)
@@ -960,6 +969,9 @@ bk_err_t bk_sl_np_start_provisioning(void)
     s_np_state = DEMO_NP_STATE_PREPARING;
     s_pending_sta_opcode = 0;
     s_rearm_on_disconnect = false;
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+    BK_LOG_ON_ERR(ancs_client_adv_stop());
+#endif
     BK_LOG_ON_ERR(wifi_boarding_adv_stop());
 
 #if CONFIG_P2P
@@ -1020,6 +1032,7 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
             break;
         case BK_NETWORK_PROVISIONING_STATUS_SUCCEED:
             s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_network_provisioned = true;
             s_rearm_on_disconnect = false;
             BK_LOG_ON_ERR(wifi_boarding_adv_stop());
 #if CONFIG_P2P
@@ -1045,6 +1058,9 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
                 }
                 s_pending_sta_opcode = 0;
             }
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+            BK_LOG_ON_ERR(ancs_client_adv_start());
+#endif
             dashboard_network_ready_hook();
             break;
         case BK_NETWORK_PROVISIONING_STATUS_FAILED:
@@ -1081,6 +1097,7 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECT_SUCCEED:
             s_np_state = DEMO_NP_STATE_INACTIVE;
+            s_network_provisioned = true;
             s_rearm_on_disconnect = false;
             BK_LOG_ON_ERR(wifi_boarding_adv_stop());
 #if CONFIG_P2P
@@ -1096,6 +1113,13 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
 static void bk_sl_np_ble_disconnect_cb(void)
 {
     s_pending_sta_opcode = 0;
+
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+    if (s_network_provisioned && s_np_state == DEMO_NP_STATE_INACTIVE)
+    {
+        BK_LOG_ON_ERR(ancs_client_adv_start());
+    }
+#endif
 
     if ((s_np_state == DEMO_NP_STATE_READY) || (s_np_state == DEMO_NP_STATE_CONNECTING))
     {
@@ -1160,6 +1184,7 @@ bk_err_t bk_sl_np_init(void)
     {
         return ret;
     }
+    s_network_provisioned = (reconnect_netif != NETIF_IF_INVALID);
 
     if (reconnect_netif == NETIF_IF_INVALID)
     {
