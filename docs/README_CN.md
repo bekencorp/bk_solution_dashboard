@@ -138,14 +138,14 @@ projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
 
 ## 参考工程
 
-本方案提供多个 BK7259 参考工程，覆盖标准仪表与行车记录仪（Dashcam）两类产品形态。各工程均基于 BK7259（AP，主控）+ BK3515N（蓝牙从控）双芯片架构，编译方式一致，仅需将编译命令中的工程目录替换为对应工程名。
-
 | 工程名 | 主要功能 | 详细说明 |
 | --- | --- | --- |
 | [scooter_1280_720](../projects/scooter_1280_720/) | 1280x720 产品工程主入口：仪表显示、开机 AVI、手机 JPEG 投屏、BLE / Wi-Fi 配网、经典蓝牙音频、多控制器蓝牙、SD 卡存储；作为后续双 UVC 双录产品的开发底座。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_1280_720/index.html) |
 | [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 产品工程：在 scooter_1280_720 基础上增加行车记录、联系人/拨号、本地音乐、OTA 界面及对应物理按键交互。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_1280_720_v2/index.html) |
-| [scooter_dashboard_v1_1280_720](../projects/scooter_dashboard_v1_1280_720/) | Dashboard V1.0 硬件基础演示：1280x720 仪表、开机 AVI、车速/转向灯演示、宠物 GIF、手机投屏、配网、经典蓝牙、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720/index.html) |
-| [scooter_dashboard_v1_1280_720_v2](../projects/scooter_dashboard_v1_1280_720_v2/) | Dashboard V1.0 硬件：主页导航、Dashcam 循环录像与回放、电话簿、Assist View、蓝牙电话、配网、SD 卡 MTP 及 FTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720_v2/index.html) |
+| [scooter_dashboard_v1_1280_720](../projects/scooter_dashboard_v1_1280_720/) | Dashboard V1.0 硬件基础演示：1280×720 横屏仪表、开机 AVI、车速/转向灯演示、宠物 GIF、手机投屏、配网、经典蓝牙、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720/index.html) |
+| [scooter_dashboard_v1_1280_720_v2](../projects/scooter_dashboard_v1_1280_720_v2/) | Dashboard V1.0 1280×720 横屏：主页导航、Dashcam 循环录像与回放、SD 卡本地音乐（Music Player）、电话簿、Assist View、蓝牙电话、配网、SD 卡 MTP 及 FTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720_v2/index.html) |
+| [scooter_dashboard_v1_1024_600_v2](../projects/scooter_dashboard_v1_1024_600_v2/) | Dashboard V1.0 1024×600：主页导航、Dashcam 循环录像与回放、SD 卡本地音乐（Music Player）、电话簿、Assist View、蓝牙电话、配网、SD 卡 MTP；固件与 UI 资源不可与 1280×720 V2 混用。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1024_600_v2/index.html) |
+| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720：K 歌与 MV 播放演示，含首页/Klok 主页/歌曲列表/播放页、SD 卡音视频扫描播放、H.264/AAC 解码、全屏 Flexa 直显与按键/触摸/CLI 控制、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
 
 ## BEKEN 相关资源
 
