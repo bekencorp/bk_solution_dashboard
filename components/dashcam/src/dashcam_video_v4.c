@@ -10,6 +10,7 @@
 #include "dashcam_config.h"
 #include "dashcam_player.h"
 #include "dashcam_storage.h"
+#include "display_ui_cast_context.h"
 #include "hpdma/lv_hpdma.h"
 #include "lv_vendor.h"
 #include "os/mem.h"
@@ -124,6 +125,12 @@ static avdk_err_t dashcam_video_display_free_cb(void *frame)
     return AVDK_ERR_OK;
 }
 
+static avdk_err_t dashcam_video_lvgl_handoff_cb(void *frame)
+{
+    (void)frame;
+    return AVDK_ERR_OK;
+}
+
 static bool dashcam_video_buf_track(void *frame)
 {
     bool tracked = false;
@@ -166,22 +173,6 @@ static void dashcam_video_buf_release(void *buf)
     {
         bk_frame_buffer_free(buf);
     }
-}
-
-static bk_err_t dashcam_video_set_display_format(bk_pixel_format_t format, bool decompress)
-{
-    if (s_dashcam_video.display == NULL)
-    {
-        return BK_FAIL;
-    }
-
-    const bk_display_pixel_format_config_t cfg =
-    {
-        .format = format,
-        .decompress = decompress,
-    };
-    return (bk_display_pixel_format_set(s_dashcam_video.display, &cfg) == AVDK_ERR_OK) ?
-           BK_OK : BK_FAIL;
 }
 
 static void dashcam_video_stats_update(void)
@@ -298,15 +289,30 @@ static bool dashcam_video_all_buffers_reclaimed(void)
 
 static void dashcam_video_restore_lvgl(void)
 {
+    uint8_t *lvgl_fb;
+
     s_dashcam_video.running = false;
     s_dashcam_video.stopping = true;
     dashcam_video_free_idle_buffers();
 
     if (s_dashcam_video.display != NULL)
     {
-        if (dashcam_video_set_display_format(BK_PIXEL_FORMAT_ARGB8888, true) != BK_OK)
+        /*
+         * Playback and LVGL both use ARGB8888 + decompress, so no runtime
+         * format switch is needed. Repoint scanout to the retained LVGL frame
+         * buffer; replacing the playback frame also releases its DPU ownership.
+         */
+        lvgl_fb = display_ui_get_lvgl_fb(0);
+        if (lvgl_fb == NULL)
         {
-            LOGE("restore ARGB8888 display format failed\n");
+            LOGW("restore skip flush: LVGL fb[0] is NULL\n");
+        }
+        else
+        {
+            avdk_err_t ret = bk_display_flush(s_dashcam_video.display,
+                                              lvgl_fb,
+                                              dashcam_video_lvgl_handoff_cb);
+            LOGI("restore flush LVGL fb[0] %p r=%d\n", lvgl_fb, (int)ret);
         }
     }
 
@@ -383,14 +389,14 @@ static void dashcam_video_worker(void *arg)
                 s_dashcam_video.lvgl_gpu_released = true;
                 s_dashcam_video.display =
                     (bk_display_ctlr_handle_t)app_mipi_lcd_handle_get();
-                if (s_dashcam_video.display == NULL ||
-                    dashcam_video_set_display_format(BK_PIXEL_FORMAT_ARGB8888, true) != BK_OK)
+                if (s_dashcam_video.display == NULL)
                 {
                     LOGE("prepare direct DPU playback failed\n");
                     dashcam_video_restore_lvgl();
                     exit_worker = true;
                     break;
                 }
+                LOGI("DPU already ARGB8888+decompress; skip runtime format switch\n");
                 s_dashcam_video.stats_start_ms = rtos_get_time();
                 s_dashcam_video.stats_frames = 0;
                 s_dashcam_video.running = true;
