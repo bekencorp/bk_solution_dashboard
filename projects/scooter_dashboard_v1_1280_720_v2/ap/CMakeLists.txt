@@ -16,6 +16,7 @@ set(incs .
     home
     phone_book
     music_player
+    notification
     ${BEKEN_GENERATOR_INCLUDE_DIRS}
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/include
     ${BK_AUDIO_PLAYER_DIR}
@@ -29,6 +30,7 @@ set(srcs
     home/home_ui.c
     phone_book/phone_book_ui.c
     music_player/music_player_ui.c
+    notification/notification_popup.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_camera.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_codec.c
     ${MULTIMEDIA_DEVICE_SERVICE_DIR}/src/app_gpu.c

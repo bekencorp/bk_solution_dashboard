@@ -11,8 +11,12 @@
 
 #include "components/bluetooth/bk_dm_bluetooth.h"
 #include "dm_gatt.h"
+#include "dm_gattc.h"
 #include "dm_gatts.h"
 #include "wifi_boarding/wifi_boarding_demo_service.h"
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+#include "ancs_client.h"
+#endif
 #if CONFIG_BK_NETWORK_PROVISIONING
 #include "bk_network_provisioning.h"
 #endif
@@ -39,6 +43,7 @@
 #include "boot_bg_preload.h"
 #include "beken_ui.h"
 #include "home_ui.h"
+#include "notification_popup.h"
 #include "dashcam_config.h"
 #include "dashcam_storage.h"
 #include "dashcam_app.h"
@@ -156,6 +161,14 @@ void bt_sync_base_mac_from_cp(void)
 }
 
 /* ==================== BLE Provisioning ==================== */
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+static void app_ancs_notification_cb(const ancs_notification_attrs_t *attributes)
+{
+    const char *title = attributes->title[0] ? attributes->title : attributes->app_identifier;
+    notification_popup_show(title, attributes->message);
+}
+#endif
+
 static void ap_bt_app_init(void)
 {
 #if CONFIG_BT
@@ -214,7 +227,13 @@ static void ap_bt_app_init(void)
 
     BK_LOG_ON_ERR(bk_dm_prf_gap_main(&param));
     BK_LOG_ON_ERR(bk_dm_prf_gatts_main(&param));
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+    BK_LOG_ON_ERR(bk_dm_prf_gattc_main(&param));
+#endif
     BK_LOG_ON_ERR(wifi_boarding_demo_service_main());
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+    BK_LOG_ON_ERR(ancs_client_init(app_ancs_notification_cb));
+#endif
 
     extern int cli_ble_gatt_demo_init(void);
     cli_ble_gatt_demo_init();
@@ -264,6 +283,13 @@ static void ap_bt_startup_task(void *arg)
         LOGE("network provisioning init failed %d\n", ret);
         goto end;
     }
+
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+    if (bk_sl_np_is_provisioned())
+    {
+        BK_LOG_ON_ERR(ancs_client_adv_start());
+    }
+#endif
 
 end:;
     LOGI("%s end\n", __func__);
@@ -420,9 +446,18 @@ static void app_board_init(void)
 #endif
 }
 
+static void app_ui_init(void)
+{
+    beken_ui_init();
+    if (notification_popup_init(home_ui_get_cn_font()) != BK_OK)
+    {
+        LOGE("init notification popup failed\n");
+    }
+}
+
 static void app_display_init(void)
 {
-    if (display_ui_register_init_callback(beken_ui_init) != BK_OK)
+    if (display_ui_register_init_callback(app_ui_init) != BK_OK)
     {
         LOGE("register UI init callback failed\n");
         return;
