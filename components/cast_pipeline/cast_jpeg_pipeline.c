@@ -18,6 +18,8 @@
 #include <common/bk_err.h>
 #include <components/bk_frame_buffer.h>
 #include <common/avdk_pixel_types.h>
+#include <modules/vg_lite_gpu/vg_lite.h>
+#include "gpu_core.h"
 #include "jpeg_stream_pipeline.h"
 
 #define TAG "cast_jpeg"
@@ -84,6 +86,7 @@ static beken_mutex_t s_cast_ops_mutex;
 static int           s_cast_ops_mutex_inited;
 
 static void (*s_fb_release)(frame_buffer_t *fb);
+static void cast_gpu_free_output(void *p);
 
 static int cast_ops_mutex_ensure(void)
 {
@@ -124,7 +127,12 @@ static int cast_flush_sem_init(void)
 
 static avdk_err_t cast_flush_signal_cb(void *frame)
 {
-	(void)frame;
+	/*
+	 * bk_display_flush() transfers ownership to the DPU.  This callback is the
+	 * point at which the DPU has replaced the frame at VSync and no longer reads
+	 * it, so only now may the GPU output buffer return to the pool.
+	 */
+	cast_gpu_free_output(frame);
 	s_cast_flush_signal_seq++;
 	if (s_cast_flush_sem)
 		rtos_set_semaphore(&s_cast_flush_sem);
@@ -175,13 +183,23 @@ static void               *s_cast_gpu_stack[CAST_GPU_POOL_SLOTS];
 static int                 s_cast_gpu_stack_n;
 static volatile uint8_t    s_cast_gpu_pool_active;
 
-/* Match bk_gpu_ctlr_default.c gpu_flex_data_frame_done / gpu_flex_main_entry frame_size. */
+/*
+ * Match bk_gpu_ctlr_default.c gpu_flex_data_frame_done / gpu_flex_main_entry
+ * frame_size EXACTLY: the GPU aligns output width (compress only) and height up
+ * to 16 (GPU_HIGHT_ALIGNMENT=0xF). If we omit that alignment the pool byte size
+ * differs from the size the GPU asks malloc_cb for (e.g. 1024x600 -> pool 614400
+ * vs GPU 622592 because 600 rounds up to 608), the pool is never hit, and every
+ * frame falls back to bk_frame_buffer_malloc until the slab fragments/exhausts
+ * (gpu_malloc U / FAIL).
+ */
 static uint32_t cast_gpu_pool_expected_bytes(uint32_t dst_w, uint32_t dst_h, bool compress,
 					     bk_pixel_format_t fmt)
 {
-	const uint32_t row_px = compress ? (dst_w / 4U) : dst_w;
+	const uint32_t out_w  = compress ? ((dst_w + 0xFU) & ~0xFU) : dst_w;
+	const uint32_t out_h  = (dst_h + 0xFU) & ~0xFU;
+	const uint32_t row_px = compress ? (out_w / 4U) : out_w;
 
-	return bk_pixel_size_get(fmt) * row_px * dst_h;
+	return bk_pixel_size_get(fmt) * row_px * out_h;
 }
 
 static bool cast_gpu_pool_is_our_ptr(const void *p)
@@ -197,16 +215,41 @@ static bool cast_gpu_pool_is_our_ptr(const void *p)
 
 static void cast_gpu_pool_push(void *p)
 {
-	if (p == NULL || s_cast_gpu_stack_n >= CAST_GPU_POOL_SLOTS)
+	uint32_t flags;
+
+	if (p == NULL)
 		return;
+
+	flags = rtos_enter_critical();
+	/* Make release idempotent: some display error paths invoke the supplied
+	 * callback before returning an error to the caller. */
+	for (int i = 0; i < s_cast_gpu_stack_n; i++) {
+		if (s_cast_gpu_stack[i] == p) {
+			rtos_exit_critical(flags);
+			return;
+		}
+	}
+	if (s_cast_gpu_stack_n >= CAST_GPU_POOL_SLOTS) {
+		rtos_exit_critical(flags);
+		return;
+	}
 	s_cast_gpu_stack[s_cast_gpu_stack_n++] = p;
+	rtos_exit_critical(flags);
 }
 
 static void *cast_gpu_pool_pop(void)
 {
-	if (s_cast_gpu_stack_n <= 0)
+	uint32_t flags;
+	void *p;
+
+	flags = rtos_enter_critical();
+	if (s_cast_gpu_stack_n <= 0) {
+		rtos_exit_critical(flags);
 		return NULL;
-	return s_cast_gpu_stack[--s_cast_gpu_stack_n];
+	}
+	p = s_cast_gpu_stack[--s_cast_gpu_stack_n];
+	rtos_exit_critical(flags);
+	return p;
 }
 
 static void cast_gpu_pool_free_all(void)
@@ -242,6 +285,12 @@ static bk_err_t cast_gpu_pool_alloc(uint32_t dst_w, uint32_t dst_h, bool compres
 			cast_gpu_pool_free_all();
 			return BK_FAIL;
 		}
+		/*
+		 * The compressed GPU path writes the output in FLEXA strips.  Start
+		 * every session from deterministic backing storage so an incomplete
+		 * first strip/tile cannot expose stale PSRAM contents on the DPU.
+		 */
+		os_memset(p, 0, sz);
 		s_cast_gpu_pool_ptr[i] = p;
 	}
 
@@ -284,12 +333,88 @@ static void cast_gpu_free_output(void *p)
 	if (p == NULL)
 		return;
 
-	if (s_cast_gpu_pool_active && cast_gpu_pool_is_our_ptr(p)) {
-		cast_gpu_pool_push(p);
+	if (cast_gpu_pool_is_our_ptr(p)) {
+		/*
+		 * During teardown cast_gpu_pool_free_all() owns all pool allocations.
+		 * A late DPU callback must not individually free one and leave its
+		 * address in s_cast_gpu_pool_ptr[] for a second free.
+		 */
+		if (s_cast_gpu_pool_active) {
+			cast_gpu_pool_push(p);
+			LOGI("[cast] pool free %p avail %d/%d\n",
+			     p, s_cast_gpu_stack_n, CAST_GPU_POOL_SLOTS);
+		}
 		return;
 	}
 
 	bk_frame_buffer_free(p);
+}
+
+/*
+ * Re-render the whole surface to *opaque black* directly into the GPU output.
+ *
+ * frame is a VG_LITE_DEC_HV_SAMPLE compressed buffer, not linear ARGB, so
+ * os_memset(frame, 0, ...) is not a legal compressed encoding — the DEC unit
+ * decodes it to green garbage.  A real black frame must be produced by the GPU:
+ * wrap the buffer with the exact same DEC/tiled/format attributes the flex path
+ * uses, then vg_lite_clear() it to 0xFF000000.
+ *
+ * This runs inside the GPU frame_done callback (GPU worker thread) with the
+ * engine idle between frames, so no extra bk_gpu_global_lock is needed. For a
+ * uniform clear the tile-grid orientation is irrelevant (every tile is the same
+ * solid-black cell), so an approximate width/height is safe as long as the total
+ * covered area equals the allocated surface.
+ */
+static bool cast_gpu_render_black_compressed(void *frame)
+{
+	vg_lite_buffer_t buf;
+	vg_lite_error_t  e;
+	const uint32_t   ow   = (CAST_JPEG_DST_WIDTH  + 0xFU) & ~0xFU;
+	const uint32_t   oh   = (CAST_JPEG_DST_HEIGHT + 0xFU) & ~0xFU;
+	const bool       swap = (CAST_JPEG_ROTATE_DEG == 90U || CAST_JPEG_ROTATE_DEG == 270U);
+
+	if (frame == NULL)
+		return false;
+
+	os_memset(&buf, 0, sizeof(buf));
+	buf.width         = swap ? oh : ow;
+	buf.height        = swap ? ow : oh;
+	buf.format        = VG_LITE_BGRA8888; /* == gpu_format_convert(BK_PIXEL_FORMAT_ARGB8888) */
+	buf.compress_mode = VG_LITE_DEC_HV_SAMPLE;
+	buf.tiled         = VG_LITE_TILED;
+	buf.screen_copy   = 1;
+
+	/*
+	 * Serialize against the flex worker's own vg_lite usage on the shared
+	 * VG-Lite engine/command buffer. Although this callback runs on the GPU
+	 * frame_done thread with the engine nominally idle, take the same global
+	 * lock the flex path uses so a concurrent GPU user cannot corrupt state.
+	 */
+	if (bk_gpu_global_lock() != BK_OK) {
+		LOGE("[cast] black lock fail\n");
+		return false;
+	}
+
+	e = vg_lite_allocate_with_data(&buf, frame, NULL, NULL, NULL);
+	if (e != VG_LITE_SUCCESS) {
+		LOGE("[cast] black wrap %d\n", (int)e);
+		bk_gpu_global_unlock();
+		return false;
+	}
+
+	e = vg_lite_clear(&buf, NULL, 0xFF000000U);
+	if (e == VG_LITE_SUCCESS)
+		e = vg_lite_finish();
+
+	(void)vg_lite_free_without_free_data(&buf);
+
+	bk_gpu_global_unlock();
+
+	if (e != VG_LITE_SUCCESS) {
+		LOGE("[cast] black clear %d\n", (int)e);
+		return false;
+	}
+	return true;
 }
 
 static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_data)
@@ -299,15 +424,31 @@ static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_d
 	uint32_t                 n       = ++s_cast_frame_display_seq;
 	avdk_err_t               flush_e = AVDK_ERR_OK;
 
-	(void)frame_size;
-	if (s_cast_dpu_apply_on_first_frame) {
-		/*
-		 * ARGB+decompress only here (see file header). Registered hook may stop LVGL
-		 * before DPU format apply (display_ui); keep hook work short — still GPU path.
-		 */
-		s_cast_hooks.first_frame_apply();
-		s_cast_dpu_apply_on_first_frame = 0;
+	/*
+	 * The first FLEXA/GPU output after opening the JPEG pipeline is a hardware
+	 * warm-up frame and can contain incomplete compressed tiles. Replace its
+	 * contents with a deterministic all-black compressed surface, then display
+	 * that surface until the next valid navigation frame arrives.
+	 */
+	if (n == 1U) {
+		bool black_ok = cast_gpu_render_black_compressed(frame);
+
+		if (s_cast_dpu_apply_on_first_frame) {
+			s_cast_hooks.first_frame_apply();
+			s_cast_dpu_apply_on_first_frame = 0;
+		}
+		if (disp && frame && black_ok)
+			flush_e = bk_display_flush(disp, frame, cast_flush_signal_cb);
+		LOGW("[cast] fd1 warm-up black blk=%d sz%u r%d %p\n",
+		     (int)black_ok, (unsigned)frame_size, (int)flush_e, frame);
+		if (!disp || !frame || !black_ok || flush_e != AVDK_ERR_OK)
+			cast_gpu_free_output(frame);
+		return;
 	}
+	/*
+	 * first_frame_apply()/DPU ARGB+decompress switch already happened on the
+	 * n==1 warm-up frame above, so no apply is needed here for later frames.
+	 */
 	if (disp && frame)
 		flush_e = bk_display_flush(disp, frame, cast_flush_signal_cb);
 	else
@@ -315,10 +456,14 @@ static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_d
 
 	LOGI("[cast] fd%u sz%u p%d r%d %p\n",
 	     (unsigned)n, (unsigned)frame_size, pending, (int)flush_e, frame);
-	if (disp && frame && flush_e != AVDK_ERR_OK)
+	if (disp && frame && flush_e != AVDK_ERR_OK) {
 		LOGE("[cast] fd%u flush %d\n", (unsigned)n, (int)flush_e);
-
-	cast_gpu_free_output(frame);
+		/* A rejected frame is not owned by the DPU. Pool release is
+		 * idempotent in case this backend invoked the callback on failure. */
+		cast_gpu_free_output(frame);
+	} else if (!disp && frame) {
+		cast_gpu_free_output(frame);
+	}
 }
 
 static void cast_frame_consumed_cb(const uint8_t *jpeg_stream, int status, void *jpeg_owner,
