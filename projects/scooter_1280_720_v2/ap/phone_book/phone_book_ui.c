@@ -361,13 +361,14 @@ static lv_color_t recent_type_color(uint8_t type)
                                       : lv_color_hex(0x22c55e);
 }
 
-/* Format "MM-DD HH:MM" from a raw "YYYYMMDDThhmmss" timestamp. */
+/* Format "YYYY-MM-DD HH:MM" from a raw "YYYYMMDDThhmmss" timestamp. */
 static void recent_format_time(const char *dt, char *out, size_t out_sz)
 {
     out[0] = '\0';
     if (dt != NULL && strlen(dt) >= 13 && dt[8] == 'T')
     {
-        snprintf(out, out_sz, "%c%c-%c%c %c%c:%c%c",
+        snprintf(out, out_sz, "%c%c%c%c-%c%c-%c%c %c%c:%c%c",
+                 dt[0], dt[1], dt[2], dt[3],
                  dt[4], dt[5], dt[6], dt[7],
                  dt[9], dt[10], dt[11], dt[12]);
     }
@@ -376,7 +377,7 @@ static void recent_format_time(const char *dt, char *out, size_t out_sz)
 static void phone_book_add_recent_row(lv_obj_t *list, const pbap_recent_info_t *r,
                                       lv_font_t *cn)
 {
-    char tm[16];
+    char tm[20];
     lv_obj_t *row = phone_book_new_row(list);
 
     lv_obj_t *ar = lv_image_create(row);
@@ -405,7 +406,7 @@ static void phone_book_add_recent_row(lv_obj_t *list, const pbap_recent_info_t *
     lv_obj_set_style_text_font(tml, &lv_font_montserrat_regular_16, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(tml, lv_color_hex(0x9a9a9a), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_pos(tml, 336, 34);
-    lv_obj_set_width(tml, 130);
+    lv_obj_set_width(tml, 180);
     lv_label_set_text(tml, tm);
 
     lv_obj_t *call = lv_image_create(row);
