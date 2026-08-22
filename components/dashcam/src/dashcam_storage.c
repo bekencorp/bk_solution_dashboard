@@ -353,8 +353,9 @@ bk_err_t dashcam_storage_scan(dashcam_file_info_t *files,
             if (check_result == DASHCAM_MP4_CHECK_EMPTY ||
                 check_result == DASHCAM_MP4_CHECK_INVALID)
             {
-                LOGW("skip unplayable recording: %s check=%d\n",
+                LOGW("delete unplayable recording: %s check=%d\n",
                      item.path, (int)check_result);
+                (void)dashcam_storage_delete_record(item.path);
                 continue;
             }
         }

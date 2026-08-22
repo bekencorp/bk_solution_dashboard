@@ -222,6 +222,14 @@ static void dashcam_app_rotate_segment(void)
     if (stop_ret != BK_OK)
     {
         LOGW("rotate_segment: recorder stop failed for %s\n", completed_path);
+        if (completed_path[0] != '\0')
+        {
+            if (dashcam_storage_delete_record(completed_path) != BK_OK)
+            {
+                LOGE("rotate_segment: failed to remove stop-failed MP4: %s\n",
+                     completed_path);
+            }
+        }
     }
 
     /*
