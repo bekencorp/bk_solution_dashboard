@@ -21,6 +21,7 @@ extern "C" {
 
 #include <components/bk_audio/audio_streams/onboard_speaker_stream.h>
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
+#include <components/bk_audio/audio_streams/i2s_stream.h>
 #include <components/bk_audio/audio_streams/raw_stream.h>
 #include <components/bk_audio/audio_decoders/sbc_decoder.h>
 #include <components/bk_audio/audio_decoders/aac_decoder.h>
@@ -48,7 +49,7 @@ typedef enum
 {
     BLUE_AUDIO_SPEAKER_TYPE_ONBOARD = 0,
     BLUE_AUDIO_SPEAKER_TYPE_UAC,
-    BLUE_AUDIO_SPEAKER_TYPE_I2S,  /* Reserved for future support */
+    BLUE_AUDIO_SPEAKER_TYPE_I2S,
 } blue_audio_speaker_type_t;
 
 /**
@@ -106,7 +107,7 @@ typedef struct
     union {
         onboard_speaker_stream_cfg_t ob_spk_cfg; /*!< Onboard speaker configuration */
         uac_speaker_stream_cfg_t uac_spk_cfg;    /*!< UAC speaker configuration */
-        /* Reserved for I2S speaker configuration */
+        i2s_stream_cfg_t i2s_spk_cfg;            /*!< I2S speaker configuration */
     } speaker_cfg;
 
     mix_algorithm_cfg_t mix_alg_cfg;              /*!< Mix algorithm configuration */
@@ -213,6 +214,35 @@ typedef struct
 }
 
 /**
+ * @brief Default I2S speaker configuration
+ */
+#define BLUE_AUDIO_PLAYER_DEFAULT_I2S_SPK_CONFIG() {         \
+    .gpio_group = I2S_STREAM_GPIO_GROUP,                     \
+    .role = I2S_STREAM_ROLE,                                 \
+    .work_mode = I2S_STREAM_WORK_MODE,                       \
+    .lrck_invert = I2S_LRCK_INVERT_DISABLE,                  \
+    .sck_invert = I2S_SCK_INVERT_DISABLE,                    \
+    .lsb_first_en = I2S_LSB_FIRST_DISABLE,                   \
+    .sync_length = 0,                                        \
+    .data_length = 16,                                       \
+    .pcm_dlength = 0,                                        \
+    .store_mode = I2S_LRCOM_STORE_16R16L,                    \
+    .samp_rate = I2S_SAMP_RATE_44100,                        \
+    .pcm_chl_num = 2,                                        \
+    .channel_id = I2S_STREAM_CHANNEL_ID,                     \
+    .type = AUDIO_STREAM_WRITER,                             \
+    .buff_size = 3528,                                       \
+    .out_block_size = 3528,                                  \
+    .out_block_num = I2S_STREAM_BLOCK_NUM,                   \
+    .task_stack = I2S_STREAM_TASK_STACK,                     \
+    .task_core = I2S_STREAM_TASK_CORE,                       \
+    .task_prio = I2S_STREAM_TASK_PRIO,                       \
+    .multi_in_port_num = 0,                                  \
+    .multi_out_port_num = 0,                                 \
+    .manual_config_gpio_en = 0,                              \
+}
+
+/**
  * @brief Default player configuration
  */
 #define DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG() {            \
@@ -234,6 +264,34 @@ typedef struct
     },                                                                  \
     .speaker_cfg = {                                                    \
         .ob_spk_cfg = BLUE_AUDIO_PLAYER_DEFAULT_ONBOARD_SPK_CONFIG()    \
+    },                                                                  \
+    .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
+    .event_handle = NULL,                                               \
+    .args = NULL,                                                       \
+}
+
+/**
+ * @brief Default SBC player with I2S speaker configuration
+ */
+#define DEFAULT_BLUE_AUDIO_PLAYER_SBC_I2S_SPK_CONFIG() {                \
+    .decoder_type = BLUE_AUDIO_DECODER_TYPE_SBC,                        \
+    .speaker_type = BLUE_AUDIO_SPEAKER_TYPE_I2S,                        \
+    .raw_strm_cfg = {                                                   \
+        .type = AUDIO_STREAM_WRITER,                                    \
+        .out_block_size = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_SIZE,         \
+        .out_block_num = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_NUM,           \
+        .output_port_type = PORT_TYPE_FB                                \
+    },                                                                  \
+    .task_stack = BLUE_AUDIO_PLAYER_DEFAULT_TASK_STACK,                 \
+    .task_core = BLUE_AUDIO_PLAYER_DEFAULT_TASK_CORE,                   \
+    .task_prio = BLUE_AUDIO_PLAYER_DEFAULT_TASK_PRIO,                   \
+    .mix_en = false,                                                    \
+    .play_threshold = BLUE_AUDIO_PLAYER_DEFAULT_PLAY_THRESHOLD,         \
+    .decoder_cfg = {                                                    \
+        .sbc_dec_cfg = BLUE_AUDIO_PLAYER_DEFAULT_SBC_DEC_CONFIG()       \
+    },                                                                  \
+    .speaker_cfg = {                                                    \
+        .i2s_spk_cfg = BLUE_AUDIO_PLAYER_DEFAULT_I2S_SPK_CONFIG()       \
     },                                                                  \
     .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
     .event_handle = NULL,                                               \
@@ -282,6 +340,55 @@ typedef struct
             .task_core = ONBOARD_SPEAKER_STREAM_TASK_CORE,          \
             .task_prio = ONBOARD_SPEAKER_STREAM_TASK_PRIO,          \
         },                                                          \
+    },                                                                  \
+    .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
+    .event_handle = NULL,                                               \
+    .args = NULL,                                                       \
+}
+
+/**
+ * @brief Default PCM player with I2S speaker configuration
+ */
+#define DEFAULT_BLUE_AUDIO_PLAYER_PCM_I2S_SPK_CONFIG() {                \
+    .decoder_type = BLUE_AUDIO_DECODER_TYPE_PCM,                        \
+    .speaker_type = BLUE_AUDIO_SPEAKER_TYPE_I2S,                        \
+    .raw_strm_cfg = {                                                   \
+        .type = AUDIO_STREAM_WRITER,                                    \
+        .out_block_size = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_SIZE,         \
+        .out_block_num = BLUE_AUDIO_PLAYER_DEFAULT_FRAME_NUM,           \
+        .output_port_type = PORT_TYPE_RB                                \
+    },                                                                  \
+    .task_stack = BLUE_AUDIO_PLAYER_DEFAULT_TASK_STACK,                 \
+    .task_core = BLUE_AUDIO_PLAYER_DEFAULT_TASK_CORE,                   \
+    .task_prio = BLUE_AUDIO_PLAYER_DEFAULT_TASK_PRIO,                   \
+    .mix_en = false,                                                    \
+    .play_threshold = BLUE_AUDIO_PLAYER_DEFAULT_PLAY_THRESHOLD,         \
+    .speaker_cfg = {                                                    \
+        .i2s_spk_cfg = {                                                \
+            .gpio_group = I2S_STREAM_GPIO_GROUP,                        \
+            .role = I2S_STREAM_ROLE,                                    \
+            .work_mode = I2S_STREAM_WORK_MODE,                          \
+            .lrck_invert = I2S_LRCK_INVERT_DISABLE,                     \
+            .sck_invert = I2S_SCK_INVERT_DISABLE,                       \
+            .lsb_first_en = I2S_LSB_FIRST_DISABLE,                      \
+            .sync_length = 0,                                           \
+            .data_length = 16,                                          \
+            .pcm_dlength = 0,                                           \
+            .store_mode = I2S_LRCOM_STORE_16R16L,                       \
+            .samp_rate = I2S_SAMP_RATE_8000,                            \
+            .pcm_chl_num = 1,                                           \
+            .channel_id = I2S_STREAM_CHANNEL_ID,                        \
+            .type = AUDIO_STREAM_WRITER,                                \
+            .buff_size = 640,                                           \
+            .out_block_size = 640,                                      \
+            .out_block_num = I2S_STREAM_BLOCK_NUM,                      \
+            .task_stack = I2S_STREAM_TASK_STACK,                        \
+            .task_core = I2S_STREAM_TASK_CORE,                          \
+            .task_prio = I2S_STREAM_TASK_PRIO,                          \
+            .multi_in_port_num = 0,                                     \
+            .multi_out_port_num = 0,                                    \
+            .manual_config_gpio_en = 0,                                 \
+        },                                                              \
     },                                                                  \
     .mix_alg_cfg = BLUE_AUDIO_PLAYER_DEFAULT_MIX_ALGORITHM_CONFIG(),    \
     .event_handle = NULL,                                               \

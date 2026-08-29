@@ -21,6 +21,7 @@
 #include <components/bk_audio/audio_streams/raw_stream.h>
 #include <components/bk_audio/audio_streams/onboard_speaker_stream.h>
 #include <components/bk_audio/audio_streams/uac_speaker_stream.h>
+#include <components/bk_audio/audio_streams/i2s_stream.h>
 #include <components/bk_audio/audio_decoders/sbc_decoder.h>
 #include <components/bk_audio/audio_decoders/aac_decoder.h>
 #include <components/bk_audio/audio_pipeline/audio_event_iface.h>
@@ -530,9 +531,13 @@ static bk_err_t blue_audio_pipeline_init(blue_audio_player_handle_t player, blue
             break;
 
         case BLUE_AUDIO_SPEAKER_TYPE_I2S:
-            // Reserved for future support
-            BK_LOGE(TAG, "%s, %d, I2S speaker not supported yet\n", __func__, __LINE__);
+#if CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_I2S_SPEAKER
+            player->speaker = i2s_stream_init(&config->speaker_cfg.i2s_spk_cfg);
+#else
+            BK_LOGE(TAG, "%s, %d, I2S speaker not enable, please config CONFIG_BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_I2S_SPEAKER=y \n", __func__, __LINE__);
             goto fail;
+#endif
+            break;
 
         default:
             BK_LOGE(TAG, "%s, %d, Unsupported speaker type: %d\n", __func__, __LINE__, config->speaker_type);
@@ -1207,7 +1212,7 @@ bk_err_t blue_audio_player_write_frame_data(blue_audio_player_handle_t player, c
         }
     }
 
-    return write_len;
+    return len;
 }
 
 bk_err_t blue_audio_player_get_free_frame_num(blue_audio_player_handle_t player)

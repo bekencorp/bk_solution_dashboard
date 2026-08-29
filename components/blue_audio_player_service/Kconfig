@@ -1,7 +1,7 @@
 menu "Blue Audio Player Service"
 
 	config BLUE_AUDIO_PLAYER_SERVICE
-		depends on ADK_RAW_STREAM && (ADK_SBC_DECODER || ADK_AAC_DECODER) && (ADK_ONBOARD_SPEAKER_STREAM || ADK_UAC_SPEAKER_STREAM)
+		depends on ADK_RAW_STREAM && (ADK_SBC_DECODER || ADK_AAC_DECODER) && (ADK_ONBOARD_SPEAKER_STREAM || ADK_UAC_SPEAKER_STREAM || ADK_I2S_STREAM)
 		bool "Enable Blue Audio Player Service"
 		default n
 		help
@@ -29,6 +29,11 @@ menu "Blue Audio Player Service"
     config BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_UAC_SPEAKER
 		depends on BLUE_AUDIO_PLAYER_SERVICE && ADK_UAC_SPEAKER_STREAM
 		bool "Enable Blue Audio Player Service to support uac speaker"
+		default n
+
+    config BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_I2S_SPEAKER
+		depends on BLUE_AUDIO_PLAYER_SERVICE && ADK_I2S_STREAM
+		bool "Enable Blue Audio Player Service to support i2s speaker"
 		default n
 
     config BLUE_AUDIO_PLAYER_SERVICE_SUPPORT_MIX

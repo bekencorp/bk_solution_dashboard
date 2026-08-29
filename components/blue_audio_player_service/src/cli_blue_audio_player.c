@@ -43,12 +43,79 @@ typedef struct
     void *param;
 } blue_audio_player_msg_t;
 
+typedef enum
+{
+    BLUE_AUDIO_PLAYER_TEST_CASE_SBC_I2S = 0,
+    BLUE_AUDIO_PLAYER_TEST_CASE_SBC_ONBOARD,
+} blue_audio_player_test_case_t;
+
+typedef struct
+{
+    uint32_t frames_to_play;
+    blue_audio_player_test_case_t test_case;
+} blue_audio_player_test_param_t;
+
 // Global variables
 static blue_audio_player_handle_t gl_blue_audio_player_handle = NULL;
 static bool audio_play_running = false;
 static beken_thread_t audio_play_task_hdl = NULL;
 static beken_semaphore_t audio_play_sem = NULL;
 static beken_queue_t blue_audio_player_msg_que = NULL;
+static blue_audio_player_test_param_t s_blue_audio_player_test_param = {0};
+
+int blue_audio_player_event_handle_callback(int event, void *args, void *user_data);
+
+static bk_err_t blue_audio_player_parse_test_case(const char *case_name, blue_audio_player_test_case_t *test_case)
+{
+    if (!case_name || !test_case)
+    {
+        return BK_FAIL;
+    }
+
+    if ((os_strcmp(case_name, "sbc_i2s") == 0) || (os_strcmp(case_name, "i2s") == 0))
+    {
+        *test_case = BLUE_AUDIO_PLAYER_TEST_CASE_SBC_I2S;
+    }
+    else if ((os_strcmp(case_name, "sbc_onboard") == 0) || (os_strcmp(case_name, "onboard") == 0))
+    {
+        *test_case = BLUE_AUDIO_PLAYER_TEST_CASE_SBC_ONBOARD;
+    }
+    else
+    {
+        return BK_FAIL;
+    }
+
+    return BK_OK;
+}
+
+static bk_err_t blue_audio_player_get_test_cfg(blue_audio_player_test_case_t test_case, blue_audio_player_cfg_t *cfg)
+{
+    if (!cfg)
+    {
+        return BK_FAIL;
+    }
+
+    switch (test_case)
+    {
+        case BLUE_AUDIO_PLAYER_TEST_CASE_SBC_I2S:
+            *cfg = (blue_audio_player_cfg_t)DEFAULT_BLUE_AUDIO_PLAYER_SBC_I2S_SPK_CONFIG();
+            BK_LOGI(TAG, "select SBC decoder + I2S speaker player\n");
+            break;
+
+        case BLUE_AUDIO_PLAYER_TEST_CASE_SBC_ONBOARD:
+            *cfg = (blue_audio_player_cfg_t)DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
+            BK_LOGI(TAG, "select SBC decoder + onboard speaker player\n");
+            break;
+
+        default:
+            return BK_FAIL;
+    }
+
+    cfg->event_handle = blue_audio_player_event_handle_callback;
+    cfg->args = NULL;
+
+    return BK_OK;
+}
 
 /**
  * @brief Send message to queue
@@ -112,12 +179,16 @@ static void blue_audio_player_main(beken_thread_arg_t param_data)
     bk_err_t ret = BK_OK;
     uint32_t sbc_music_read_offset = 0;
     uint32_t sbc_music_size = sizeof(a2dp_sbc_music);
-    uint32_t frames_to_play = (uint32_t)param_data; // Number of frames to play, 0 means play all
+    blue_audio_player_test_param_t *test_param = (blue_audio_player_test_param_t *)param_data;
+    uint32_t frames_to_play = test_param ? test_param->frames_to_play : 0; // 0 means play all
 
     // Initialize player configuration
-    blue_audio_player_cfg_t config = DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
-    config.event_handle = blue_audio_player_event_handle_callback;
-    config.args = NULL;
+    blue_audio_player_cfg_t config;
+    if (BK_OK != blue_audio_player_get_test_cfg(test_param ? test_param->test_case : BLUE_AUDIO_PLAYER_TEST_CASE_SBC_I2S, &config))
+    {
+        BK_LOGE(TAG, "get blue_audio_player test config fail\n");
+        goto exit;
+    }
 
     // Create audio player
     gl_blue_audio_player_handle = blue_audio_player_create(&config);
@@ -248,9 +319,12 @@ exit:
 /**
  * @brief Initialize audio player test
  */
-static bk_err_t blue_audio_player_init(uint32_t frames_to_play)
+static bk_err_t blue_audio_player_init(uint32_t frames_to_play, blue_audio_player_test_case_t test_case)
 {
     bk_err_t ret = BK_OK;
+
+    s_blue_audio_player_test_param.frames_to_play = frames_to_play;
+    s_blue_audio_player_test_param.test_case = test_case;
 
     ret = rtos_init_semaphore(&audio_play_sem, 1);
     if (ret != BK_OK)
@@ -274,7 +348,7 @@ static bk_err_t blue_audio_player_init(uint32_t frames_to_play)
                              "blue_audio_play",
                              (beken_thread_function_t)blue_audio_player_main,
                              2048 * 2,
-                             (beken_thread_arg_t)frames_to_play);
+                             (beken_thread_arg_t)&s_blue_audio_player_test_param);
     if (ret != BK_OK)
     {
         BK_LOGE(TAG, "%s, %d, create blue audio player task fail\n", __func__, __LINE__);
@@ -315,12 +389,31 @@ void cli_blue_audio_player_cmd(char *pcWriteBuffer, int xWriteBufferLen, int arg
     if (os_strcmp(argv[1], "init") == 0)
     {
         uint32_t frames_to_play = 0; // Default to play all
+        blue_audio_player_test_case_t test_case = BLUE_AUDIO_PLAYER_TEST_CASE_SBC_I2S;
+
         if (argc >= 3)
         {
-            frames_to_play = os_strtoul((char *)argv[2], NULL, 10);
+            if (BK_OK == blue_audio_player_parse_test_case(argv[2], &test_case))
+            {
+                if (argc >= 4)
+                {
+                    frames_to_play = os_strtoul((char *)argv[3], NULL, 10);
+                }
+            }
+            else
+            {
+                frames_to_play = os_strtoul((char *)argv[2], NULL, 10);
+                if ((argc >= 4) && (BK_OK != blue_audio_player_parse_test_case(argv[3], &test_case)))
+                {
+                    BK_LOGE(TAG, "unsupported init case: %s\n", argv[3]);
+                    BK_LOGI(TAG, "usage: blue_audio_player init [sbc_i2s|sbc_onboard] [frames]\n");
+                    BK_LOGI(TAG, "   or: blue_audio_player init [frames] [sbc_i2s|sbc_onboard]\n");
+                    return;
+                }
+            }
         }
-        
-        if (BK_OK != blue_audio_player_init(frames_to_play))
+
+        if (BK_OK != blue_audio_player_init(frames_to_play, test_case))
         {
             BK_LOGE(TAG, "init blue audio player fail\n");
         }
@@ -352,7 +445,18 @@ void cli_blue_audio_player_cmd(char *pcWriteBuffer, int xWriteBufferLen, int arg
 
         if (os_strcmp(argv[2], "create") == 0)
         {
-            blue_audio_player_cfg_t cfg = DEFAULT_BLUE_AUDIO_PLAYER_SBC_ONBOARD_SPK_CONFIG();
+            const char *case_name = (argc >= 4) ? argv[3] : "sbc_i2s";
+            blue_audio_player_test_case_t test_case;
+            blue_audio_player_cfg_t cfg;
+
+            if ((BK_OK != blue_audio_player_parse_test_case(case_name, &test_case)) ||
+                (BK_OK != blue_audio_player_get_test_cfg(test_case, &cfg)))
+            {
+                BK_LOGE(TAG, "unsupported create case: %s\n", case_name);
+                BK_LOGI(TAG, "usage: blue_audio_player api create [sbc_i2s|sbc_onboard]\n");
+                return;
+            }
+
             gl_blue_audio_player_handle = blue_audio_player_create(&cfg);
             if (gl_blue_audio_player_handle == NULL)
             {
@@ -430,11 +534,12 @@ void cli_blue_audio_player_cmd(char *pcWriteBuffer, int xWriteBufferLen, int arg
     else if (os_strcmp(argv[1], "help") == 0)
     {
         BK_LOGI(TAG, "blue_audio_player commands:\n");
-        BK_LOGI(TAG, "  init [frames] - Initialize blue audio player, optional frames to play\n");
+        BK_LOGI(TAG, "  init [sbc_i2s|sbc_onboard] [frames] - Initialize player, default: sbc_i2s, 0 frames means all\n");
+        BK_LOGI(TAG, "  init [frames] [sbc_i2s|sbc_onboard] - Compatible argument order\n");
         BK_LOGI(TAG, "  start - Start playing SBC audio\n");
         BK_LOGI(TAG, "  stop - Stop playing\n");
         BK_LOGI(TAG, "  deinit - Deinitialize blue audio player\n");
-        BK_LOGI(TAG, "  api create - Create player handle\n");
+        BK_LOGI(TAG, "  api create [sbc_i2s|sbc_onboard] - Create player handle, default: sbc_i2s\n");
         BK_LOGI(TAG, "  api start - Start player\n");
         BK_LOGI(TAG, "  api stop - Stop player\n");
         BK_LOGI(TAG, "  api destroy - Destroy player handle\n");
