@@ -10,5 +10,5 @@ endif()
 armino_component_register(
     SRCS "${srcs}"
     INCLUDE_DIRS "${incs}"
-    PRIV_REQUIRES bk_common include bk_network_provisioning json bluetooth_dual media
+    PRIV_REQUIRES bk_common include bk_network_provisioning json bluetooth_dual media bk_network_transfer
 )

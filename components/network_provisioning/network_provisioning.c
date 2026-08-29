@@ -35,6 +35,7 @@
 
 #include "media_msg.h"
 #include "media_network_transfer.h"
+#include "network_transfer.h"
 
 #include "media_devices.h"
 #include "media_navigation_transfer.h"
@@ -700,6 +701,16 @@ static void bk_sl_np_ble_msg_handle_demo_low_layer_cb(uint16_t op, uint8_t *data
 
 #if CONFIG_BK_BLE_PROVISIONING
 
+#if CONFIG_P2P
+static void demo_np_reload_sdp_for_p2p(netif_if_t netif_idx)
+{
+    if (netif_idx == NETIF_IF_P2P ||
+        (netif_idx == NETIF_IF_AP && bk_wifi_is_p2p_enabled())) {
+        ntwk_sdp_reload(1000);
+    }
+}
+#endif
+
 static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t status, void *user_data)
 {
     LOGI("demo network provisioning status: %d\n", status);
@@ -713,6 +724,9 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
             if (bk_network_provisioning_get_type() == BK_NETWORK_PROVISIONING_TYPE_BLE)
             {
                 netif_if_t netif_idx = (netif_if_t)user_data;
+#if CONFIG_P2P
+                demo_np_reload_sdp_for_p2p(netif_idx);
+#endif
 #if 0
                 netif_ip4_config_t ip4_config = {0};
 
@@ -736,6 +750,9 @@ static void demo_network_provisioning_status_cb(bk_network_provisioning_status_t
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECT_FAILED:
             break;
         case BK_NETWORK_PROVISIONING_STATUS_RECONNECT_SUCCEED:
+#if CONFIG_P2P
+            demo_np_reload_sdp_for_p2p((netif_if_t)user_data);
+#endif
             break;
         default:
             break;
