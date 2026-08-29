@@ -49,7 +49,7 @@
 #define BT_AUDIO_HF_DEMO_MSG_COUNT          (30)
 #define SCO_MSBC_SAMPLES_PER_FRAME      120
 #define SCO_CVSD_SAMPLES_PER_FRAME      60
-
+#define MSBC_HAS_H2_HEAD 0 //set 0 because audio component already add this header
 #define LOCAL_NAME "soundbar"
 
 #define HF_LOCAL_SPEAKER_WAIT_TIME 2000
@@ -236,7 +236,7 @@ static void bt_audio_hfp_client_voice_data_ind(const uint8_t *data, uint16_t dat
 
     if(flag != 0)
     {
-        LOGI("%s esco flag %d codec %d !!!\n", __func__, flag, bt_audio_hfp_hf_codec);
+        LOGW("%s esco flag %d codec %d !!!\n", __func__, flag, bt_audio_hfp_hf_codec);
     }
 
 	if(CODEC_VOICE_CVSD == bt_audio_hfp_hf_codec && flag)
@@ -1572,7 +1572,11 @@ static void mic_task(void *arg)
     }
     else if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
     {
+#if MSBC_HAS_H2_HEAD
         first_mic_buff_index = 2;
+#else
+        first_mic_buff_index = 0;
+#endif
     }
 
     while (hf_auido_start)
@@ -1589,7 +1593,11 @@ static void mic_task(void *arg)
         }
         else if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
         {
+#if MSBC_HAS_H2_HEAD
             expect_len = MSBC_EXPECT_FRAME_LEN;
+#else
+            expect_len = MSBC_EXPECT_FRAME_LEN + 2;
+#endif
         }
 
         if (hf_mic_data_count + expect_len > sizeof(hf_mic_sco_data))
@@ -1623,12 +1631,14 @@ static void mic_task(void *arg)
 
                 if(bt_audio_hfp_hf_codec == CODEC_VOICE_MSBC)
                 {
-#define MSBC_PADDED (60 - (MSBC_EXPECT_FRAME_LEN + 2))
+#define MSBC_PADDED (60 - hf_mic_data_count) //60 come from esco
+#if MSBC_HAS_H2_HEAD
                     const uint8_t sn[] = {0b0000, 0b0011, 0b1100, 0b1111};
                     hf_mic_sco_data[0] = 1;
                     hf_mic_sco_data[1] = (0b1000 | (sn[h2_index] << 4));
                     os_memset(hf_mic_sco_data + hf_mic_data_count, 0, MSBC_PADDED);
                     h2_index = (h2_index + 1) % 4;
+#endif
                     bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count + MSBC_PADDED);
                 }
                 else
