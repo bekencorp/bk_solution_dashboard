@@ -9,16 +9,16 @@ It uses two chips working together: BK7258 handles audio/video data processing, 
 
 ## Building the Project
 
-- This project depends on `bk_avdk_smp_main`. You need to download the `bk_avdk_smp_main` source code before building.
+- This project depends on `bk_avdk_smp`. You need to download the `bk_avdk_smp` source code before building.
 - Build location: build under the scooter solution directory `./projects/scooter`.
-- Before building, edit the Makefile (`./projects/scooter/Makefile`) to map the dependent source code to `bk_avdk_smp_main`, for example:
+- Before building, edit the Makefile (`./projects/scooter/Makefile`) to map the dependent source code to `bk_avdk_smp`, for example:
 
 ```makefile
-# Map the dependent source to bk_avdk_smp_main
+# Map the dependent source to bk_avdk_smp
 SDK_DIR ?= $(abspath ../..)
 
 # change to
-SDK_DIR = /home/user.name/bk_avdk_smp_main
+SDK_DIR = /home/user.name/bk_avdk_smp
 ```
 
 - Build command: `make bk7258`
