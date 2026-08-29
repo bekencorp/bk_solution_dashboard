@@ -238,8 +238,8 @@ static void bt_audio_hfp_client_voice_data_ind(const uint8_t *data, uint16_t dat
     {
         LOGI("%s esco flag %d codec %d !!!\n", __func__, flag, bt_audio_hfp_hf_codec);
     }
-	
-	if(CODEC_VOICE_CVSD == bt_audio_hfp_hf_codec)
+
+	if(CODEC_VOICE_CVSD == bt_audio_hfp_hf_codec && flag)
 	{
         os_memset(demo_msg.data, 0, data_len);
 	}
@@ -1628,7 +1628,7 @@ static void mic_task(void *arg)
                     hf_mic_sco_data[0] = 1;
                     hf_mic_sco_data[1] = (0b1000 | (sn[h2_index] << 4));
                     os_memset(hf_mic_sco_data + hf_mic_data_count, 0, MSBC_PADDED);
-                    h2_index = (h2_index + 1) % 3;
+                    h2_index = (h2_index + 1) % 4;
                     bk_bt_hf_client_voice_out_write(hfp_peer_addr, hf_mic_sco_data, hf_mic_data_count + MSBC_PADDED);
                 }
                 else
