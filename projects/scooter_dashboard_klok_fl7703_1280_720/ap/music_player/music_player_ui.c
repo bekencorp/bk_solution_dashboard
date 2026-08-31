@@ -184,6 +184,25 @@ static void mp_label(lv_obj_t *label, const char *text)
     }
 }
 
+static int32_t mp_text_width(const char *text, uint32_t length,
+                             const lv_font_t *font, int32_t letter_space)
+{
+    char buf[MP_TITLE_MAX];
+    lv_point_t size = {0};
+
+    if (text == NULL || font == NULL || length == 0U) {
+        return 0;
+    }
+    if (length >= sizeof(buf)) {
+        length = sizeof(buf) - 1U;
+    }
+    memcpy(buf, text, length);
+    buf[length] = '\0';
+    lv_text_get_size(&size, buf, font, letter_space, 0, LV_COORD_MAX,
+                     LV_TEXT_FLAG_NONE);
+    return size.x;
+}
+
 static void mp_apply_font(lv_obj_t *obj, lv_font_t *font)
 {
     if (obj != NULL && lv_obj_is_valid(obj) && font != NULL) {
@@ -383,8 +402,7 @@ static uint8_t mp_select_title_angle(const char *title)
     uint8_t count;
     uint8_t mag;
     bool tilt_right = (s_lyric_angle_sequence & 1U) != 0U;
-    int32_t width = lv_text_get_width(
-        title, (uint32_t)strlen(title), font, 2);
+    int32_t width = mp_text_width(title, (uint32_t)strlen(title), font, 2);
 
     if (width <= 680) {
         mags = short_mag;
@@ -646,7 +664,7 @@ static void mp_lyric_split(const char *text)
                          : &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34;
     uint16_t len = (uint16_t)strlen(text);
     uint16_t n = mp_glyph_offsets(text, off, MP_LYRIC_GLYPHS + 1);
-    int32_t total = lv_text_get_width(text, len, font, 2);
+    int32_t total = mp_text_width(text, len, font, 2);
     int32_t half = total / 2;
     uint16_t best = 0U;   /* chosen break glyph index; 0 == keep single row */
     uint16_t b;
@@ -663,7 +681,7 @@ static void mp_lyric_split(const char *text)
             const char *t = text + off[k];
             while (*t == ' ') t++;
             if (*t == '\0') continue;              /* nothing but spaces after */
-            int32_t w = lv_text_get_width(text, off[k], font, 2);
+            int32_t w = mp_text_width(text, off[k], font, 2);
             int32_t d = w > half ? w - half : half - w;
             if (d < space_diff) { space_diff = d; best = k; }
         }
@@ -674,7 +692,7 @@ static void mp_lyric_split(const char *text)
         int32_t best_diff = 0x7fffffff;
         best = (uint16_t)(n / 2U);
         for (uint16_t k = 1; k < n; k++) {
-            int32_t w = lv_text_get_width(text, off[k], font, 2);
+            int32_t w = mp_text_width(text, off[k], font, 2);
             int32_t d = w > half ? w - half : half - w;
             if (d < best_diff) { best_diff = d; best = k; }
         }
