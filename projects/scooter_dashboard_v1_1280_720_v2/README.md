@@ -69,6 +69,7 @@ The Dashboard V1.0 key-to-GPIO mapping is:
 | Key | GPIO | Action | Function |
 | --- | --- | --- | --- |
 | Up | GPIO32 | Short press | Select the previous item in the Phone Book or Music Player playlist |
+| Up | GPIO32 | Long press | Enter Classic Bluetooth pairing mode so a phone can discover and pair with the device again |
 | Down | GPIO27 | Short press | Select the next item in the Phone Book or Music Player playlist |
 | Down | GPIO27 | Long press | Clear saved network provisioning information and reboot; Home only |
 | Left | GPIO31 | Short press | Select the previous item; switch Phone Book lists; switch Music Player controls or playlist |

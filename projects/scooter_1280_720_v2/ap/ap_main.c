@@ -541,12 +541,17 @@ static void app_key_erase_info(void)
 #endif
 }
 
+static void app_key_bt_pairing(void)
+{
+    bk_bt_enter_pairing_mode(1);
+}
+
 static void app_key_init(void)
 {
 #if CONFIG_BUTTON
     static const key_action_cfg_t s_key_actions[] =
     {
-        { .pin_id = KEY_PIN_UP,     .short_callback = phone_key_answer,             .double_callback = phone_key_hangup, .long_callback = NULL },
+        { .pin_id = KEY_PIN_UP,     .short_callback = phone_key_answer,             .double_callback = phone_key_hangup, .long_callback = app_key_bt_pairing },
         { .pin_id = KEY_PIN_LEFT,   .short_callback = app_key_config_network,        .double_callback = NULL,             .long_callback = NULL },
         { .pin_id = KEY_PIN_RIGHT,  .short_callback = app_key_erase_info,            .double_callback = NULL,             .long_callback = NULL },
         { .pin_id = KEY_PIN_MIDDLE, .short_callback = home_menu_key_short_press,    .double_callback = home_menu_key_double_press, .long_callback = home_menu_key_long_press },

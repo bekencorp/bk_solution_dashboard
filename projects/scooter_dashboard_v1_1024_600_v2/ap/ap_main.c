@@ -552,6 +552,7 @@ typedef enum
     APP_EVENT_KEY_RIGHT,
     APP_EVENT_KEY_ENTER,
     APP_EVENT_KEY_HOME,
+    APP_EVENT_BT_PAIRING,
     APP_EVENT_CONFIG_NETWORK,
     APP_EVENT_OPEN_ASSIST_VIEW,
 } app_event_t;
@@ -594,6 +595,9 @@ static void app_event_thread(void *param)
             case APP_EVENT_KEY_HOME:
                 beken_ui_key_home();
                 break;
+            case APP_EVENT_BT_PAIRING:
+                bk_bt_enter_pairing_mode(1);
+                break;
             case APP_EVENT_CONFIG_NETWORK:
                 app_key_config_network();
                 break;
@@ -634,6 +638,7 @@ APP_EVENT_CALLBACK(app_event_key_left, APP_EVENT_KEY_LEFT)
 APP_EVENT_CALLBACK(app_event_key_right, APP_EVENT_KEY_RIGHT)
 APP_EVENT_CALLBACK(app_event_key_enter, APP_EVENT_KEY_ENTER)
 APP_EVENT_CALLBACK(app_event_key_home, APP_EVENT_KEY_HOME)
+APP_EVENT_CALLBACK(app_event_bt_pairing, APP_EVENT_BT_PAIRING)
 APP_EVENT_CALLBACK(app_event_config_network, APP_EVENT_CONFIG_NETWORK)
 APP_EVENT_CALLBACK(app_event_open_assist_view, APP_EVENT_OPEN_ASSIST_VIEW)
 
@@ -676,7 +681,7 @@ static void app_key_init(void)
     /*
      * Key callbacks only post to the common app-event worker; no UI/GPU action
      * runs in key_thread.
-     *   UP     short : UP
+     *   UP     short : UP | long : Bluetooth pairing
      *   DOWN   short : DOWN | long : network provisioning (HOME only)
      *   LEFT   short : PREV, or LEFT in phone book | long : assist view
      *   RIGHT  short : NEXT, or RIGHT in phone book | long : assist view
@@ -686,7 +691,7 @@ static void app_key_init(void)
      */
     static const key_action_cfg_t s_key_actions[] =
     {
-        { .pin_id = KEY_PIN_UP,     .short_callback = app_event_key_up,    .double_callback = NULL,              .long_callback = NULL },
+        { .pin_id = KEY_PIN_UP,     .short_callback = app_event_key_up,    .double_callback = NULL,              .long_callback = app_event_bt_pairing },
         { .pin_id = KEY_PIN_DOWN,   .short_callback = app_event_key_down,  .double_callback = NULL,              .long_callback = app_event_config_network },
         { .pin_id = KEY_PIN_LEFT,   .short_callback = app_event_key_left,  .double_callback = NULL,              .long_callback = app_event_open_assist_view },
         { .pin_id = KEY_PIN_RIGHT,  .short_callback = app_event_key_right, .double_callback = NULL,              .long_callback = app_event_open_assist_view },
