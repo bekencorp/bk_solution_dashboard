@@ -44,15 +44,15 @@ float target_pwr_ax20 = 15.0; //2G4 N20 target power
  * 0.25dB for 1 LSB
  * used for generate n/ax power table with g/a
  */
-int8_t g_dif_g_n20      = 4;  //differ between g and n20
-int8_t g_dif_g_ax20     = 4; //differ between g and ax20
-int8_t g_dif_g_n40      = 2; //differ between g and n40
-int8_t g_dif_g_ble_ch0  = -14;
-int8_t g_dif_g_ble_ch19 = -13;
-int8_t g_dif_g_ble_ch39 = -12;
-int8_t g_dif_g_thread_ch11 = 37;  //differ between g and thread
-int8_t g_dif_g_thread_ch19 = 40;
-int8_t g_dif_g_thread_ch26 = 38;
+int8_t g_dif_g_n20         = 4;  //differ between g and n20
+int8_t g_dif_g_ax20        = 4; //differ between g and ax20
+int8_t g_dif_g_n40         = 2; //differ between g and n40
+int8_t g_dif_g_ble_ch0     = -8;
+int8_t g_dif_g_ble_ch19    = -7;
+int8_t g_dif_g_ble_ch39    = -7;
+int8_t g_dif_g_thread_ch11 = 44;  //differ between g and thread
+int8_t g_dif_g_thread_ch19 = 45;
+int8_t g_dif_g_thread_ch26 = 44;
 /**
  * shift power index of all format:
  * 0.25dB for 1 LSB
@@ -313,9 +313,9 @@ const TXPWR_CAL_ST gtxpwr_tab_def_g[TXPWR_CAL_2G_MAX] = {
 };
 
 const TXPWR_CAL_ST gtxpwr_tab_def_ble[TXPWR_CAL_2G_MAX] = {
-    INIT_TXPWR_VALUE(1,  51),  // ch0 2402  inused
-    INIT_TXPWR_VALUE(20, 47),  // ch19 2440 inused
-    INIT_TXPWR_VALUE(40, 46),  // ch39 2480 inused
+    INIT_TXPWR_VALUE(1,  98),  // ch0 2402  inused
+    INIT_TXPWR_VALUE(20, 98),  // ch19 2440 inused
+    INIT_TXPWR_VALUE(40, 99),  // ch39 2480 inused
 };
 
 const TXPWR_CAL_ST gtxpwr_tab_def_polar_ble[TXPWR_CAL_2G_MAX] = {
@@ -326,52 +326,52 @@ const TXPWR_CAL_ST gtxpwr_tab_def_polar_ble[TXPWR_CAL_2G_MAX] = {
 
 /* IEEE 802.15.4 2.4G logical ch 11/19/26 (align g_dif_g_thread_ch*); same strip count as BLE/WiFi 2G */
 const TXPWR_CAL_ST gtxpwr_tab_def_thread[TXPWR_CAL_2G_MAX] = {
-    INIT_TXPWR_VALUE(11,54), //ch11
-    INIT_TXPWR_VALUE(19,54), //ch19
-    INIT_TXPWR_VALUE(26,57), //ch26
+    INIT_TXPWR_VALUE(11,48), //ch11
+    INIT_TXPWR_VALUE(19,48), //ch19
+    INIT_TXPWR_VALUE(26,50), //ch26
 };
 /****************************** temperature table  ****************************/
 const TMP_PWR_ST tmp_pwr_tab[TMP_PWR_TAB_LEN] = {
 //trx0x0c[12:15], shift_b, shift_g, shift_ble, shift_thread,xtal_c_delta
-	{  0x00,      -13,     -13,      -13,       -13,         -3},   // 0     ,-40
-	{  0x00,      -12,     -12,      -12,       -12,          1},   // 1     ,-35
-	{  0x00,      -11,     -11,      -11,       -11,          3},   // 2     ,-30
+	{  0x00,      -14,     -14,      -14,       -14,         -2},   // 0     ,-40
+	{  0x00,      -13,     -13,      -13,       -13,          1},   // 1     ,-35
+	{  0x00,      -12,     -12,      -12,       -12,          4},   // 2     ,-30
 	{  0x00,      -10,     -10,      -10,       -10,          5},   // 3     ,-25
 	{  0x00,       -9,      -9,       -9,        -9,          7},   // 4     ,-20
 	{  0x00,       -8,      -8,       -8,        -8,          7},   // 5     ,-15
-	{  0x00,       -6,      -7,       -7,        -7,          8},   // 6     ,-10
-	{  0x00,       -5,      -6,       -6,        -6,          7},   // 7     ,-5
-	{  0x00,       -4,      -4,       -4,        -4,          7},   // 8     ,0
-	{  0x00,       -3,      -3,       -3,        -3,          6},   // 9     ,5
-	{  0x00,       -2,      -2,       -2,        -2,          5},   // 10    ,10
-	{  0x00,        0,       0,        0,         0,          3},   // 11    ,15
+	{  0x00,       -7,      -7,       -7,        -7,          7},   // 6     ,-10
+	{  0x00,       -6,      -6,       -6,        -6,          7},   // 7     ,-5
+	{  0x00,       -5,      -5,       -5,        -5,          7},   // 8     ,0
+	{  0x00,       -4,      -4,       -4,        -4,          6},   // 9     ,5
+	{  0x00,       -1,      -1,       -1,        -1,          5},   // 10    ,10
+	{  0x00,       -1,      -1,       -1,        -1,          3},   // 11    ,15
 	{  0x00,        0,       0,        0,         0,          2},   // 12    ,20
 	{  0x00,        0,       0,        0,         0,          0},   // 13    ,25
 	{  0x00,        0,       0,        0,         0,         -2},   // 14    ,30
-	{  0x00,        0,       0,        0,         0,         -3},   // 15    ,35
-	{  0x00,        2,       2,        2,         2,         -5},   // 16    ,40
-	{  0x00,        3,       3,        3,         3,         -6},   // 17    ,45
-	{  0x00,        3,       3,        3,         3,         -7},   // 18    ,50
-	{  0x00,        3,       3,        3,         3,         -8},   // 19    ,55
-	{  0x00,        3,       3,        3,         3,         -8},   // 20    ,60
-	{  0x00,        4,       4,        4,         4,         -8},   // 21    ,65
-	{  0x00,        5,       5,        5,         5,         -8},   // 22    ,70
-	{  0x00,        5,       5,        5,         5,         -7},   // 23    ,75
-	{  0x00,        6,       6,        6,         6,         -6},   // 24    ,80
-	{  0x00,        7,       7,        7,         7,         -3},   // 25    ,85
-	{  0x00,        8,       8,        8,         8,          1},   // 26    ,90
-	{  0x00,       10,      10,       10,        10,          5},   // 27    ,95
-	{  0x00,       11,      11,       11,        11,         10},   // 28    ,100
-	{  0x00,       12,      12,       12,        12,         17},   // 29    ,105
-	{  0x00,       13,      13,       13,        13,         27},   // 30    ,110
-	{  0x00,       15,      15,       15,        15,         38},   // 31    ,115
-	{  0x00,       16,      16,       16,        16,         54},   // 32    ,120
-	{  0x00,       18,      18,       18,        18,         73},   // 33    ,125
-	{  0x00,       19,      19,       19,        19,         99},   // 34    ,130
-	{  0x00,       20,      20,       20,        20,        120},   // 35    ,135
-	{  0x00,       21,      21,       21,        21,        140},   // 36    ,140
-	{  0x00,       22,      22,       22,        22,        160},   // 37    ,145
-	{  0x00,       23,      23,       23,        23,        180},   // 38    ,150
+	{  0x00,        1,       1,        1,         1,         -3},   // 15    ,35
+	{  0x00,        2,       2,        2,         2,         -4},   // 16    ,40
+	{  0x00,        3,       3,        3,         3,         -5},   // 17    ,45
+	{  0x00,        3,       3,        3,         3,         -6},   // 18    ,50
+	{  0x00,        3,       3,        3,         3,         -7},   // 19    ,55
+	{  0x00,        3,       3,        3,         3,         -7},   // 20    ,60
+	{  0x00,        4,       4,        4,         4,         -7},   // 21    ,65
+	{  0x00,        4,       4,        4,         4,         -7},   // 22    ,70
+	{  0x00,        4,       4,        4,         4,         -6},   // 23    ,75
+	{  0x00,        5,       5,        5,         5,         -4},   // 24    ,80
+	{  0x00,        5,       5,        5,         5,         -2},   // 25    ,85
+	{  0x00,        6,       6,        6,         6,          2},   // 26    ,90
+	{  0x00,        7,       7,        7,         7,          6},   // 27    ,95
+	{  0x00,        8,       8,        8,         8,         11},   // 28    ,100
+	{  0x00,        9,       9,        9,         9,         19},   // 29    ,105
+	{  0x00,       10,      10,       10,        10,         26},   // 30    ,110
+	{  0x00,       11,      11,       11,        11,         36},   // 31    ,115
+	{  0x00,       12,      12,       12,        12,         48},   // 32    ,120
+	{  0x00,       13,      13,       13,        13,         68},   // 33    ,125
+	{  0x00,       14,      14,       14,        14,         89},   // 34    ,130
+	{  0x00,       15,      15,       15,        15,        109},   // 35    ,135
+	{  0x00,       16,      16,       16,        16,        135},   // 36    ,140
+	{  0x00,       17,      17,       17,        17,        170},   // 37    ,145
+	{  0x00,       18,      18,       18,        18,        210},   // 38    ,150
 };
 
 const AUTO_PWR_CALI_CONTEXT auto_pwr =
@@ -400,14 +400,14 @@ const INT16 shift_tab_n40[10]   = {-10,  -6,  0,  0,  0,  0,  0,  0,  0, 0/*4*/}
 #endif
 
 const INT16 shift_tab_b_fcc[WLAN_2_4_G_CHANNEL_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ch1~ch14
-const INT16 shift_tab_g_fcc[WLAN_2_4_G_CHANNEL_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ch1~ch14
-const INT16 shift_tab_n20_fcc[WLAN_2_4_G_CHANNEL_NUM]  = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ch1~ch14
-const INT16 shift_tab_n40_fcc[WLAN_2_4_G_CHANNEL_NUM]  = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ch1~ch14
+const INT16 shift_tab_g_fcc[WLAN_2_4_G_CHANNEL_NUM] = {-6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6}; // ch1~ch14
+const INT16 shift_tab_n20_fcc[WLAN_2_4_G_CHANNEL_NUM]  = {-6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6}; // ch1~ch14
+const INT16 shift_tab_n40_fcc[WLAN_2_4_G_CHANNEL_NUM]  = {-17, -17, -17, -17, -17, -17, -17, -17, -17, -17, -17, -17, -17, -17}; // ch1~ch14
 
-const INT16 shift_tab_b_srrc[WLAN_2_4_G_CHANNEL_NUM]   = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -10, -12, 0}; // ch1~ch14
-const INT16 shift_tab_g_srrc[WLAN_2_4_G_CHANNEL_NUM]   = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -12, -32, 0}; // ch1~ch14
-const INT16 shift_tab_n20_srrc[WLAN_2_4_G_CHANNEL_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -12, -32, 0}; // ch1~ch14
-const INT16 shift_tab_n40_srrc[WLAN_2_4_G_CHANNEL_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -12, -32, 0}; // ch1~ch14
+const INT16 shift_tab_b_srrc[WLAN_2_4_G_CHANNEL_NUM]   = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -20, -30, 0}; // ch1~ch14
+const INT16 shift_tab_g_srrc[WLAN_2_4_G_CHANNEL_NUM]   = {-6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -16, -33, 0}; // ch1~ch14
+const INT16 shift_tab_n20_srrc[WLAN_2_4_G_CHANNEL_NUM] = {-6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -6, -16, -33, 0}; // ch1~ch14
+const INT16 shift_tab_n40_srrc[WLAN_2_4_G_CHANNEL_NUM] = {-17, -17, -17, -17, -17, -17, -17, -17, -17, -17, -30, -17, -17, -17}; // ch1~ch14
 
 void vnd_cal_overlay(void)
 {
