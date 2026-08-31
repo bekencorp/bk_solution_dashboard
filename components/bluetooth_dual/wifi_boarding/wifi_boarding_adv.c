@@ -166,7 +166,12 @@ static bk_err_t wifi_boarding_adv_start_internal(void)
         .secondary_phy = BK_BLE_GAP_PHY_1M,
         .sid = 0,
         .scan_req_notif = 0,
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+        // use pulic address or use rpa address distribute ID key.
+        .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
+#else
         .own_addr_type = BLE_ADDR_TYPE_RANDOM,
+#endif
     };
     const bk_ble_gap_ext_adv_t ext_adv = {
         .instance = WIFI_BOARDING_ADV_HANDLE,
@@ -193,6 +198,8 @@ static bk_err_t wifi_boarding_adv_start_internal(void)
     bk_bluetooth_get_address(display_addr);
     snprintf(adv_name, sizeof(adv_name), "BK_DASHBOARD_%02X%02X%02X", display_addr[0], display_addr[1], display_addr[2]);
 
+    LOGI("Identity address: %02X:%02X:%02X:%02X:%02X:%02X\n", identity_addr[0], identity_addr[1], identity_addr[2], identity_addr[3], identity_addr[4], identity_addr[5]);
+    LOGI("bluetooth address: %02X:%02X:%02X:%02X:%02X:%02X\n", display_addr[0], display_addr[1], display_addr[2], display_addr[3], display_addr[4], display_addr[5]);
     ret = bk_ble_gap_set_device_name(adv_name);
     if (ret != BK_OK)
     {
@@ -208,6 +215,15 @@ static bk_err_t wifi_boarding_adv_start_internal(void)
         return ret;
     }
 
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+    // use pulic address or use rpa address distribute ID key.
+    wifi_boarding_adv_prepare_wait(BK_BLE_GAP_EXT_ADV_SET_RAND_ADDR_COMPLETE_EVT);
+    ret = wifi_boarding_adv_wait_command(bk_ble_gap_set_adv_rand_addr(WIFI_BOARDING_ADV_HANDLE, identity_addr), "identity address");
+    if (ret != BK_OK)
+    {
+        return ret;
+    }
+#else
     os_memcpy(random_addr, identity_addr, sizeof(random_addr));
     random_addr[0]++;
     random_addr[5] |= 0xc0;
@@ -217,6 +233,7 @@ static bk_err_t wifi_boarding_adv_start_internal(void)
     {
         return ret;
     }
+#endif
 
     adv_data[adv_index++] = 2;
     adv_data[adv_index++] = BK_BLE_AD_TYPE_FLAG;
@@ -268,7 +285,7 @@ static bk_err_t wifi_boarding_adv_start_internal(void)
         return ret;
     }
 
-    LOGI("advertising as %s\n", adv_name);
+    LOGI("  %s\n", adv_name);
     return BK_OK;
 }
 

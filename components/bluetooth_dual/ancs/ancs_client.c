@@ -513,6 +513,7 @@ static int32_t ancs_gap_cb(bk_ble_gap_cb_event_t event, bk_ble_gap_cb_param_t *p
 
     switch (event)
     {
+        case BK_BLE_GAP_EXT_ADV_SET_RAND_ADDR_COMPLETE_EVT:
         case BK_BLE_GAP_EXT_ADV_PARAMS_SET_COMPLETE_EVT:
         case BK_BLE_GAP_EXT_ADV_DATA_RAW_SET_COMPLETE_EVT:
         case BK_BLE_GAP_EXT_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT:
@@ -572,6 +573,7 @@ static void ancs_adv_prepare(bk_ble_gap_cb_event_t event)
 
 bk_err_t ancs_client_adv_start(void)
 {
+    ANCS_LOGI("start advertising\n");
     bk_ble_gap_ext_adv_params_t params =
     {
         .type = BK_BLE_GAP_SET_EXT_ADV_PROP_LEGACY_IND,
@@ -583,7 +585,12 @@ bk_err_t ancs_client_adv_start(void)
         .secondary_phy = BK_BLE_GAP_PHY_1M,
         .sid = 1,
         .scan_req_notif = 0,
-        .own_addr_type = BLE_ADDR_TYPE_RPA_PUBLIC,
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+        // use pulic address or use rpa address distribute ID key.
+        .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
+#else
+        .own_addr_type = BLE_ADDR_TYPE_RANDOM,
+#endif
     };
     const bk_ble_gap_ext_adv_t ext_adv =
     {
@@ -594,6 +601,8 @@ bk_err_t ancs_client_adv_start(void)
     uint8_t adv_data[31] = {0};
     uint8_t scan_rsp[31] = {0};
     uint8_t local_addr[6] = {0};
+    uint8_t random_addr[6] = {0};
+    uint8_t identity_addr[6] = {0};
     char name[24] = {0};
     size_t index = 0;
     size_t name_len;
@@ -608,6 +617,7 @@ bk_err_t ancs_client_adv_start(void)
         return BK_FAIL;
     }
 
+    bk_dm_prf_gap_get_identity_addr(identity_addr);
     ret = bk_bluetooth_get_address(local_addr);
     if (ret != BK_OK)
     {
@@ -649,13 +659,37 @@ bk_err_t ancs_client_adv_start(void)
     ret = ancs_adv_command(bk_ble_gap_set_adv_params(ANCS_ADV_INSTANCE, &params), "set adv params");
     if (ret != BK_OK)
     {
+        ANCS_LOGE("set adv params failed: %d\n", ret);
         return ret;
     }
+
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+    // use pulic address or use rpa address distribute ID key.
+    ancs_adv_prepare(BK_BLE_GAP_EXT_ADV_SET_RAND_ADDR_COMPLETE_EVT);
+    ret = ancs_adv_command(bk_ble_gap_set_adv_rand_addr(ANCS_ADV_INSTANCE, identity_addr), "identity address");
+    if (ret != BK_OK)
+    {
+        ANCS_LOGE("set identity address failed: %d\n", ret);
+        return ret;
+    }
+#else
+    memcpy(random_addr, identity_addr, sizeof(random_addr));
+    random_addr[0]++;
+    random_addr[5] |= 0xc0;
+    ancs_adv_prepare(BK_BLE_GAP_EXT_ADV_SET_RAND_ADDR_COMPLETE_EVT);
+    ret = ancs_adv_command(bk_ble_gap_set_adv_rand_addr(ANCS_ADV_INSTANCE, random_addr), "random address");
+    if (ret != BK_OK)
+    {
+        ANCS_LOGE("set random address failed: %d\n", ret);
+        return ret;
+    }
+#endif
 
     ancs_adv_prepare(BK_BLE_GAP_EXT_ADV_DATA_RAW_SET_COMPLETE_EVT);
     ret = ancs_adv_command(bk_ble_gap_set_adv_data_raw(ANCS_ADV_INSTANCE, index, adv_data), "set adv data");
     if (ret != BK_OK)
     {
+        ANCS_LOGE("set adv data failed: %d\n", ret);
         return ret;
     }
 
@@ -663,6 +697,7 @@ bk_err_t ancs_client_adv_start(void)
     ret = ancs_adv_command(bk_ble_gap_set_scan_rsp_data_raw(ANCS_ADV_INSTANCE, name_len + 2, scan_rsp), "set scan response");
     if (ret != BK_OK)
     {
+        ANCS_LOGE("set scan response failed: %d\n", ret);
         return ret;
     }
 
@@ -671,6 +706,10 @@ bk_err_t ancs_client_adv_start(void)
     if (ret == BK_OK)
     {
         ANCS_LOGI("advertising as %s\n", name);
+    }
+    else
+    {
+        ANCS_LOGE("start advertising failed: %d\n", ret);
     }
     return ret;
 }

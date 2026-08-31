@@ -96,7 +96,7 @@ static const bk_gatts_attr_db_t s_gatts_attr_db_service_boarding[] =
         BK_GATT_CHAR_DECL(0xea06,
                           sizeof(s_password), (uint8_t *)s_password,
                           BK_GATT_CHAR_PROP_BIT_READ | BK_GATT_CHAR_PROP_BIT_WRITE,
-                          BK_GATT_PERM_READ | BK_GATT_PERM_WRITE,
+                          BK_GATT_PERM_READ_ENCRYPTED | BK_GATT_PERM_WRITE ,
                           BK_GATT_AUTO_RSP),
     },
 };
@@ -588,6 +588,19 @@ int32_t wifi_boarding_demo_main(ble_boarding_info_t *info)
         wboard_loge("already init");
         return -1;
     }
+
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+    // support for SC BOND
+    uint8_t iocap = BK_IO_CAP_KEYBOARD_DISPLAY;
+    uint8_t auth_req = BK_LE_AUTH_REQ_SC_MITM_BOND;
+    uint8_t key_distr = BK_BLE_KEY_DISTR_ENC_KEY_MASK | BK_BLE_KEY_DISTR_LINK_KEY_MASK; //BK_BLE_KEY_DISTR_ID_KEY_MASK (if RPA Random address, need to distribute ID key);
+    key_distr |= ((BK_BLE_KEY_DISTR_ENC_KEY_MASK | BK_BLE_KEY_DISTR_LINK_KEY_MASK | BK_BLE_KEY_DISTR_ID_KEY_MASK | BK_BLE_KEY_DISTR_CSR_KEY_MASK) << 4);
+    ret = bk_dm_prf_gap_set_security_method(iocap, auth_req, key_distr);
+    if (ret != BK_OK)
+    {
+        wboard_loge("set security method err %d", ret);
+    }
+#endif
 
     s_log_level = BOARDING_DEBUG_LEVEL_INFO;
     s_ble_boarding_info = info;

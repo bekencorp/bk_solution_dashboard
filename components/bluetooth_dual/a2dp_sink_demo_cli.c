@@ -4,6 +4,10 @@
 #include "hfp_hf/hfp_hf_demo.h"
 #include "bt_manager.h"
 #include "bk_avrcp_ct_service.h"
+#include "bluetooth_storage.h"
+#if CONFIG_BLE
+#include "dm_gatt.h"
+#endif
 
 #define MP3_PROMPT_TONE_TEST    (0)
 
@@ -465,6 +469,25 @@ static void cmd_headset_demo(char *pcWriteBuffer, int xWriteBufferLen, int argc,
          bk_bt_app_a2dp_audio_spk_enable(1);
     }
 #endif
+    else if(os_strcmp(argv[1], "clean_bond") == 0)
+    {
+        CLI_LOGI("clean bluetooth bond info (br linkkey + ble bond)\n");
+
+        bluetooth_storage_clean_linkkey_info();
+#if CONFIG_BLE
+        bluetooth_storage_clean_ble_key_info();
+        if (bk_dm_prf_gap_clean_bond() != 0)
+        {
+            CLI_LOGW("clean ble bond in host failed, storage cleared\n");
+        }
+#endif
+        bluetooth_storage_sync_to_flash();
+    }
+    else if(os_strcmp(argv[1], "show_bond_info") == 0)
+    {
+        extern int32_t bluetooth_storage_linkkey_debug(void);
+        bluetooth_storage_linkkey_debug();
+    }
     else
     {
         goto __usage;
