@@ -94,17 +94,17 @@ For detailed setup steps, see [Armino SMP Quick Start: Environment deployment an
 
 ## Build the Project
 
-Taking the `scooter_1280_720` project as an example (located in `projects/scooter_1280_720`), point `SDK_DIR` to the Armino SMP SDK and build locally:
+Taking the `scooter_1280_720_v2` project as an example (located in `projects/scooter_1280_720_v2`), point `SDK_DIR` to the Armino SMP SDK and build locally:
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
 make bk7259 SDK_DIR=~/armino/bk_avdk_smp        # or export SDK_DIR first, then run make bk7259
 ```
 
 Docker build is also supported (use `./dbuild.sh` on Linux / macOS, and `.\dbuild.ps1` on Windows PowerShell):
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
 export SDK_DIR=~/armino/bk_avdk_smp
 ./dbuild.sh make bk7259
 ```
@@ -112,7 +112,7 @@ export SDK_DIR=~/armino/bk_avdk_smp
 After a successful build, the firmware file used for flashing is located at the following path (relative to the `bk_solution_dashboard/` repository root):
 
 ```text
-projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
+projects/scooter_1280_720_v2/build/bk7259/scooter_1280_720_v2/package/all-app.bin
 ```
 
 For detailed descriptions of the build commands, see [Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/index.html).
@@ -134,12 +134,11 @@ For the detailed flashing process, see [Armino SMP Quick Start](https://docs.bek
 
 | Project | Main features | Details |
 | --- | --- | --- |
-| [scooter_1280_720](../projects/scooter_1280_720/) | 1280x720 main product entry: dashboard display, boot AVI, phone JPEG casting, BLE / Wi-Fi provisioning, classic Bluetooth audio, multi-controller Bluetooth, and SD card storage; foundation for the upcoming dual-UVC dual-recording product. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_1280_720/index.html) |
-| [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 product project: adds dashcam recording, contacts/dialing, local music, OTA UI, and the corresponding physical-key interactions on top of scooter_1280_720. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_1280_720_v2/index.html) |
-| [scooter_dashboard_v1_1280_720](../projects/scooter_dashboard_v1_1280_720/) | Dashboard V1.0 hardware base demo: 1280×720 landscape dashboard, boot AVI, speed/turn-signal demo, pet GIF page, phone casting, provisioning, classic Bluetooth, and SD card MTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_v1_1280_720/index.html) |
+| [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 product project (1280×720): MIPI DSI + LVGL dashboard, boot AVI, dashcam recording, phone JPEG casting, BLE / Wi-Fi provisioning, classic Bluetooth audio, contacts/dialing, local music, OTA UI, and physical-key interactions. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_1280_720_v2/index.html) |
 | [scooter_dashboard_v1_1280_720_v2](../projects/scooter_dashboard_v1_1280_720_v2/) | Dashboard V1.0 1280×720 landscape: home navigation, dashcam loop recording/playback, local SD-card music (Music Player), phone book, Assist View, Bluetooth calls, provisioning, SD card MTP, and FTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_v1_1280_720_v2/index.html) |
 | [scooter_dashboard_v1_1024_600_v2](../projects/scooter_dashboard_v1_1024_600_v2/) | Dashboard V1.0 1024×600: home navigation, dashcam loop recording/playback, local SD-card music (Music Player), phone book, Assist View, Bluetooth calls, provisioning, and SD card MTP; do not mix firmware or UI resources with the 1280×720 V2 project. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_v1_1024_600_v2/index.html) |
-| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720: karaoke and MV playback demo with home/Klok main/song list/playback pages, SD-card A/V scan and play, H.264/AAC decode, full-screen Flexa display with key/touch/CLI control, and SD card MTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
+| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720 (ER68576B): karaoke and MV playback demo with home/Klok main/song list/playback pages, SD-card A/V scan and play, H.264/AAC decode, full-screen Flexa display with key/touch/CLI control, and SD card MTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
+| [scooter_dashboard_klok_fl7703_1280_720](../projects/scooter_dashboard_klok_fl7703_1280_720/) | Dashboard Klok 1280×720 (FL7703): same class of features as `scooter_dashboard_klok_1280_720`, fixed for BK7259 + FL7703 boards. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_klok_fl7703_1280_720/index.html) |
 
 ## Beken Resources
 

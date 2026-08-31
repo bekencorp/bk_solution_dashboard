@@ -100,17 +100,17 @@ Docker 编译镜像为 [`bekencorp/armino-idk`](https://hub.docker.com/r/bekenco
 
 ## 编译工程
 
-以 `scooter_1280_720` 工程为例（位于 `projects/scooter_1280_720`），通过 `SDK_DIR` 指向 Armino SMP SDK 后本地编译：
+以 `scooter_1280_720_v2` 工程为例（位于 `projects/scooter_1280_720_v2`），通过 `SDK_DIR` 指向 Armino SMP SDK 后本地编译：
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
 make bk7259 SDK_DIR=~/armino/bk_avdk_smp        # 也可先 export SDK_DIR 再执行 make bk7259
 ```
 
 也支持 Docker 编译（Linux / macOS 用 `./dbuild.sh`，Windows PowerShell 用 `.\dbuild.ps1`）：
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
 export SDK_DIR=~/armino/bk_avdk_smp
 ./dbuild.sh make bk7259
 ```
@@ -118,7 +118,7 @@ export SDK_DIR=~/armino/bk_avdk_smp
 编译成功后，用于烧录的固件文件位于以下路径（相对于 `bk_solution_dashboard/` 仓库根目录）：
 
 ```text
-projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
+projects/scooter_1280_720_v2/build/bk7259/scooter_1280_720_v2/package/all-app.bin
 ```
 
 编译命令的详细说明请参阅 [两轮车方案在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/index.html)。
@@ -140,12 +140,11 @@ projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
 
 | 工程名 | 主要功能 | 详细说明 |
 | --- | --- | --- |
-| [scooter_1280_720](../projects/scooter_1280_720/) | 1280x720 产品工程主入口：仪表显示、开机 AVI、手机 JPEG 投屏、BLE / Wi-Fi 配网、经典蓝牙音频、多控制器蓝牙、SD 卡存储；作为后续双 UVC 双录产品的开发底座。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_1280_720/index.html) |
-| [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 产品工程：在 scooter_1280_720 基础上增加行车记录、联系人/拨号、本地音乐、OTA 界面及对应物理按键交互。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_1280_720_v2/index.html) |
-| [scooter_dashboard_v1_1280_720](../projects/scooter_dashboard_v1_1280_720/) | Dashboard V1.0 硬件基础演示：1280×720 横屏仪表、开机 AVI、车速/转向灯演示、宠物 GIF、手机投屏、配网、经典蓝牙、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720/index.html) |
+| [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 产品工程（1280×720）：MIPI DSI + LVGL 仪表、开机 AVI、行车记录、手机 JPEG 投屏、BLE / Wi-Fi 配网、经典蓝牙音频、联系人与拨号、本地音乐、OTA 界面及物理按键交互。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_1280_720_v2/index.html) |
 | [scooter_dashboard_v1_1280_720_v2](../projects/scooter_dashboard_v1_1280_720_v2/) | Dashboard V1.0 1280×720 横屏：主页导航、Dashcam 循环录像与回放、SD 卡本地音乐（Music Player）、电话簿、Assist View、蓝牙电话、配网、SD 卡 MTP 及 FTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1280_720_v2/index.html) |
 | [scooter_dashboard_v1_1024_600_v2](../projects/scooter_dashboard_v1_1024_600_v2/) | Dashboard V1.0 1024×600：主页导航、Dashcam 循环录像与回放、SD 卡本地音乐（Music Player）、电话簿、Assist View、蓝牙电话、配网、SD 卡 MTP；固件与 UI 资源不可与 1280×720 V2 混用。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_v1_1024_600_v2/index.html) |
-| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720：K 歌与 MV 播放演示，含首页/Klok 主页/歌曲列表/播放页、SD 卡音视频扫描播放、H.264/AAC 解码、全屏 Flexa 直显与按键/触摸/CLI 控制、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
+| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720（ER68576B）：K 歌与 MV 播放演示，含首页/Klok 主页/歌曲列表/播放页、SD 卡音视频扫描播放、H.264/AAC 解码、全屏 Flexa 直显与按键/触摸/CLI 控制、SD 卡 MTP。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
+| [scooter_dashboard_klok_fl7703_1280_720](../projects/scooter_dashboard_klok_fl7703_1280_720/) | Dashboard Klok 1280×720（FL7703）：功能与 `scooter_dashboard_klok_1280_720` 同类，固定用于 BK7259 + FL7703 板卡。 | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/zh_CN/v4.0.1/projects/scooter_dashboard_klok_fl7703_1280_720/index.html) |
 
 ## BEKEN 相关资源
 
