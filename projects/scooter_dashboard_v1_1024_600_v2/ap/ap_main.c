@@ -204,7 +204,8 @@ static void ap_bt_app_init(void)
 		.page_timeout = CONFIG_PAGE_TIMEOUT,
 		.reconnect_interval_ms = CONFIG_RECONN_INTERVAL,
 		.max_reconnect_count = CONFIG_MAX_RECONN_COUNT,
-		.io_capability = BK_BT_IO_CAP_NONE,
+		.io_capability = BK_BT_IO_CAP_IO,
+        .authreq_mode = BK_BT_AUTH_REQ_GENERAL_BONDING,
 	};
     bt_manager_init(&bt_manager_cfg);
 
