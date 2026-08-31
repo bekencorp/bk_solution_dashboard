@@ -210,7 +210,7 @@ Physical Keys
 
 Default key actions:
 
-- Up: answer a call; double press to hang up.
+- Up: short press to answer a call, double press to hang up, and long press to enter Classic Bluetooth pairing mode so a phone can discover and pair with the device again.
 - Left: erase network provisioning data and reboot.
 - Right: erase network provisioning data.
 - Middle: short, double and long presses are delegated to the active page for navigation, focus,
