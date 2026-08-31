@@ -921,7 +921,7 @@ bk_err_t klok_h264_pp_osd_enter_locked(void)
     };
     bk_err_t ret = bk_display_pixel_format_set(s_osd.lcd_handle, &display_format);
     if (ret != BK_OK) {
-        lv_gpu_init(KLOK_OSD_UI_WIDTH / 4U, KLOK_OSD_UI_HEIGHT / 4U);
+        lv_gpu_init(0, 0);
         s_osd.lvgl_gpu_suspended = false;
         disp_enable_update();
         klok_pp_osd_resume_display_refresh_locked();
@@ -1075,7 +1075,7 @@ void klok_h264_pp_osd_leave_locked(void)
 
 #if KLOK_VIDEO_FLEXA_DIRECT_MODE
     if (s_osd.lvgl_gpu_suspended) {
-        lv_gpu_init(KLOK_OSD_UI_WIDTH / 4U, KLOK_OSD_UI_HEIGHT / 4U);
+        lv_gpu_init(0, 0);
         s_osd.lvgl_gpu_suspended = false;
         /* LVGL owns VG-Lite and the DPU again; re-enable its flush pipeline. */
         disp_enable_update();
