@@ -139,7 +139,7 @@ static void klok_bt_sync_base_mac_from_cp(void)
 
 static void klok_bt_start_task(void *arg)
 {
-    static char local_name[] = "KLOK MUSIC";
+    static char local_name[] = "蓝牙音乐";
     bt_manager_cfg_t manager_cfg = {
         .local_name = local_name,
         .device_class = COD_SOUNDBAR,

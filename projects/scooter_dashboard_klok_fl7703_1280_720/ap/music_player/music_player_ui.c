@@ -45,10 +45,37 @@
 #define MP_TITLE_MAX        256
 #define MP_ARTIST_MAX       64
 #define MP_POLL_MS          500
-#define MP_LYRIC_FX_MS      250
 #define MP_TTF_CACHE_GLYPHS 64
 #define MP_BACKGROUND_FILE  "/sd0/musicBackground.mp4"
 #define MP_BG_RETRY_TICKS   4
+
+/* Lyric pose animation: gentle hover + settle-in bounce, driven off offset_y
+ * only, so it never forces a re-rotation/re-snapshot of the overlay. */
+#define MP_POSE_ANIM_MS     50
+#define MP_FLOAT_AMP_PX     5
+#define MP_FLOAT_STEP_DEG   8
+#define MP_BOUNCE_START_PX  16
+
+/* Two-row lyric renderer: each visible row is drawn with 3 stacked spangroups
+ * (magenta / cyan / white) for the neon-glitch look, and the two rows slide in
+ * from opposite corners. Spangroups allow a few random glyphs to be enlarged. */
+#define MP_LYRIC_ROWS       2
+#define MP_GLITCH_LAYERS    3
+#define MP_LYRIC_MAX        128
+#define MP_LYRIC_GLYPHS     80
+#define MP_LYRIC_BASE_X     8
+#define MP_LYRIC_W          1120
+#define MP_LYRIC_SLIDE_DX   190
+#define MP_LYRIC_SLIDE_DY   90
+#define MP_LYRIC_SINGLE_W   750   /* wider than this splits into two rows */
+#define MP_LYRIC_OUT_MS     190
+#define MP_LYRIC_IN_MS      260
+
+typedef enum {
+    MP_LYRIC_IDLE = 0,
+    MP_LYRIC_OUT,
+    MP_LYRIC_IN,
+} mp_lyric_phase_t;
 
 typedef struct {
     char path[MP_PATH_MAX];
@@ -77,18 +104,41 @@ static bk_audio_player_handle_t s_player;
 static volatile mp_local_state_t s_local_state;
 static mp_bt_state_t s_bt;
 static lv_timer_t *s_poll_timer;
-static lv_timer_t *s_lyric_fx_timer;
+static lv_timer_t *s_pose_timer;
+static uint16_t s_lyric_float_deg;
+static int16_t s_lyric_bounce_px;
 static bool s_udisk_mounted;
 static bool s_usb_host_open;
 static bool s_show_udisk;
 static uint8_t s_font_retry_ticks;
 static uint8_t s_bg_retry_ticks;
-static uint8_t s_lyric_fx_phase;
-static uint8_t s_lyric_angle_index = 1U;
+static uint8_t s_lyric_angle_index = 4U;
 static uint8_t s_lyric_angle_sequence;
 static bool s_background_enabled;
 static volatile bool s_leave_pending;
 static char s_displayed_bt_title[MP_TITLE_MAX];
+
+/* Two-row lyric renderer state. */
+static lv_obj_t *s_lyric_span[MP_LYRIC_ROWS][MP_GLITCH_LAYERS];
+static char s_lyric_pending[MP_LYRIC_ROWS][MP_LYRIC_MAX];
+static uint8_t s_lyric_pending_rows;
+static uint8_t s_lyric_shown_rows;
+static uint8_t s_lyric_pending_angle = 4U;
+/* Status/placeholder lines (e.g. "未连接") are rendered flat with no per-char
+ * enlargement; only real media titles get the enlarge treatment. */
+static bool s_lyric_plain;
+static mp_lyric_phase_t s_lyric_phase;
+static uint8_t s_lyric_anim_tag;
+static uint32_t s_lyric_rng = 0x2545f491u;
+
+/* White main body with a colored (magenta/cyan) chromatic edge: the two offset
+ * colored copies sit behind the front white layer. */
+static const uint32_t s_lyric_layer_color[MP_GLITCH_LAYERS] = {
+    0xff39d4U, 0x28e7ffU, 0xfffbffU,
+};
+static const uint8_t s_lyric_layer_opa[MP_GLITCH_LAYERS] = {120U, 160U, 255U};
+static const int8_t s_lyric_layer_dx[MP_GLITCH_LAYERS] = {-6, 6, 0};
+static const int8_t s_lyric_layer_dy[MP_GLITCH_LAYERS] = {4, -4, 0};
 
 /* A single PSRAM copy is shared by all sizes and retained for process life. */
 static void *s_ttf_data;
@@ -96,6 +146,7 @@ static size_t s_ttf_size;
 static lv_font_t *s_ttf_24;
 static lv_font_t *s_ttf_32;
 static lv_font_t *s_ttf_82;
+static lv_font_t *s_ttf_big;
 
 static bool mp_active(void)
 {
@@ -254,6 +305,9 @@ static void mp_fonts_ensure(void)
         s_ttf_82 = lv_tiny_ttf_create_data_ex(s_ttf_data, s_ttf_size, 82,
                                                LV_FONT_KERNING_NORMAL,
                                                MP_TTF_CACHE_GLYPHS);
+        s_ttf_big = lv_tiny_ttf_create_data_ex(s_ttf_data, s_ttf_size, 108,
+                                               LV_FONT_KERNING_NORMAL,
+                                               MP_TTF_CACHE_GLYPHS);
         if (s_ttf_24 == NULL || s_ttf_32 == NULL || s_ttf_82 == NULL) {
             LOGE("tiny_ttf font creation failed (24=%p, 32=%p, 82=%p)\n",
                  s_ttf_24, s_ttf_32, s_ttf_82);
@@ -309,50 +363,381 @@ static void mp_sync_bt_connection(void)
     }
 }
 
-static void mp_ui_bt_state(void)
+static uint8_t mp_select_title_angle(const char *title)
 {
-    const char *title =
-        s_bt.title[0] ? s_bt.title : (s_bt.connected ? "等待手机发送歌词" : "未连接");
+    /*
+     * Angle indices around the neutral 4: below it tilt left (3=-4, 2=-12,
+     * 1=-30), above it tilt right (5=+4, 6=+12, 7=+30). The vertical 90-degree
+     * poses (0/8) are intentionally never used: they read as upside-down.
+     * Alternate the tilt side on every new line and pick the magnitude by
+     * title width so long lines stay flat (readable) while short lines pop.
+     */
+    static const uint8_t short_mag[] = {30U, 12U};
+    static const uint8_t medium_mag[] = {12U, 30U};
+    static const uint8_t long_mag[] = {12U, 4U};
+    const lv_font_t *font =
+        s_ttf_82 != NULL
+            ? s_ttf_82
+            : &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34;
+    const uint8_t *mags;
+    uint8_t count;
+    uint8_t mag;
+    bool tilt_right = (s_lyric_angle_sequence & 1U) != 0U;
+    int32_t width = lv_text_get_width(
+        title, (uint32_t)strlen(title), font, 2);
 
-    mp_label(bk_lv_tool_ui.music_player_bt_status,
-             s_bt.connected ? "已连接手机 / A2DP" : "等待手机连接 / A2DP SINK");
-    if (strcmp(s_displayed_bt_title, title) != 0) {
-        static const uint8_t angles[] = {0U, 1U, 2U, 1U};
-        snprintf(s_displayed_bt_title, sizeof(s_displayed_bt_title), "%s", title);
-        mp_label(bk_lv_tool_ui.music_player_bt_title_magenta, title);
-        mp_label(bk_lv_tool_ui.music_player_bt_title_cyan, title);
-        mp_label(bk_lv_tool_ui.music_player_bt_title, title);
-        s_lyric_fx_phase = 0;
-        s_lyric_angle_index =
-            angles[s_lyric_angle_sequence++ &
-                   ((sizeof(angles) / sizeof(angles[0])) - 1U)];
-        /* Start each new line slightly below center. The OSD origin moves up
-         * over the next three animation ticks without redrawing the text. */
-        klok_mv_render_music_pose(s_lyric_angle_index, 6);
+    if (width <= 680) {
+        mags = short_mag;
+        count = sizeof(short_mag) / sizeof(short_mag[0]);
+    } else if (width <= 900) {
+        mags = medium_mag;
+        count = sizeof(medium_mag) / sizeof(medium_mag[0]);
+    } else {
+        mags = long_mag;
+        count = sizeof(long_mag) / sizeof(long_mag[0]);
     }
-    mp_label(bk_lv_tool_ui.music_player_bt_artist,
-             s_bt.artist[0] ? s_bt.artist : "AVRCP");
-    mp_label(bk_lv_tool_ui.music_player_bt_play,
-             s_bt.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+    mag = mags[s_lyric_angle_sequence % count];
+    switch (mag) {
+    case 4U:
+        return tilt_right ? 5U : 3U;
+    case 30U:
+        return tilt_right ? 7U : 1U;
+    case 12U:
+    default:
+        return tilt_right ? 6U : 2U;
+    }
 }
 
-static void mp_lyric_fx_tick(void)
+static int8_t mp_pose_offset_now(void)
 {
-    static const int8_t intro_offset_y[] = {4, 2, 0};
-    uint8_t phase = s_lyric_fx_phase++;
+    int32_t hover =
+        (MP_FLOAT_AMP_PX * lv_trigo_sin((int16_t)s_lyric_float_deg)) >>
+        LV_TRIGO_SHIFT;
+    int32_t off = hover + s_lyric_bounce_px;
 
-    if (phase < sizeof(intro_offset_y) / sizeof(intro_offset_y[0])) {
-        klok_mv_render_music_pose(s_lyric_angle_index, intro_offset_y[phase]);
-    }
+    if (off > 127) off = 127;
+    else if (off < -128) off = -128;
+    return (int8_t)off;
 }
 
-static void mp_lyric_fx_timer_cb(lv_timer_t *timer)
+/*
+ * Runs at MP_POSE_ANIM_MS. Only the vertical offset changes, which the PP-OSD
+ * provider applies per decoded frame without recomputing the rotated bitmap,
+ * so this stays cheap while giving the lyric a floating / settling feel.
+ */
+static void mp_pose_anim(lv_timer_t *timer)
 {
     (void)timer;
-    if (!mp_active() || !s_bt.playing || s_lyric_fx_phase >= 3U) {
+    if (!mp_active()) return;
+    klok_mv_render_music_pose(s_lyric_angle_index, mp_pose_offset_now());
+    s_lyric_float_deg =
+        (uint16_t)((s_lyric_float_deg + MP_FLOAT_STEP_DEG) % 360U);
+    if (s_lyric_bounce_px > 0) {
+        s_lyric_bounce_px = (int16_t)(s_lyric_bounce_px * 3 / 4);
+        if (s_lyric_bounce_px < 1) s_lyric_bounce_px = 0;
+    }
+}
+
+static uint32_t mp_rand(void)
+{
+    s_lyric_rng ^= s_lyric_rng << 13;
+    s_lyric_rng ^= s_lyric_rng >> 17;
+    s_lyric_rng ^= s_lyric_rng << 5;
+    return s_lyric_rng;
+}
+
+static uint8_t mp_glyph_len(unsigned char c)
+{
+    if (c < 0x80U) return 1U;
+    if ((c >> 5) == 0x6U) return 2U;
+    if ((c >> 4) == 0xeU) return 3U;
+    if ((c >> 3) == 0x1eU) return 4U;
+    return 1U;
+}
+
+/* Byte offset of each UTF-8 glyph; off[n] holds the terminating length. */
+static uint16_t mp_glyph_offsets(const char *text, uint16_t *off, uint16_t cap)
+{
+    uint16_t n = 0;
+    uint16_t i = 0;
+    uint16_t len = (uint16_t)strlen(text);
+
+    while (i < len && n < cap - 1U) {
+        off[n++] = i;
+        i = (uint16_t)(i + mp_glyph_len((unsigned char)text[i]));
+    }
+    off[n] = len;
+    return n;
+}
+
+static void mp_span_clear(lv_obj_t *sg)
+{
+    uint32_t count = lv_spangroup_get_span_count(sg);
+    while (count-- > 0U) {
+        lv_span_t *sp = lv_spangroup_get_child(sg, -1);
+        if (sp == NULL) break;
+        lv_spangroup_delete_span(sg, sp);
+    }
+}
+
+/* Rebuild the three glitch spangroups of one row from text, enlarging a few
+ * random glyphs. All layers share the same segmentation so the neon ghosts
+ * stay aligned with the enlarged characters. */
+static void mp_row_build(uint8_t row, const char *text)
+{
+    uint16_t off[MP_LYRIC_GLYPHS + 1];
+    bool big[MP_LYRIC_GLYPHS];
+    uint16_t n = mp_glyph_offsets(text, off, MP_LYRIC_GLYPHS + 1);
+    const lv_font_t *base =
+        s_ttf_82 != NULL ? s_ttf_82
+                         : &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34;
+    const lv_font_t *huge = s_ttf_big != NULL ? s_ttf_big : base;
+
+    memset(big, 0, sizeof(big));
+    if (n > 0U && s_ttf_big != NULL && !s_lyric_plain) {
+        uint8_t want = (n >= 6U) ? (uint8_t)(1U + (mp_rand() % 2U)) : 1U;
+        for (uint8_t k = 0; k < want; k++) {
+            big[mp_rand() % n] = true;
+        }
+    }
+
+    for (uint8_t layer = 0; layer < MP_GLITCH_LAYERS; layer++) {
+        lv_obj_t *sg = s_lyric_span[row][layer];
+        uint16_t i = 0;
+        if (sg == NULL || !lv_obj_is_valid(sg)) continue;
+        mp_span_clear(sg);
+        while (i < n) {
+            bool b = big[i];
+            uint16_t j = (uint16_t)(i + 1U);
+            char tmp[MP_LYRIC_MAX];
+            uint16_t sb;
+            uint16_t sl;
+            lv_span_t *sp;
+            lv_style_t *st;
+            while (j < n && big[j] == b) j++;
+            sb = off[i];
+            sl = (uint16_t)(off[j] - sb);
+            if (sl >= sizeof(tmp)) sl = sizeof(tmp) - 1U;
+            memcpy(tmp, text + sb, sl);
+            tmp[sl] = '\0';
+            sp = lv_spangroup_new_span(sg);
+            lv_span_set_text(sp, tmp);
+            st = lv_span_get_style(sp);
+            lv_style_set_text_color(st, lv_color_hex(s_lyric_layer_color[layer]));
+            lv_style_set_text_font(st, b ? huge : base);
+            i = j;
+        }
+        lv_spangroup_refresh(sg);
+    }
+}
+
+static int16_t mp_row_base_y(uint8_t row, uint8_t rows)
+{
+    if (rows <= 1U) return 96;
+    return row == 0U ? 20 : 132;
+}
+
+/* Position every visible row for the current animation progress. The three
+ * layer opacities stay fixed so the white body and colored edge do not change
+ * appearance while sliding. */
+static void mp_lyric_anim_exec(void *var, int32_t p)
+{
+    (void)var;
+    for (uint8_t row = 0; row < s_lyric_shown_rows; row++) {
+        int16_t base_x = MP_LYRIC_BASE_X;
+        int16_t base_y = mp_row_base_y(row, s_lyric_shown_rows);
+        int16_t dx = row == 0U ? -MP_LYRIC_SLIDE_DX : MP_LYRIC_SLIDE_DX;
+        int16_t dy = row == 0U ? -MP_LYRIC_SLIDE_DY : MP_LYRIC_SLIDE_DY;
+        int16_t x;
+        int16_t y;
+        if (s_lyric_phase == MP_LYRIC_OUT) {
+            x = (int16_t)(base_x + dx * p / 100);
+            y = (int16_t)(base_y + dy * p / 100);
+        } else {
+            x = (int16_t)(base_x + dx * (100 - p) / 100);
+            y = (int16_t)(base_y + dy * (100 - p) / 100);
+        }
+        for (uint8_t layer = 0; layer < MP_GLITCH_LAYERS; layer++) {
+            lv_obj_t *sg = s_lyric_span[row][layer];
+            if (sg == NULL || !lv_obj_is_valid(sg)) continue;
+            lv_obj_set_pos(sg, x + s_lyric_layer_dx[layer], y + s_lyric_layer_dy[layer]);
+            lv_obj_set_style_opa(sg, (lv_opa_t)s_lyric_layer_opa[layer], LV_PART_MAIN);
+        }
+    }
+    klok_mv_render_overlay_dirty();
+}
+
+static void mp_lyric_show_rows(uint8_t rows)
+{
+    for (uint8_t row = 0; row < MP_LYRIC_ROWS; row++) {
+        for (uint8_t layer = 0; layer < MP_GLITCH_LAYERS; layer++) {
+            lv_obj_t *sg = s_lyric_span[row][layer];
+            if (sg == NULL || !lv_obj_is_valid(sg)) continue;
+            if (row < rows) {
+                lv_obj_remove_flag(sg, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(sg, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+    }
+}
+
+/* Swap in the pending lines, apply the new tilt/bounce, and park everything at
+ * the entrance corner (fully transparent) so the IN animation has no flash. */
+static void mp_lyric_commit_pending(void)
+{
+    s_lyric_shown_rows = s_lyric_pending_rows;
+    for (uint8_t row = 0; row < s_lyric_shown_rows; row++) {
+        mp_row_build(row, s_lyric_pending[row]);
+    }
+    mp_lyric_show_rows(s_lyric_shown_rows);
+    s_lyric_angle_index = s_lyric_pending_angle;
+    s_lyric_bounce_px = MP_BOUNCE_START_PX;
+    klok_mv_render_music_pose(s_lyric_angle_index, mp_pose_offset_now());
+    s_lyric_phase = MP_LYRIC_IN;
+    mp_lyric_anim_exec(NULL, 0);
+}
+
+static void mp_lyric_start_phase(mp_lyric_phase_t phase);
+
+static void mp_lyric_out_done(lv_anim_t *a)
+{
+    (void)a;
+    mp_lyric_commit_pending();
+    mp_lyric_start_phase(MP_LYRIC_IN);
+}
+
+static void mp_lyric_in_done(lv_anim_t *a)
+{
+    (void)a;
+    s_lyric_phase = MP_LYRIC_IDLE;
+}
+
+static void mp_lyric_start_phase(mp_lyric_phase_t phase)
+{
+    lv_anim_t a;
+    s_lyric_phase = phase;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_lyric_anim_tag);
+    lv_anim_set_exec_cb(&a, mp_lyric_anim_exec);
+    lv_anim_set_values(&a, 0, 100);
+    if (phase == MP_LYRIC_OUT) {
+        lv_anim_set_duration(&a, MP_LYRIC_OUT_MS);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+        lv_anim_set_completed_cb(&a, mp_lyric_out_done);
+    } else {
+        lv_anim_set_duration(&a, MP_LYRIC_IN_MS);
+        lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+        lv_anim_set_completed_cb(&a, mp_lyric_in_done);
+    }
+    lv_anim_start(&a);
+}
+
+/* Decide how a lyric is laid out over the (up to) two rows:
+ *   1) if the line contains a usable space, always break at the space closest
+ *      to the middle (many lyrics use a space to mark the natural pause);
+ *   2) otherwise keep it on one row, unless it is too wide, in which case fall
+ *      back to a balanced byte split. */
+static void mp_lyric_split(const char *text)
+{
+    uint16_t off[MP_LYRIC_GLYPHS + 1];
+    const lv_font_t *font =
+        s_ttf_82 != NULL ? s_ttf_82
+                         : &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34;
+    uint16_t len = (uint16_t)strlen(text);
+    uint16_t n = mp_glyph_offsets(text, off, MP_LYRIC_GLYPHS + 1);
+    int32_t total = lv_text_get_width(text, len, font, 2);
+    int32_t half = total / 2;
+    uint16_t best = 0U;   /* chosen break glyph index; 0 == keep single row */
+    uint16_t b;
+    const char *tail;
+
+    /* Pass 1: prefer a real space nearest the middle (both sides non-empty). */
+    {
+        int32_t space_diff = 0x7fffffff;
+        for (uint16_t k = 1; k < n; k++) {
+            if (text[off[k] - 1] != ' ') continue;
+            uint16_t h = off[k];
+            while (h > 0U && text[h - 1U] == ' ') h--;
+            if (h == 0U) continue;                 /* nothing but spaces before */
+            const char *t = text + off[k];
+            while (*t == ' ') t++;
+            if (*t == '\0') continue;              /* nothing but spaces after */
+            int32_t w = lv_text_get_width(text, off[k], font, 2);
+            int32_t d = w > half ? w - half : half - w;
+            if (d < space_diff) { space_diff = d; best = k; }
+        }
+    }
+
+    /* Pass 2: no usable space -> single row unless it is too wide. */
+    if (best == 0U && total > MP_LYRIC_SINGLE_W && n > 1U) {
+        int32_t best_diff = 0x7fffffff;
+        best = (uint16_t)(n / 2U);
+        for (uint16_t k = 1; k < n; k++) {
+            int32_t w = lv_text_get_width(text, off[k], font, 2);
+            int32_t d = w > half ? w - half : half - w;
+            if (d < best_diff) { best_diff = d; best = k; }
+        }
+    }
+
+    if (best == 0U) {
+        snprintf(s_lyric_pending[0], MP_LYRIC_MAX, "%s", text);
+        s_lyric_pending[1][0] = '\0';
+        s_lyric_pending_rows = 1U;
         return;
     }
-    mp_lyric_fx_tick();
+
+    b = off[best];
+    {
+        uint16_t n0 = b < MP_LYRIC_MAX ? b : (MP_LYRIC_MAX - 1U);
+        memcpy(s_lyric_pending[0], text, n0);
+        while (n0 > 0U && s_lyric_pending[0][n0 - 1U] == ' ') n0--;
+        s_lyric_pending[0][n0] = '\0';
+    }
+    tail = text + b;
+    while (*tail == ' ') tail++;
+    snprintf(s_lyric_pending[1], MP_LYRIC_MAX, "%s", tail);
+    s_lyric_pending_rows = 2U;
+}
+
+/* Entry point for a new lyric line: split, pick tilt, then run OUT/IN slide. */
+static void mp_set_lyric(const char *title, bool has_media_title)
+{
+    mp_lyric_split(title);
+    s_lyric_pending_angle = has_media_title ? mp_select_title_angle(title) : 4U;
+    /* Keep random per-character enlargement for real lyrics. Status text such
+     * as "未连接" remains at a uniform size. */
+    s_lyric_plain = !has_media_title;
+    if (has_media_title) s_lyric_angle_sequence++;
+
+    /* New line enters immediately (slide-in only). We no longer wait for the
+     * old line to slide out first, so there is no blank gap between lines and
+     * the latency is roughly halved. */
+    lv_anim_delete(&s_lyric_anim_tag, mp_lyric_anim_exec);
+    mp_lyric_commit_pending();
+    mp_lyric_start_phase(MP_LYRIC_IN);
+}
+
+static void mp_ui_bt_state(void)
+{
+    mp_label(bk_lv_tool_ui.music_player_bt_status,
+             s_bt.connected ? "已连接手机 / A2DP" : "等待手机连接 / A2DP SINK");
+    {
+        /* "未连接" / "等待手机发送歌词" are shown as a plain, flat line (no tilt,
+         * no per-char enlarge); only a real media title gets the full effect. */
+        bool has_media_title = s_bt.connected && s_bt.title[0] != '\0';
+        const char *title = s_bt.connected
+                                ? (s_bt.title[0] ? s_bt.title : "等待手机发送歌词")
+                                : "未连接";
+        if (strcmp(s_displayed_bt_title, title) != 0) {
+            snprintf(s_displayed_bt_title, sizeof(s_displayed_bt_title), "%s", title);
+            mp_set_lyric(title, has_media_title);
+        }
+    }
+    mp_label(bk_lv_tool_ui.music_player_bt_artist,
+             s_bt.artist[0] ? s_bt.artist : "BLUETOOTH AUDIO");
+    mp_label(bk_lv_tool_ui.music_player_bt_play,
+             s_bt.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
 }
 
 static void mp_bt_ui_async(void *user_data)
@@ -855,6 +1240,51 @@ void music_player_ui_key_next(void)
     else music_player_ui_bt_next();
 }
 
+static lv_obj_t *mp_lyric_make_span(lv_obj_t *parent)
+{
+    lv_obj_t *sg = lv_spangroup_create(parent);
+    lv_obj_set_pos(sg, MP_LYRIC_BASE_X, 108);
+    lv_obj_set_width(sg, MP_LYRIC_W);
+    lv_obj_set_style_bg_opa(sg, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sg, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(sg, 0, LV_PART_MAIN);
+    lv_spangroup_set_align(sg, LV_TEXT_ALIGN_CENTER);
+    lv_spangroup_set_overflow(sg, LV_SPAN_OVERFLOW_ELLIPSIS);
+    lv_spangroup_set_mode(sg, LV_SPAN_MODE_BREAK);
+    lv_spangroup_set_max_lines(sg, 1);
+    lv_obj_remove_flag(sg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(sg, LV_OBJ_FLAG_HIDDEN);
+    return sg;
+}
+
+static void mp_lyric_hide_generated(lv_obj_t *obj)
+{
+    if (obj != NULL && lv_obj_is_valid(obj)) {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void mp_lyric_build_objects(void)
+{
+    lv_obj_t *panel = bk_lv_tool_ui.music_player_bt_panel;
+    if (panel == NULL || !lv_obj_is_valid(panel)) return;
+
+    /* The generated single-line title labels are superseded by the two-row
+     * span renderer; keep them hidden for controller-state compatibility. */
+    mp_lyric_hide_generated(bk_lv_tool_ui.music_player_bt_title_magenta);
+    mp_lyric_hide_generated(bk_lv_tool_ui.music_player_bt_title_cyan);
+    mp_lyric_hide_generated(bk_lv_tool_ui.music_player_bt_title);
+
+    for (uint8_t row = 0; row < MP_LYRIC_ROWS; row++) {
+        for (uint8_t layer = 0; layer < MP_GLITCH_LAYERS; layer++) {
+            if (s_lyric_span[row][layer] == NULL ||
+                !lv_obj_is_valid(s_lyric_span[row][layer])) {
+                s_lyric_span[row][layer] = mp_lyric_make_span(panel);
+            }
+        }
+    }
+}
+
 void music_player_ui_enter(void)
 {
     klok_mv_render_leave_locked();
@@ -867,24 +1297,26 @@ void music_player_ui_enter(void)
     s_show_udisk = false;
     s_font_retry_ticks = 0;
     s_bg_retry_ticks = 0;
-    s_lyric_fx_phase = 0;
-    s_lyric_angle_index = 1U;
+    s_lyric_angle_index = 4U;
     s_lyric_angle_sequence = 0U;
+    s_lyric_float_deg = 0U;
+    s_lyric_bounce_px = 0;
+    s_lyric_shown_rows = 0U;
+    s_lyric_phase = MP_LYRIC_IDLE;
+    s_lyric_rng ^= (uint32_t)lv_tick_get() * 2654435761u;
     s_displayed_bt_title[0] = '\0';
     s_background_enabled = true;
     mp_sync_bt_connection();
     mp_fonts_ensure();
     mp_apply_runtime_fonts();
+    mp_lyric_build_objects();
     mp_set_panels();
     mp_ui_bt_state();
     mp_ui_now_playing();
     if (s_poll_timer == NULL) s_poll_timer = lv_timer_create(mp_poll, MP_POLL_MS, NULL);
-    if (s_lyric_fx_timer == NULL) {
-        s_lyric_fx_timer = lv_timer_create(mp_lyric_fx_timer_cb,
-                                           MP_LYRIC_FX_MS,
-                                           NULL);
-    }
+    if (s_pose_timer == NULL) s_pose_timer = lv_timer_create(mp_pose_anim, MP_POSE_ANIM_MS, NULL);
     (void)mp_background_start();
+    klok_mv_render_music_pose(s_lyric_angle_index, 0);
 }
 
 void music_player_ui_leave(void)
@@ -895,10 +1327,18 @@ void music_player_ui_leave(void)
         lv_timer_delete(s_poll_timer);
         s_poll_timer = NULL;
     }
-    if (s_lyric_fx_timer != NULL) {
-        lv_timer_delete(s_lyric_fx_timer);
-        s_lyric_fx_timer = NULL;
+    if (s_pose_timer != NULL) {
+        lv_timer_delete(s_pose_timer);
+        s_pose_timer = NULL;
     }
+    lv_anim_delete(&s_lyric_anim_tag, mp_lyric_anim_exec);
+    for (uint8_t row = 0; row < MP_LYRIC_ROWS; row++) {
+        for (uint8_t layer = 0; layer < MP_GLITCH_LAYERS; layer++) {
+            s_lyric_span[row][layer] = NULL;
+        }
+    }
+    s_lyric_shown_rows = 0U;
+    s_lyric_phase = MP_LYRIC_IDLE;
     if (s_player != NULL) bk_audio_player_stop(s_player);
     s_local_state = MP_LOCAL_STOPPED;
     mp_usb_host_leave();

@@ -29,7 +29,7 @@ bool klok_h264_pp_osd_push_video_take(void *pixel,
 bool klok_h264_flexa_display_take(void *frame_buffer);
 void klok_h264_pp_osd_cancel_pending_frame(void);
 void klok_h264_pp_osd_overlay_dirty(void);
-/* Music OSD pose: angle 0=-30 degrees, 1=0 degrees, 2=+30 degrees. */
+/* Music OSD pose: -90, -30, -12, -4, 0, +4, +12, +30, +90 degrees. */
 void klok_h264_pp_osd_set_music_pose(uint8_t angle_index, int8_t offset_y);
 
 #ifdef __cplusplus

@@ -165,44 +165,45 @@ void init_page_music_player(bk_lv_ui_t *ui)
                                          0xb8f5ff);
     lv_obj_add_flag(ui->music_player_bt_status, LV_OBJ_FLAG_HIDDEN);
 
-    lyric_tag = mp_text(ui->music_player_bt_panel, "LIVE  LYRICS", 530, 8, 220,
-                        &lv_font_montserrat_regular_16, 0xe7faff);
-    lv_obj_add_flag(lyric_tag, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_text_letter_space(lyric_tag, 5, LV_PART_MAIN);
+    lyric_tag = mp_text(ui->music_player_bt_panel, "NOW  PLAYING", 468, 2, 200,
+                        &lv_font_montserrat_regular_16, 0x8ef5ff);
+    lv_obj_set_style_text_letter_space(lyric_tag, 4, LV_PART_MAIN);
     lv_obj_set_style_text_align(lyric_tag, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     ui->music_player_bt_title_magenta =
         mp_text(ui->music_player_bt_panel, "未连接", 4, 25, 1120,
                 &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34,
-                0xff4d2e);
+                0xff39d4);
     ui->music_player_bt_title_cyan =
         mp_text(ui->music_player_bt_panel, "未连接", 12, 21, 1120,
                 &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34,
-                0xffc44d);
-    lv_obj_add_flag(ui->music_player_bt_title_magenta, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(ui->music_player_bt_title_cyan, LV_OBJ_FLAG_HIDDEN);
+                0x28e7ff);
     ui->music_player_bt_title = mp_text(ui->music_player_bt_panel, "未连接",
                                         8, 23, 1120,
                                         &lv_font_Alibaba_PuHuiTi_2_0_75_SemiBold_75_SemiBold_34,
-                                        0xffffff);
-    lv_obj_set_style_text_opa(ui->music_player_bt_title_magenta, 110, LV_PART_MAIN);
-    lv_obj_set_style_text_opa(ui->music_player_bt_title_cyan, 165, LV_PART_MAIN);
-    lv_obj_set_style_text_letter_space(ui->music_player_bt_title, 0, LV_PART_MAIN);
+                                        0xfffbff);
+    lv_obj_set_style_text_opa(ui->music_player_bt_title_magenta, 105, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(ui->music_player_bt_title_cyan, 145, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(ui->music_player_bt_title_magenta, 2, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(ui->music_player_bt_title_cyan, 2, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(ui->music_player_bt_title, 2, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(ui->music_player_bt_title, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_label_set_long_mode(ui->music_player_bt_title_magenta, LV_LABEL_LONG_MODE_WRAP);
     lv_label_set_long_mode(ui->music_player_bt_title_cyan, LV_LABEL_LONG_MODE_WRAP);
     lv_label_set_long_mode(ui->music_player_bt_title, LV_LABEL_LONG_MODE_WRAP);
-    lv_obj_set_height(ui->music_player_bt_title_magenta, 270);
-    lv_obj_set_height(ui->music_player_bt_title_cyan, 270);
-    lv_obj_set_height(ui->music_player_bt_title, 270);
+    lv_obj_set_height(ui->music_player_bt_title_magenta, 215);
+    lv_obj_set_height(ui->music_player_bt_title_cyan, 215);
+    lv_obj_set_height(ui->music_player_bt_title, 215);
     lv_obj_set_style_text_align(ui->music_player_bt_title_magenta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(ui->music_player_bt_title_cyan, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(ui->music_player_bt_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    ui->music_player_bt_artist = mp_text(ui->music_player_bt_panel, "AVRCP",
-                                         190, 238, 900,
+    ui->music_player_bt_artist = mp_text(ui->music_player_bt_panel, "BLUETOOTH AUDIO",
+                                         190, 254, 756,
                                          &lv_font_Alibaba_PuHuiTi_2_0_55_Regular_55_Regular_24,
-                                         0xe1e9f6);
-    lv_obj_add_flag(ui->music_player_bt_artist, LV_OBJ_FLAG_HIDDEN);
+                                         0xcbd7ef);
+    lv_obj_set_style_text_align(ui->music_player_bt_artist, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(ui->music_player_bt_artist, 2, LV_PART_MAIN);
+    lv_obj_set_style_text_opa(ui->music_player_bt_artist, 215, LV_PART_MAIN);
     ui->music_player_bt_play = lv_label_create(ui->music_player_bt_panel);
     lv_obj_add_flag(ui->music_player_bt_play, LV_OBJ_FLAG_HIDDEN);
 

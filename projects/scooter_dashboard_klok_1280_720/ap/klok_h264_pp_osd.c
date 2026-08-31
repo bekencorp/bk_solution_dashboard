@@ -27,10 +27,9 @@
 #define KLOK_OSD_MUSIC_HEIGHT         (320U)
 #define KLOK_OSD_OUTPUT_SLOTS         (2U)
 #define KLOK_OSD_FRAME_DONE_TIMEOUT_MS (3000U)
-#define KLOK_OSD_MUSIC_ANGLE_COUNT    (3U)
+#define KLOK_OSD_MUSIC_ANGLE_COUNT    (9U)
+#define KLOK_OSD_MUSIC_ANGLE_NEUTRAL  (4U)
 #define KLOK_OSD_ROTATE_FP_SHIFT      (10)
-#define KLOK_OSD_ROTATE_COS_30        (887)
-#define KLOK_OSD_ROTATE_SIN_30        (512)
 #define KLOK_OSD_MUSIC_ROTATION_ENABLE (1)
 #define KLOK_OSD_MUSIC_ROTATE_MARGIN  (4U)
 
@@ -94,18 +93,20 @@ typedef struct {
 
 static klok_pp_osd_ctx_t s_osd;
 
-static void klok_pp_osd_normalize_white_alpha(uint32_t *pixels,
-                                               uint16_t width,
-                                               uint16_t height)
+static void klok_pp_osd_sanitize_argb(uint32_t *pixels,
+                                      uint16_t width,
+                                      uint16_t height)
 {
     const uint32_t count = (uint32_t)width * height;
 
     for (uint32_t i = 0; i < count; i++) {
         const uint32_t alpha = pixels[i] >> 24;
         /* LVGL may leave RGB data behind fully transparent pixels. VCDEC PP
-         * reads all four bytes, so clear those pixels completely and force
-         * every visible glyph pixel to neutral white while preserving alpha. */
-        pixels[i] = alpha < 8U ? 0U : ((alpha << 24) | 0x00FFFFFFU);
+         * reads all four bytes, so clear those pixels completely. Preserve
+         * visible RGB values so the music overlay can render colored glow. */
+        if (alpha < 8U) {
+            pixels[i] = 0U;
+        }
     }
 }
 
@@ -150,22 +151,33 @@ static bool klok_pp_osd_rotate_music_tight(const uint32_t *src,
                                            uint16_t max_y,
                                            uint32_t *dst,
                                            uint32_t dst_capacity,
-                                           bool clockwise,
+                                           uint8_t angle_index,
                                            uint16_t *dst_width,
                                            uint16_t *dst_height)
 {
+    /* Fixed-point lookup for -90, -30, -12, -4, 0, +4, +12, +30, +90. */
+    static const int16_t cos_table[KLOK_OSD_MUSIC_ANGLE_COUNT] = {
+        0, 887, 1002, 1022, 1024, 1022, 1002, 887, 0,
+    };
+    static const int16_t sin_table[KLOK_OSD_MUSIC_ANGLE_COUNT] = {
+        -1024, -512, -213, -71, 0, 71, 213, 512, 1024,
+    };
     const uint32_t source_width = (uint32_t)max_x - min_x + 1U;
     const uint32_t source_height = (uint32_t)max_y - min_y + 1U;
+    const int32_t cos_value = cos_table[angle_index];
+    const int32_t sin_value = sin_table[angle_index];
+    const uint32_t abs_sin =
+        (uint32_t)(sin_value < 0 ? -sin_value : sin_value);
     const uint32_t rotated_width =
-        (((source_width * KLOK_OSD_ROTATE_COS_30 +
-           source_height * KLOK_OSD_ROTATE_SIN_30 +
+        (((source_width * (uint32_t)cos_value +
+           source_height * abs_sin +
            ((1U << KLOK_OSD_ROTATE_FP_SHIFT) - 1U)) >>
           KLOK_OSD_ROTATE_FP_SHIFT) +
          2U * KLOK_OSD_MUSIC_ROTATE_MARGIN + 3U) &
         ~3U;
     const uint32_t rotated_height =
-        (((source_width * KLOK_OSD_ROTATE_SIN_30 +
-           source_height * KLOK_OSD_ROTATE_COS_30 +
+        (((source_width * abs_sin +
+           source_height * (uint32_t)cos_value +
            ((1U << KLOK_OSD_ROTATE_FP_SHIFT) - 1U)) >>
           KLOK_OSD_ROTATE_FP_SHIFT) +
          2U * KLOK_OSD_MUSIC_ROTATE_MARGIN + 1U) &
@@ -175,8 +187,6 @@ static bool klok_pp_osd_rotate_music_tight(const uint32_t *src,
     const int32_t src_cy = ((int32_t)min_y + max_y) / 2;
     const int32_t dst_cx = ((int32_t)rotated_width - 1) / 2;
     const int32_t dst_cy = ((int32_t)rotated_height - 1) / 2;
-    const int32_t sin_value =
-        clockwise ? KLOK_OSD_ROTATE_SIN_30 : -KLOK_OSD_ROTATE_SIN_30;
 
     if (rotated_width > KLOK_OSD_UI_WIDTH ||
         rotated_height > KLOK_OSD_UI_HEIGHT ||
@@ -190,11 +200,11 @@ static bool klok_pp_osd_rotate_music_tight(const uint32_t *src,
             const int32_t dx = x - dst_cx;
             const int32_t sx =
                 src_cx +
-                ((KLOK_OSD_ROTATE_COS_30 * dx + sin_value * dy) >>
+                ((cos_value * dx + sin_value * dy) >>
                  KLOK_OSD_ROTATE_FP_SHIFT);
             const int32_t sy =
                 src_cy +
-                ((-sin_value * dx + KLOK_OSD_ROTATE_COS_30 * dy) >>
+                ((-sin_value * dx + cos_value * dy) >>
                  KLOK_OSD_ROTATE_FP_SHIFT);
             dst[(uint32_t)y * rotated_width + (uint32_t)x] =
                 (sx >= min_x && sx <= max_x && sy >= min_y && sy <= max_y)
@@ -318,7 +328,7 @@ static bool klok_pp_osd_provider_acquire(bk_h264_decode_osd_t *osd,
     uint16_t selected_height = ctx->overlay_height;
     if (ctx->music_overlay &&
         ctx->music_rotated_ready &&
-        ctx->music_angle_index != 1U) {
+        ctx->music_angle_index != KLOK_OSD_MUSIC_ANGLE_NEUTRAL) {
         selected_buffer = ctx->music_rotated_buffer;
         selected_origin_x = ctx->music_rotated_origin_x;
         selected_origin_y = ctx->music_rotated_origin_y;
@@ -592,7 +602,7 @@ static bk_err_t klok_pp_osd_allocate_buffer(void)
         s_osd.overlay_buffer = NULL;
         return BK_FAIL;
     }
-    s_osd.music_angle_index = 1U;
+    s_osd.music_angle_index = KLOK_OSD_MUSIC_ANGLE_NEUTRAL;
     s_osd.music_offset_y = 0;
     s_osd.music_rotated_ready = false;
     if (s_osd.music_overlay) {
@@ -637,7 +647,7 @@ static void klok_pp_osd_free_buffer(void)
     s_osd.music_rotated_origin_y = 0U;
     s_osd.music_rotated_width = 0U;
     s_osd.music_rotated_height = 0U;
-    s_osd.music_angle_index = 1U;
+    s_osd.music_angle_index = KLOK_OSD_MUSIC_ANGLE_NEUTRAL;
     s_osd.music_offset_y = 0;
     if (s_osd.overlay_buffer != NULL) {
         bk_frame_buffer_free(s_osd.overlay_buffer);
@@ -678,7 +688,7 @@ static bk_err_t klok_pp_osd_refresh_overlay_locked(void)
     lv_vendor_gpu_unlock(gpu_locked);
 
     if (result == LV_RESULT_OK && s_osd.music_overlay) {
-        klok_pp_osd_normalize_white_alpha(
+        klok_pp_osd_sanitize_argb(
             (uint32_t *)s_osd.overlay_buffer,
             s_osd.overlay_width,
             s_osd.overlay_height);
@@ -686,7 +696,7 @@ static bk_err_t klok_pp_osd_refresh_overlay_locked(void)
 
     if (result == LV_RESULT_OK &&
         s_osd.music_overlay &&
-        s_osd.music_angle_index != 1U &&
+        s_osd.music_angle_index != KLOK_OSD_MUSIC_ANGLE_NEUTRAL &&
         s_osd.music_rotated_buffer != NULL) {
         uint16_t min_x;
         uint16_t min_y;
@@ -709,7 +719,7 @@ static bk_err_t klok_pp_osd_refresh_overlay_locked(void)
                 max_y,
                 (uint32_t *)s_osd.music_rotated_buffer,
                 s_osd.music_rotated_buffer_size,
-                s_osd.music_angle_index == 2U,
+                s_osd.music_angle_index,
                 &s_osd.music_rotated_width,
                 &s_osd.music_rotated_height)) {
             const int32_t center_x =
@@ -1246,11 +1256,12 @@ void klok_h264_pp_osd_set_music_pose(uint8_t angle_index, int8_t offset_y)
     }
 
     if (angle_index >= KLOK_OSD_MUSIC_ANGLE_COUNT) {
-        angle_index = 1U;
+        angle_index = KLOK_OSD_MUSIC_ANGLE_NEUTRAL;
     }
     rtos_lock_mutex(&s_osd.mutex);
     if (s_osd.music_angle_index != angle_index) {
         s_osd.music_rotated_ready = false;
+        s_osd.overlay_dirty = true;
     }
     s_osd.music_angle_index = angle_index;
     s_osd.music_offset_y = offset_y;
