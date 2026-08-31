@@ -420,8 +420,6 @@ void dashcam_ui_suspend_keep_recording(void)
     {
         dashcam_app_stop_playback();
     }
-
-    dashcam_app_pause_segment_tick();
 }
 
 /* Assist-view leave: LVGL is back, re-arm the paused segment-rotation tick. */
@@ -448,6 +446,10 @@ void dashcam_ui_enter(void)
     s_sel_index = 0;
     s_play_info_valid = false;
 
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+    dashcam_app_record_stop();
+#endif
+
     dashcam_app_attach(ui->dashcam_sky_area);
     dashcam_ui_populate_list(ui);
     dashcam_ui_reset_play_info(ui);
@@ -467,6 +469,10 @@ void dashcam_ui_enter(void)
 
 void dashcam_ui_leave(void)
 {
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+    bk_err_t ret;
+#endif
+
     LOGD("leave\n");
 
     /* The page (and its widgets) may be freed after this; the event callback
@@ -477,6 +483,14 @@ void dashcam_ui_leave(void)
     s_play_info_valid = false;
     memset(s_btns, 0, sizeof(s_btns));
     dashcam_app_detach();
+
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+    ret = dashcam_app_record_start();
+    if (ret != BK_OK)
+    {
+        LOGW("restart recording after page leave failed: %d\n", ret);
+    }
+#endif
 }
 
 /* ---------- req6 #3: physical-key handlers ---------- */

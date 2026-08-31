@@ -56,9 +56,9 @@
 #if CONFIG_HFP_HF_DEMO
 #include "hfp_hf_audio.h"
 #endif
+#include "avdk_monitor.h"
 
 #define TAG "scooter_1280_720_v2"
-
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -571,6 +571,10 @@ int main(void)
     media_service_init();
 
     app_board_init();
+
+    avdk_monitor_init();
+    avdk_monitor_start();
+
     app_display_init();
     app_bt_init();
     app_key_init();

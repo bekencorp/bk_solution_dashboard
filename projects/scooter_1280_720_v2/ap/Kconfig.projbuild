@@ -93,4 +93,10 @@ menu "Scooter media / display configuration"
         int "Cast JPEG rotate degree"
         default 90
         range 0 270
+
+    config SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+        bool "Keep dashcam recording during video playback"
+        default n
+        help
+            Continue dashcam recording while recorded video is playing.
 endmenu

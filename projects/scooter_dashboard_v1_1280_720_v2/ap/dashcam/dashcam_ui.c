@@ -727,7 +727,9 @@ static void dashcam_ui_load_worker(void *arg)
         }
         if (!page_active)
         {
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
             (void)dashcam_app_record_start();
+#endif
         }
     }
 
@@ -829,8 +831,6 @@ void dashcam_ui_suspend_keep_recording(void)
     {
         dashcam_app_stop_playback();
     }
-
-    dashcam_app_pause_segment_tick();
 }
 
 /* Assist-view leave: LVGL is back, re-arm the paused segment-rotation tick. */
@@ -868,7 +868,10 @@ void dashcam_ui_enter(void)
     s_page_active = true;
     s_load_generation++;
     dashcam_ui_load_state_unlock();
-
+    
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+        dashcam_app_record_stop();
+#endif
     /* Render first, then stop/finalize recording and scan SD on the worker. */
     dashcam_ui_show_list_message(ui, "Loading...");
     dashcam_ui_reset_play_info(ui);
@@ -889,14 +892,18 @@ void dashcam_ui_enter(void)
 
 void dashcam_ui_leave(void)
 {
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
     bk_err_t ret;
     bool restart_recording;
+#endif
 
-    LOGD("leave\n");
+    LOGD("leave, load_worker_running=%d\n", (int)s_load_worker_running);
     dashcam_ui_load_state_lock();
     s_page_active = false;
     s_load_generation++;
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
     restart_recording = !s_load_worker_running;
+#endif
     dashcam_ui_load_state_unlock();
 
     /* The page (and its widgets) may be freed after this; the event callback
@@ -910,6 +917,7 @@ void dashcam_ui_leave(void)
 
     /* If loading is still running it owns SDIO and restarts recording when the
      * scan returns. Otherwise recording can resume immediately. */
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
     if (restart_recording)
     {
         ret = dashcam_app_record_start();
@@ -918,6 +926,7 @@ void dashcam_ui_leave(void)
             LOGW("restart recording after page leave failed: %d\n", ret);
         }
     }
+#endif
 }
 
 /* ---------- req6 #3: physical-key handlers ---------- */

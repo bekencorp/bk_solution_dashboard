@@ -49,7 +49,6 @@ This project targets Dashboard V1.0 1024×600 hardware and provides home-page na
 - Recording files are stored in `/sd0/dashcam`.
 - After entering the Dashcam page, the active recording is stopped and finalized asynchronously before the SD-card recording list is loaded, preventing SD-card contention between recording and playback.
 - Recording automatically resumes after leaving the Dashcam page.
-- Music Player scans audio files in `/sd0/Music`. Background recording pauses on entry and resumes on exit to prevent simultaneous SD-card access by playback and recording.
 
 ## Pages
 
@@ -110,9 +109,7 @@ The first line of each recording-list item shows the recording time; the second 
 2. Select Music Player with the left or right key on Home, then short-press the middle key.
 3. Use left/right to move between playback controls and the playlist; use up/down to select a track.
 4. Short-press the middle key to run the focused control or play the selected track.
-5. Double-press the middle key to return to Home. Background recording resumes after leaving the page.
-
-Entering Music Player stops and finalizes the active recording to avoid concurrent SD-card reads and writes.
+5. Double-press the middle key to return to Home.
 
 ## CLI Commands
 

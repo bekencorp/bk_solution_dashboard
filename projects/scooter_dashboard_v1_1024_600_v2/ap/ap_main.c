@@ -58,6 +58,7 @@
 #include "hfp_hf_audio.h"
 #endif
 #define TAG "scooter_dashboard_v1_1024_600_v2"
+#include "avdk_monitor.h"
 
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -720,6 +721,10 @@ int main(void)
     media_service_init();
 
     app_board_init();
+
+    avdk_monitor_init();
+    avdk_monitor_start();
+
     app_display_init();
     app_bt_init();
     app_cli_init();

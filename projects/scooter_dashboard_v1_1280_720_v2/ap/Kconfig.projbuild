@@ -119,4 +119,10 @@ menu "Scooter media / display configuration"
         int "Music player volume adjustment step"
         default 3
         range 1 112
+
+    config SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+        bool "Keep dashcam recording during video playback"
+        default n
+        help
+            Continue dashcam recording while recorded video is playing.
 endmenu
