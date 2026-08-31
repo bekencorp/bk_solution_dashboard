@@ -18,7 +18,7 @@
  * Pipeline overview:
  *
  *   H.264 bitstream (Annex-B) -> H.264 IP (segment / "flexa" mode) -> 16-line
- *   NV12 macroblock segments in HSRAM -> VG-Lite GPU (reads segments via
+ *   NV12 macroblock segments in HSRAM or PSRAM -> VG-Lite GPU (reads segments via
  *   Flexa bond, optionally rotates/scales, NV12 -> compressed ARGB8888) ->
  *   compressed ARGB8888 frame in HSRAM when available -> video_player engine -> DPU /
  *   DEC400 -> MIPI panel
@@ -30,8 +30,9 @@
  * around 2-3 fps on the BK7259 M55. Compressed ARGB8888 cuts the per-frame
  * footprint to ~30% of NV12, and the GPU absorbs the rotation/scale so the
  * CPU repack disappears entirely. The H.264 IP writes tiny 16-line segments
- * into a cyclic DMA-capable ring. This integration keeps that ring in PSRAM
- * so concurrent recording leaves enough HSRAM for GPU internal buffers.
+ * into a cyclic DMA-capable ring. The ring defaults to PSRAM so concurrent
+ * recording leaves enough HSRAM for GPU internal buffers; builds that favor
+ * lower latency can select HSRAM.
  *
  * Synchronization with the engine:
  *
@@ -49,7 +50,7 @@
  *   "compressed ARGB8888 in HSRAM/PSRAM".
  *
  *   Buffer ownership:
- *     - GPU malloc cb -> hsram_malloc() first, then PSRAM mem_slab fallback
+ *     - GPU malloc cb -> four-buffer pool in uncoded PSRAM
  *     - GPU frame_display cb -> our queue -> engine -> user's
  *       decode_complete_cb -> bk_display_flush(..., allocator-aware free cb)
  *     - LCD eventually calls the output-frame free callback that matches the
@@ -58,10 +59,9 @@
  *       allocator-aware release path
  *
  * Memory footprint (segment_height=1MB):
- *   - Flexa pp ring (PSRAM):  mb_w * 16 * seg_h * seg_n * 3/2
- *   - GPU output (HSRAM):     one or more compressed ARGB frame buffers,
+ *   - Flexa pp ring (HSRAM/PSRAM): mb_w * 16 * seg_h * seg_n * 3/2
+ *   - GPU output (PSRAM):     four compressed ARGB frame buffers,
  *                             ~2 MB each for 1080x1920 DEC400 output
- *                             (falls back to PSRAM if HSRAM is exhausted)
  *   - Annex-B work buffer:    grows on demand, ~max_AU_size + SPS/PPS
  *
  * Source: ap/projects/multimedia/h264d_gpu_display_example/ap/src/
@@ -171,8 +171,7 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
  #define H264_DECODER_SEG_HEIGHT_MB          1U
  
 /* Four segments are required while the GPU scales 720 input lines to the
- * 608-line aligned output surface. The ring resides in DMA-capable PSRAM so
- * concurrent recording retains enough HSRAM for GPU internal buffers. */
+ * 608-line aligned output surface. */
 #define H264_DECODER_SEG_NUMBER             4U
  
  /* Keep the GPU Flexa depth synchronized with the H264 segment ring. */
@@ -190,6 +189,26 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
   * adjacent to the logical ring end. */
  #define H264_DECODER_FLEXA_PP_SAFETY_PAD_BYTES   128U
 
+/* Select the Flexa ring heap at build time:
+ *   0: uncoded PSRAM (default, preserves HSRAM for concurrent recording)
+ *   1: HSRAM (lower latency when sufficient HSRAM is available) */
+#if CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#define H264_DECODER_FLEXA_RING_USE_HSRAM 0
+#else
+#define H264_DECODER_FLEXA_RING_USE_HSRAM 1
+#endif
+
+#if (H264_DECODER_FLEXA_RING_USE_HSRAM != 0) && \
+    (H264_DECODER_FLEXA_RING_USE_HSRAM != 1)
+#error "H264_DECODER_FLEXA_RING_USE_HSRAM must be 0 or 1"
+#endif
+
+#if H264_DECODER_FLEXA_RING_USE_HSRAM
+#define H264_DECODER_FLEXA_RING_HEAP_NAME        "HSRAM"
+#else
+#define H264_DECODER_FLEXA_RING_HEAP_NAME        "uncoded PSRAM"
+#endif
+
 /* Debug-only tail canary. When enabled, the reserved safety pad after the
  * logical ring end is filled with a known byte and checked per decoded frame
  * and at teardown. It reports how many bytes the H.264/GPU DMA wrote past the
@@ -202,6 +221,12 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
 #endif
 #define H264_DECODER_FLEXA_RING_CANARY_BYTE   0xA5U
  
+/* Keep DPU release callbacks out of the general allocation path. The GPU
+ * renders into one buffer while dashcam_video may own up to three queued/DPU
+ * buffers, so the pool needs one more entry than DASHCAM_VIDEO_BUF_COUNT. */
+#define H264_DECODER_GPU_OUTPUT_POOL_COUNT    4U
+#define H264_DECODER_GPU_POOL_WAIT_MS         100U
+
  /* Maximum time to wait for the GPU to finish a single frame. Generous: at
   * 30 fps each frame should complete in ~33 ms; the timeout only triggers on
   * pathological stalls. */
@@ -209,6 +234,36 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
  
  /* Match the counting semaphore depth to the configured GPU Flexa depth. */
 #define H264_DECODER_FRAME_SEM_DEPTH        H264_DECODER_GPU_FLEXA_BUFF_CNT
+
+typedef struct
+{
+    void *buffer;
+    bool in_use;
+} h264_decoder_gpu_pool_entry_t;
+
+static h264_decoder_gpu_pool_entry_t
+    s_gpu_output_pool[H264_DECODER_GPU_OUTPUT_POOL_COUNT];
+static uint32_t s_gpu_output_pool_size;
+static uint32_t s_gpu_output_pool_count;
+
+static bool h264_decoder_gpu_pool_release(void *ptr)
+{
+    bool released = false;
+    uint32_t flags = rtos_enter_critical();
+
+    for (uint32_t i = 0U; i < s_gpu_output_pool_count; i++)
+    {
+        if (s_gpu_output_pool[i].buffer == ptr)
+        {
+            s_gpu_output_pool[i].in_use = false;
+            released = true;
+            break;
+        }
+    }
+
+    rtos_exit_critical(flags);
+    return released;
+}
  
  static bool h264_decoder_ptr_is_hsram(const void *ptr)
  {
@@ -230,6 +285,11 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
      {
          return AVDK_ERR_OK;
      }
+
+    if (h264_decoder_gpu_pool_release(frame))
+    {
+        return AVDK_ERR_OK;
+    }
  
      if (h264_decoder_ptr_is_hsram(frame))
      {
@@ -308,9 +368,10 @@ static video_player_video_decoder_ops_t s_ops_template;
  static hw_h264_decoder_ctx_t * volatile s_active_ctx = NULL;
  
  // ---------------------------------------------------------------------------
- // HSRAM aligned alloc helpers (lifted verbatim from h264d_gpu_display_demo)
+// Flexa ring allocation helpers
  // ---------------------------------------------------------------------------
  
+#if !H264_DECODER_FLEXA_RING_USE_HSRAM
 /* Total bytes to request from the uncoded PSRAM slab for a logical ring of
  * `size`. We round the request up to the 64-byte alignment and add an aligned
  * DMA safety margin. Keeping the *requested* size aligned is essential: the
@@ -323,12 +384,44 @@ static inline uint32_t h264_decoder_flexa_ring_total(uint32_t size)
             (H264_DECODER_FLEXA_PP_ALIGN - 1U)) &
            ~(uint32_t)(H264_DECODER_FLEXA_PP_ALIGN - 1U);
 }
+#endif
 
 static void *h264_decoder_flexa_ring_malloc(uint32_t alignment, uint32_t size, void **raw_out)
- {
-     void *raw;
-     uint32_t total;
+{
+    void *raw;
+    uint32_t total;
 
+#if H264_DECODER_FLEXA_RING_USE_HSRAM
+    uintptr_t start;
+    uintptr_t aligned;
+
+    if (alignment < (uint32_t)sizeof(void *))
+    {
+        alignment = (uint32_t)sizeof(void *);
+    }
+    if ((alignment & (alignment - 1U)) != 0U ||
+        size > UINT32_MAX - alignment + 1U - (uint32_t)sizeof(void *))
+    {
+        return NULL;
+    }
+
+    total = size + alignment - 1U + (uint32_t)sizeof(void *);
+    raw = hsram_malloc(total);
+    if (raw == NULL)
+    {
+        return NULL;
+    }
+
+    start = (uintptr_t)raw + sizeof(void *);
+    aligned = (start + (alignment - 1U)) & ~((uintptr_t)alignment - 1U);
+    ((void **)aligned)[-1] = raw;
+
+    if (raw_out != NULL)
+    {
+        *raw_out = raw;
+    }
+    return (void *)aligned;
+#else
     /* bk_frame_buffer/mem_slab already returns 64-byte-aligned user pointers
      * (the block header is 64 bytes and 64-aligned), so no manual pointer
      * alignment is needed -- doing it here only inflated user_size and
@@ -352,18 +445,23 @@ static void *h264_decoder_flexa_ring_malloc(uint32_t alignment, uint32_t size, v
      {
          *raw_out = raw;
      }
-     return raw;
- }
+    return raw;
+#endif
+}
  
 static void h264_decoder_flexa_ring_free(void *raw)
 {
     if (raw != NULL)
     {
+#if H264_DECODER_FLEXA_RING_USE_HSRAM
+        hsram_free(raw);
+#else
         bk_frame_buffer_free(raw);
+#endif
     }
 }
 
-#if H264_DECODER_FLEXA_RING_CANARY
+#if H264_DECODER_FLEXA_RING_CANARY && !H264_DECODER_FLEXA_RING_USE_HSRAM
 #include "cache.h"
 
 /* The gap between the logical ring end and the mem_slab tail guard word, i.e.
@@ -798,18 +896,107 @@ static avdk_err_t hw_h264_avcc_to_annexb(hw_h264_decoder_ctx_t *ctx,
  // GPU buffer-management glue: callbacks the bk_gpu_ctlr invokes.
  // ---------------------------------------------------------------------------
  
+static bool h264_decoder_gpu_pool_init(uint32_t size)
+{
+    if (s_gpu_output_pool_count == H264_DECODER_GPU_OUTPUT_POOL_COUNT &&
+        s_gpu_output_pool_size == size)
+    {
+        return true;
+    }
+    if (s_gpu_output_pool_count != 0U)
+    {
+        LOGE("%s: pool size changed from %u to %u while pool is active\n",
+             __func__, (unsigned)s_gpu_output_pool_size, (unsigned)size);
+        return false;
+    }
+
+    const uint64_t pool_bytes =
+        (uint64_t)H264_DECODER_GPU_OUTPUT_POOL_COUNT * (uint64_t)size;
+#if defined(CONFIG_PSRAM_MEM_SLAB_UNCODED_SIZE)
+    LOGI("%s: requesting output pool %u x %u = %llu bytes; UNCODED region=%u bytes\n",
+         __func__, (unsigned)H264_DECODER_GPU_OUTPUT_POOL_COUNT,
+         (unsigned)size, (unsigned long long)pool_bytes,
+         (unsigned)CONFIG_PSRAM_MEM_SLAB_UNCODED_SIZE);
+#else
+    LOGI("%s: requesting output pool %u x %u = %llu bytes\n",
+         __func__, (unsigned)H264_DECODER_GPU_OUTPUT_POOL_COUNT,
+         (unsigned)size, (unsigned long long)pool_bytes);
+#endif
+
+    for (uint32_t i = 0U; i < H264_DECODER_GPU_OUTPUT_POOL_COUNT; i++)
+    {
+        s_gpu_output_pool[i].buffer =
+            bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, size);
+        if (s_gpu_output_pool[i].buffer == NULL)
+        {
+            LOGE("%s: UNCODED output pool alloc failed at %u/%u, block=%u bytes\n",
+                 __func__, (unsigned)i,
+                 (unsigned)H264_DECODER_GPU_OUTPUT_POOL_COUNT,
+                 (unsigned)size);
+            bk_mem_slab_dump_heap(MEM_SLAB_HEAP_UNCODED);
+
+            for (uint32_t j = 0U; j < i; j++)
+            {
+                bk_frame_buffer_free(s_gpu_output_pool[j].buffer);
+                s_gpu_output_pool[j].buffer = NULL;
+                s_gpu_output_pool[j].in_use = false;
+            }
+            return false;
+        }
+        s_gpu_output_pool[i].in_use = false;
+    }
+
+    s_gpu_output_pool_size = size;
+    s_gpu_output_pool_count = H264_DECODER_GPU_OUTPUT_POOL_COUNT;
+    LOGI("%s: output pool ready: %u x %u = %llu bytes\n",
+         __func__, (unsigned)H264_DECODER_GPU_OUTPUT_POOL_COUNT,
+         (unsigned)size, (unsigned long long)pool_bytes);
+    return true;
+}
+
 static void *h264_decoder_gpu_frame_malloc(uint32_t size)
 {
-    /* The GPU produces compressed ARGB frames sized exactly to its tile
-    * compressed payload (not strict width*height*4 -- VG-Lite emits ~30%
-    * of that). MEM_SLAB_HEAP_UNCODED is the same heap the existing video
-    * path uses for decoded frames, so the downstream LCD free path
-    * (display_frame_free_cb -> bk_frame_buffer_free) Just Works without
-    * any allocator translation. */
-    void *ptr = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, size);
+    void *ptr = NULL;
+
+    if (h264_decoder_gpu_pool_init(size))
+    {
+        for (uint32_t waited_ms = 0U;
+             waited_ms <= H264_DECODER_GPU_POOL_WAIT_MS;
+             waited_ms++)
+        {
+            uint32_t flags = rtos_enter_critical();
+            for (uint32_t i = 0U; i < s_gpu_output_pool_count; i++)
+            {
+                if (!s_gpu_output_pool[i].in_use)
+                {
+                    s_gpu_output_pool[i].in_use = true;
+                    ptr = s_gpu_output_pool[i].buffer;
+                    break;
+                }
+            }
+            rtos_exit_critical(flags);
+
+            if (ptr != NULL)
+            {
+                return ptr;
+            }
+            if (waited_ms < H264_DECODER_GPU_POOL_WAIT_MS)
+            {
+                rtos_delay_milliseconds(1U);
+            }
+        }
+
+        LOGE("%s: output pool exhausted, size=%u\n",
+             __func__, (unsigned)size);
+        return NULL;
+    }
+
+    /* Preserve the old dynamic path if the fixed pool cannot be created. */
+    ptr = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, size);
     if (ptr == NULL)
     {
         LOGE("%s: alloc gpu output failed, size=%u\n", __func__, (unsigned)size);
+        bk_mem_slab_dump_heap(MEM_SLAB_HEAP_UNCODED);
     }
     return ptr;
 }
@@ -976,8 +1163,7 @@ static avdk_err_t hw_h264_decoder_setup_pipeline(hw_h264_decoder_ctx_t *ctx)
 
     /* H264 Flexa does not support PP scaling. Keep its NV12 ring at the
      * macroblock-aligned decode dimensions and let the GPU scale it. The ring
-     * is placed in DMA-capable PSRAM to preserve HSRAM for GPU internals while
-     * recording remains active. */
+     * heap is selected by H264_DECODER_FLEXA_RING_USE_HSRAM. */
     ctx->flexa_pp_size = hw_h264_calc_flexa_pp_size(ctx->mb_w);
     ctx->flexa_pp_buf  = h264_decoder_flexa_ring_malloc(
                             H264_DECODER_FLEXA_PP_ALIGN,
@@ -985,14 +1171,15 @@ static avdk_err_t hw_h264_decoder_setup_pipeline(hw_h264_decoder_ctx_t *ctx)
                             &ctx->flexa_pp_raw);
     if (ctx->flexa_pp_buf == NULL)
     {
-        LOGE("%s: uncoded PSRAM alloc(%u) for flexa pp ring failed\n",
-            __func__, ctx->flexa_pp_size);
+        LOGE("%s: %s alloc(%u) for flexa pp ring failed\n",
+            __func__, H264_DECODER_FLEXA_RING_HEAP_NAME, ctx->flexa_pp_size);
         return AVDK_ERR_NOMEM;
     }
     os_memset(ctx->flexa_pp_buf, 0, ctx->flexa_pp_size);
     h264_decoder_flexa_ring_canary_fill(ctx);
-    LOGI("%s: flexa pp ring=%p size=%u aligned64=%u\n",
-        __func__, ctx->flexa_pp_buf, (unsigned)ctx->flexa_pp_size,
+    LOGI("%s: flexa pp ring=%p heap=%s size=%u aligned64=%u\n",
+        __func__, ctx->flexa_pp_buf, H264_DECODER_FLEXA_RING_HEAP_NAME,
+        (unsigned)ctx->flexa_pp_size,
         ((uintptr_t)ctx->flexa_pp_buf & 0x3FU) == 0U ? 1U : 0U);
 
     /* Raw output keeps the experiment's direct visible surface path. The
@@ -1449,7 +1636,7 @@ static avdk_err_t hw_h264_decoder_decode(struct video_player_video_decoder_ops_s
     }
     /* Step 2: Submit the AU to the H.264 IP. In Flexa mode the call is
     * relatively quick -- the IP streams segments to the GPU asynchronously.
-    * The "out_buffer" inside the H264 input is the HSRAM Flexa ring. */
+    * The H264 input's out_buffer is the selected Flexa ring. */
     bk_h264_decode_input_t in = {0};
     in.stream          = bs_data;
     in.stream_len      = bs_len;

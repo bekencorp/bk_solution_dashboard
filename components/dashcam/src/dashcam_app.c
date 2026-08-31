@@ -223,56 +223,61 @@ static void dashcam_app_start_capture(void)
     dashcam_app_stop_recording();
 }
 
+static void dashcam_app_check_stopped_segment(const char *operation,
+                                              const char *completed_path,
+                                              bk_err_t stop_ret)
+{
+    dashcam_mp4_check_result_t check_result;
+
+    if (completed_path == NULL || completed_path[0] == '\0')
+    {
+        return;
+    }
+
+    if (stop_ret != BK_OK)
+    {
+        LOGW("%s: recorder stop failed for %s\n", operation, completed_path);
+        if (dashcam_storage_delete_record(completed_path) != BK_OK)
+        {
+            LOGE("%s: failed to remove stop-failed MP4: %s\n",
+                 operation, completed_path);
+        }
+        return;
+    }
+
+    check_result = dashcam_storage_check_mp4(completed_path);
+    if (check_result == DASHCAM_MP4_CHECK_EMPTY ||
+        check_result == DASHCAM_MP4_CHECK_INVALID)
+    {
+        LOGW("%s: removing unplayable MP4: %s check=%d\n",
+             operation, completed_path, (int)check_result);
+        if (dashcam_storage_delete_record(completed_path) != BK_OK)
+        {
+            LOGE("%s: failed to remove unplayable MP4: %s\n",
+                 operation, completed_path);
+        }
+    }
+    else if (check_result != DASHCAM_MP4_CHECK_VALID)
+    {
+        /* Preserve the clip on transient SD I/O errors: its contents are
+         * unknown, rather than known to be invalid. */
+        LOGW("%s: retaining unchecked MP4: %s check=%d\n",
+             operation, completed_path, (int)check_result);
+    }
+}
+
 static void dashcam_app_rotate_segment(void)
 {
     char completed_path[DASHCAM_STORAGE_MAX_PATH];
     const char *current_path = dashcam_recorder_current_path();
     bk_err_t stop_ret;
-    dashcam_mp4_check_result_t check_result;
 
     snprintf(completed_path, sizeof(completed_path), "%s",
              current_path != NULL ? current_path : "");
 
     LOGI("rotate_segment: closing current MP4, starting next\n");
     stop_ret = dashcam_recorder_stop();
-    if (stop_ret != BK_OK)
-    {
-        LOGW("rotate_segment: recorder stop failed for %s\n", completed_path);
-        if (completed_path[0] != '\0')
-        {
-            if (dashcam_storage_delete_record(completed_path) != BK_OK)
-            {
-                LOGE("rotate_segment: failed to remove stop-failed MP4: %s\n",
-                     completed_path);
-            }
-        }
-    }
-
-    /*
-     * This function runs only on dcam_tick, not the LVGL task. Validate only
-     * after a successful stop. Delete empty or structurally invalid clips, but
-     * retain transient SD I/O errors because their contents are still unknown.
-     */
-    if (stop_ret == BK_OK && completed_path[0] != '\0')
-    {
-        check_result = dashcam_storage_check_mp4(completed_path);
-        if (check_result == DASHCAM_MP4_CHECK_EMPTY ||
-            check_result == DASHCAM_MP4_CHECK_INVALID)
-        {
-            LOGW("rotate_segment: removing unplayable MP4: %s check=%d\n",
-                 completed_path, (int)check_result);
-            if (dashcam_storage_delete_record(completed_path) != BK_OK)
-            {
-                LOGE("rotate_segment: failed to remove unplayable MP4: %s\n",
-                     completed_path);
-            }
-        }
-        else if (check_result != DASHCAM_MP4_CHECK_VALID)
-        {
-            LOGW("rotate_segment: retaining unchecked MP4: %s check=%d\n",
-                 completed_path, (int)check_result);
-        }
-    }
+    dashcam_app_check_stopped_segment("rotate_segment", completed_path, stop_ret);
 
     if (!dashcam_app_record_allowed())
     {
@@ -489,6 +494,10 @@ bk_err_t dashcam_app_record_start(void)
 
 void dashcam_app_record_stop(void)
 {
+    char completed_path[DASHCAM_STORAGE_MAX_PATH];
+    const char *current_path;
+    bk_err_t stop_ret;
+
     LOGD("record_stop (rec=%d play=%d)\n", (int)s_rec, (int)s_play);
 
     if (s_rec != DASHCAM_REC_RECORDING)
@@ -502,8 +511,12 @@ void dashcam_app_record_stop(void)
      * current MP4 and power the camera down. Playback, if any, is on independent
      * hardware and left running. */
     dashcam_app_stop_tick();
-    (void)dashcam_recorder_stop();
+    current_path = dashcam_recorder_current_path();
+    snprintf(completed_path, sizeof(completed_path), "%s",
+             current_path != NULL ? current_path : "");
+    stop_ret = dashcam_recorder_stop();
     dashcam_camera_close();
+    dashcam_app_check_stopped_segment("record_stop", completed_path, stop_ret);
     s_rec = DASHCAM_REC_STOPPED;
 
     if (s_play == DASHCAM_PLAY_IDLE)

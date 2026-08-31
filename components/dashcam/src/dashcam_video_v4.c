@@ -8,6 +8,7 @@
 #include "components/log.h"
 #include "app_display.h"
 #include "dashcam_config.h"
+#include "dashcam_h264_flexa_decoder.h"
 #include "dashcam_player.h"
 #include "dashcam_storage.h"
 #include "display_ui_cast_context.h"
@@ -85,6 +86,20 @@ static dashcam_video_ctx_t s_dashcam_video;
 
 static bool dashcam_video_all_buffers_reclaimed(void);
 
+static void dashcam_video_frame_free(void *frame)
+{
+    if (frame == NULL)
+    {
+        return;
+    }
+
+#if CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_H264_VIDEO_DECODER
+    (void)dashcam_h264_flexa_decoder_free_output_frame(frame);
+#else
+    bk_frame_buffer_free(frame);
+#endif
+}
+
 static int32_t dashcam_video_buf_index(const void *buf)
 {
     for (uint32_t i = 0; i < DASHCAM_VIDEO_BUF_COUNT; i++)
@@ -112,7 +127,7 @@ static avdk_err_t dashcam_video_display_free_cb(void *frame)
 
     if (index >= 0)
     {
-        bk_frame_buffer_free(frame);
+        dashcam_video_frame_free(frame);
 
         if (s_dashcam_video.worker == NULL &&
             dashcam_video_all_buffers_reclaimed())
@@ -171,7 +186,7 @@ static void dashcam_video_buf_release(void *buf)
 {
     if (dashcam_video_buf_untrack(buf))
     {
-        bk_frame_buffer_free(buf);
+        dashcam_video_frame_free(buf);
     }
 }
 
@@ -266,7 +281,7 @@ static void dashcam_video_free_idle_buffers(void)
 
         if (buf != NULL)
         {
-            bk_frame_buffer_free(buf);
+            dashcam_video_frame_free(buf);
         }
     }
 }
@@ -476,7 +491,7 @@ static void dashcam_video_start_cleanup(void)
     {
         if (s_dashcam_video.bufs[i] != NULL)
         {
-            bk_frame_buffer_free(s_dashcam_video.bufs[i]);
+            dashcam_video_frame_free(s_dashcam_video.bufs[i]);
             s_dashcam_video.bufs[i] = NULL;
         }
         s_dashcam_video.buf_state[i] = DASHCAM_VIDEO_BUF_UNUSED;
