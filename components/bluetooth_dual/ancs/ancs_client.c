@@ -23,6 +23,8 @@
 #define ANCS_HID_APPEARANCE             0x03c0
 #define ANCS_CONN_INTERVAL_MIN          6
 #define ANCS_CONN_INTERVAL_MAX          16
+#define ANCS_ADV_COMPANY_ID             0x05F0
+#define ANCS_ADV_PROTO_VERSION          0x01
 
 #define ANCS_LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define ANCS_LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
@@ -91,6 +93,10 @@ static ancs_client_env_t s_ancs;
 static beken_semaphore_t s_adv_sema;
 static volatile bk_ble_gap_cb_event_t s_adv_expected_event = BK_BLE_GAP_EVT_MAX;
 static volatile bk_err_t s_adv_result = BK_FAIL;
+static uint8_t s_device_type = 0x03;
+static uint8_t s_fw_major = 1;
+static uint8_t s_fw_minor = 0;
+static uint8_t s_fw_patch = 0;
 
 static bool ancs_uuid_equal(const bk_bt_uuid_t *uuid, const uint8_t expected[16])
 {
@@ -639,16 +645,15 @@ bk_err_t ancs_client_adv_start(void)
     adv_data[index++] = BK_BLE_AD_TYPE_128SRV_CMPL;
     memcpy(&adv_data[index], s_hid_service_uuid, sizeof(s_hid_service_uuid));
     index += sizeof(s_hid_service_uuid);
-    adv_data[index++] = 3;
-    adv_data[index++] = BK_BLE_AD_TYPE_APPEARANCE;
-    adv_data[index++] = ANCS_HID_APPEARANCE & 0xff;
-    adv_data[index++] = ANCS_HID_APPEARANCE >> 8;
-    adv_data[index++] = 5;
-    adv_data[index++] = BK_BLE_AD_TYPE_INT_RANGE;
-    adv_data[index++] = ANCS_CONN_INTERVAL_MIN & 0xff;
-    adv_data[index++] = ANCS_CONN_INTERVAL_MIN >> 8;
-    adv_data[index++] = ANCS_CONN_INTERVAL_MAX & 0xff;
-    adv_data[index++] = ANCS_CONN_INTERVAL_MAX >> 8;
+    adv_data[index++] = 8;
+    adv_data[index++] = BK_BLE_AD_TYPE_MANU;
+    adv_data[index++] = ANCS_ADV_COMPANY_ID & 0xff;
+    adv_data[index++] = ANCS_ADV_COMPANY_ID >> 8;
+    adv_data[index++] = ANCS_ADV_PROTO_VERSION;
+    adv_data[index++] = s_device_type;
+    adv_data[index++] = s_fw_major;
+    adv_data[index++] = s_fw_minor;
+    adv_data[index++] = s_fw_patch;
 
     name_len = os_strlen(name);
     scan_rsp[0] = (uint8_t)(name_len + 1);
