@@ -42,8 +42,10 @@
 #include "bt_manager.h"
 #include "headset_user_config.h"
 #include "a2dp_sink_demo.h"
+#include "a2dp_sink_audio.h"
 #if CONFIG_HFP_HF_DEMO
 #include "hfp_hf_demo.h"
+#include "hfp_hf_audio.h"
 #endif
 #if CONFIG_PBAP_CONTACTS
 #include "pbap_contacts.h"
@@ -161,16 +163,25 @@ static void klok_bt_start_task(void *arg)
         goto out;
     }
     bt_manager_init(&manager_cfg);
-    if (a2dp_sink_demo_init(0, 1) != BK_OK) {
-        bk_printf("Klok A2DP sink init failed\r\n");
-        goto out;
-    }
+    {
+        onboard_speaker_pa_ctrl_t bt_pa = DEFAULT_ONBOARD_SPEAKER_PA_CTRL();
+        bt_pa.pa_ctrl_en   = true;
+        bt_pa.pa_ctrl_gpio = 13;
+        bt_pa.pa_on_level  = 1;
+
+        if (a2dp_sink_demo_init(0, 1) != BK_OK) {
+            bk_printf("Klok A2DP sink init failed\r\n");
+            goto out;
+        }
+        a2dp_sink_audio_set_pa_ctrl(&bt_pa);
 #if CONFIG_HFP_HF_DEMO
-    if (hfp_hf_demo_init(0) != BK_OK) {
-        bk_printf("Klok HFP HF init failed\r\n");
-        goto out;
-    }
+        if (hfp_hf_demo_init(0) != BK_OK) {
+            bk_printf("Klok HFP HF init failed\r\n");
+            goto out;
+        }
+        hfp_hf_audio_set_pa_ctrl(&bt_pa);
 #endif
+    }
 #if CONFIG_PBAP_CONTACTS
     pbap_contacts_init();
 #endif

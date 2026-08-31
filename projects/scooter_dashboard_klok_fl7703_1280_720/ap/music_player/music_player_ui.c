@@ -492,6 +492,14 @@ static bool mp_player_ensure(void)
     bk_audio_player_register_metadata_parser(s_player, bk_audio_player_get_aac_metadata_parser_ops());
     bk_audio_player_set_play_mode(s_player, AUDIO_PLAYER_MODE_SEQUENCE_LOOP);
     bk_audio_player_set_volume(s_player, 70);
+    {
+        bk_audio_player_pa_ctrl_t pa = DEFAULT_AUDIO_PLAYER_PA_CTRL();
+
+        pa.pa_ctrl_en   = true;
+        pa.pa_ctrl_gpio = 13;
+        pa.pa_on_level  = 1;
+        (void)bk_audio_player_set_pa_ctrl(s_player, &pa);
+    }
     return true;
 }
 

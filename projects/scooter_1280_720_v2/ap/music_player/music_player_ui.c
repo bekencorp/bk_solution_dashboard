@@ -1073,6 +1073,15 @@ static bk_audio_player_handle_t mp_player_ensure(void)
     /* Volume is applied on the first SONG_START (see mp_async_start): the sink
      * that set_volume touches does not exist until playback begins. */
 
+    {
+        bk_audio_player_pa_ctrl_t pa = DEFAULT_AUDIO_PLAYER_PA_CTRL();
+
+        pa.pa_ctrl_en   = true;
+        pa.pa_ctrl_gpio = 13;
+        pa.pa_on_level  = 1;
+        (void)bk_audio_player_set_pa_ctrl(s_player, &pa);
+    }
+
     mp_player_sync_list();
     return s_player;
 }

@@ -50,6 +50,12 @@
 #include "sdkconfig.h"
 #include "headset_user_config.h"
 #include "dashcam_assitview.h"
+#if CONFIG_A2DP_SINK_DEMO
+#include "a2dp_sink_audio.h"
+#endif
+#if CONFIG_HFP_HF_DEMO
+#include "hfp_hf_audio.h"
+#endif
 
 #define TAG "scooter_1280_720_v2"
 
@@ -202,14 +208,23 @@ static void ap_bt_app_init(void)
 	};
     bt_manager_init(&bt_manager_cfg);
 
+#if CONFIG_A2DP_SINK_DEMO || CONFIG_HFP_HF_DEMO
+    onboard_speaker_pa_ctrl_t bt_pa = DEFAULT_ONBOARD_SPEAKER_PA_CTRL();
+    bt_pa.pa_ctrl_en   = true;
+    bt_pa.pa_ctrl_gpio = 13;
+    bt_pa.pa_on_level  = 1;
+#endif
+
 #if CONFIG_A2DP_SINK_DEMO
     int a2dp_sink_demo_init(uint8_t aac_supported, uint8_t auto_accept_conn);
     a2dp_sink_demo_init(0, 1);
+    a2dp_sink_audio_set_pa_ctrl(&bt_pa);
 #endif
 
 #if CONFIG_HFP_HF_DEMO
     extern int hfp_hf_demo_init(uint8_t msbc_supported);
     hfp_hf_demo_init(0);
+    hfp_hf_audio_set_pa_ctrl(&bt_pa);
 #endif
 
 #if CONFIG_PBAP_CONTACTS
