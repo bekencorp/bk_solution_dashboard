@@ -34,36 +34,44 @@ static void notification_popup_create(void)
     lv_obj_set_size(s_notification_popup, 760, 112);
     lv_obj_align(s_notification_popup, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_remove_flag(s_notification_popup, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(s_notification_popup, lv_color_hex(0x1B2028), LV_PART_MAIN);
+
+    /* Background */
+    lv_obj_set_style_bg_color(s_notification_popup, lv_color_hex(0xF5F5F7), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_notification_popup, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(s_notification_popup, lv_color_hex(0x3A4553), LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_notification_popup, lv_color_hex(0xE1E1E3), LV_PART_MAIN);
     lv_obj_set_style_border_width(s_notification_popup, 1, LV_PART_MAIN);
     lv_obj_set_style_radius(s_notification_popup, 14, LV_PART_MAIN);
+
+    /* Shadow */
     lv_obj_set_style_shadow_color(s_notification_popup, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_shadow_opa(s_notification_popup, LV_OPA_20, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(s_notification_popup, 8, LV_PART_MAIN);
+
     lv_obj_set_style_pad_all(s_notification_popup, 0, LV_PART_MAIN);
 
+    /* Accent */
     accent = lv_obj_create(s_notification_popup);
-    lv_obj_set_size(accent, 4, 78);
+    lv_obj_set_size(accent, 3, 64);
     lv_obj_align(accent, LV_ALIGN_LEFT_MID, 10, 0);
     lv_obj_remove_flag(accent, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(0x32A8FF), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(accent, lv_color_hex(0x007AFF), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(accent, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(accent, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(accent, 2, LV_PART_MAIN);
     lv_obj_set_style_pad_all(accent, 0, LV_PART_MAIN);
 
+    /* Title */
     s_notification_title = lv_label_create(s_notification_popup);
-    lv_obj_set_size(s_notification_title, 700, 38);
-    lv_obj_set_pos(s_notification_title, 28, 8);
-    lv_obj_set_style_text_color(s_notification_title, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_size(s_notification_title, 700, 34);
+    lv_obj_set_pos(s_notification_title, 28, 10);
+    lv_obj_set_style_text_color(s_notification_title, lv_color_hex(0x1C1C1E), LV_PART_MAIN);
     lv_label_set_long_mode(s_notification_title, LV_LABEL_LONG_DOT);
 
+    /* Message */
     s_notification_message = lv_label_create(s_notification_popup);
     lv_obj_set_size(s_notification_message, 700, 38);
-    lv_obj_set_pos(s_notification_message, 28, 60);
-    lv_obj_set_style_text_color(s_notification_message, lv_color_hex(0xC8D0DA), LV_PART_MAIN);
+    lv_obj_set_pos(s_notification_message, 28, 54);
+    lv_obj_set_style_text_color(s_notification_message, lv_color_hex(0x48484A), LV_PART_MAIN);
     lv_label_set_long_mode(s_notification_message, LV_LABEL_LONG_DOT);
     lv_obj_add_flag(s_notification_popup, LV_OBJ_FLAG_HIDDEN);
 }
