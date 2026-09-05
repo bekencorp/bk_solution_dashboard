@@ -18,6 +18,17 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
+/* Per-frame trace: compiled OUT by default (avoid log flood regardless of
+ * runtime log level). Set CAST_TRACE_PER_FRAME=1 to re-enable for debugging. */
+#ifndef CAST_TRACE_PER_FRAME
+#define CAST_TRACE_PER_FRAME 0
+#endif
+#if CAST_TRACE_PER_FRAME
+#define LOGPF(...) BK_LOGI(TAG, ##__VA_ARGS__)
+#else
+#define LOGPF(...) do {} while (0)
+#endif
+
 
 typedef struct
 {
@@ -76,7 +87,7 @@ frame_buffer_t *media_bk_net_frame_malloc(uint32_t size)
     }
     s_malloc_count++;
     frame_buffer_t *fb = media_frame_queue_malloc(size);
-    LOGI("frame_malloc #%u: size=%u, result=%s\n",
+    LOGPF("frame_malloc #%u: size=%u, result=%s\n",
          (unsigned)s_malloc_count, (unsigned)size, fb ? "OK" : "FAIL");
     return fb;
 }
@@ -99,7 +110,7 @@ bk_err_t media_bk_net_frame_send (frame_buffer_t *data)
     }
 
     s_send_count++;
-    LOGI("frame_send #%u: len=%u\n", (unsigned)s_send_count, (unsigned)data->length);
+    LOGPF("frame_send #%u: len=%u\n", (unsigned)s_send_count, (unsigned)data->length);
 
     data->width = s_media_video_cfg->width;
     data->height = s_media_video_cfg->height;

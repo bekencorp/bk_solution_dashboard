@@ -50,6 +50,18 @@
  #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
  #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
  #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
+ #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+
+/* Per-frame trace: compiled OUT by default (avoid log flood regardless of
+ * runtime log level). Set CAST_TRACE_PER_FRAME=1 to re-enable for debugging. */
+#ifndef CAST_TRACE_PER_FRAME
+#define CAST_TRACE_PER_FRAME 0
+#endif
+#if CAST_TRACE_PER_FRAME
+#define LOGPF(...) BK_LOGI(TAG, ##__VA_ARGS__)
+#else
+#define LOGPF(...) do {} while (0)
+#endif
  
  /* ------------------------------------------------------------------ */
  /* Defaults                                                            */
@@ -282,7 +294,7 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
  
 		 ctx->dec_seq++;
 		 ret = bk_jpeg_decode_frame(ctx->jpeg_handle, &input);
-		 LOGI("[cast] dec#%u len=%u ret=%d\n",
+		 LOGPF("[cast] dec#%u len=%u ret=%d\n",
 			  (unsigned)ctx->dec_seq, (unsigned)entry.jpeg_len, (int)ret);
  
 		 /* Notify caller that the stream has been consumed */
@@ -553,8 +565,19 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 				 ctx->cfg.frame_consumed_cb(stale.jpeg_stream, JSP_STATUS_FRAME_DROPPED,
 											stale.jpeg_owner, ctx->cfg.user_data);
 		 }
-		 if (dropped > 0)
-			 LOGW("[cast] drop %u stale frame(s) for low-latency\n", (unsigned)dropped);
+		 if (dropped > 0) {
+			 /* Low-latency stale drops are expected during casting; aggregate to
+			  * avoid per-frame log flood while keeping the drop rate observable. */
+			 static uint32_t s_stale_drop_total = 0;
+			 static uint32_t s_stale_drop_reported = 0;
+			 s_stale_drop_total += dropped;
+			 if (s_stale_drop_total - s_stale_drop_reported >= 128U) {
+				 LOGW("[cast] dropped %u stale frames for low-latency (total %u)\n",
+					  (unsigned)(s_stale_drop_total - s_stale_drop_reported),
+					  (unsigned)s_stale_drop_total);
+				 s_stale_drop_reported = s_stale_drop_total;
+			 }
+		 }
 	 }
 
 	 bk_err_t ret = rtos_push_to_queue(&ctx->frame_queue, &entry, BEKEN_NO_WAIT);
@@ -591,7 +614,7 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 LOGW("[diag] in#%u parse_jpeg_meta failed len=%u\n", (unsigned)seq, (unsigned)jpeg_len);
 	 }
  
-	 LOGI("[cast] push#%u q+%u\n", (unsigned)seq, (unsigned)jpeg_len);
+	 LOGPF("[cast] push#%u q+%u\n", (unsigned)seq, (unsigned)jpeg_len);
 	 return AVDK_ERR_OK;
  }
  

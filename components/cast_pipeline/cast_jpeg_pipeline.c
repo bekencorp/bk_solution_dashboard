@@ -26,6 +26,18 @@
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
+#define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
+
+/* Per-frame trace: compiled OUT by default (avoid log flood regardless of
+ * runtime log level). Set CAST_TRACE_PER_FRAME=1 to re-enable for debugging. */
+#ifndef CAST_TRACE_PER_FRAME
+#define CAST_TRACE_PER_FRAME 0
+#endif
+#if CAST_TRACE_PER_FRAME
+#define LOGPF(...) BK_LOGI(TAG, ##__VA_ARGS__)
+#else
+#define LOGPF(...) do {} while (0)
+#endif
 
 static void cast_hooks_noop_void(void) {}
 static void cast_hooks_noop_set_decompress(int enable)
@@ -341,7 +353,7 @@ static void cast_gpu_free_output(void *p)
 		 */
 		if (s_cast_gpu_pool_active) {
 			cast_gpu_pool_push(p);
-			LOGI("[cast] pool free %p avail %d/%d\n",
+			LOGPF("[cast] pool free %p avail %d/%d\n",
 			     p, s_cast_gpu_stack_n, CAST_GPU_POOL_SLOTS);
 		}
 		return;
@@ -424,6 +436,8 @@ static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_d
 	uint32_t                 n       = ++s_cast_frame_display_seq;
 	avdk_err_t               flush_e = AVDK_ERR_OK;
 
+	(void)pending; /* only referenced by per-frame trace (LOGPF), compiled out by default */
+
 	/*
 	 * The first FLEXA/GPU output after opening the JPEG pipeline is a hardware
 	 * warm-up frame and can contain incomplete compressed tiles. Replace its
@@ -454,7 +468,7 @@ static void cast_frame_display_cb(void *frame, uint32_t frame_size, void *user_d
 	else
 		LOGW("[cast] fd%u !disp %p %p\n", (unsigned)n, disp, frame);
 
-	LOGI("[cast] fd%u sz%u p%d r%d %p\n",
+	LOGPF("[cast] fd%u sz%u p%d r%d %p\n",
 	     (unsigned)n, (unsigned)frame_size, pending, (int)flush_e, frame);
 	if (disp && frame && flush_e != AVDK_ERR_OK) {
 		LOGE("[cast] fd%u flush %d\n", (unsigned)n, (int)flush_e);
@@ -471,7 +485,7 @@ static void cast_frame_consumed_cb(const uint8_t *jpeg_stream, int status, void 
 {
 	(void)user_data;
 	if (status == JSP_STATUS_FRAME_DROPPED)
-		LOGW("[cast] jpgc frame dropped\n");
+		LOGPF("[cast] jpgc frame dropped\n"); /* per-drop noise; aggregated in jsp push */
 	else if (status != 0)
 		LOGE("[cast] jpgc st=%d\n", status);
 	if (jpeg_owner != NULL) {
@@ -487,7 +501,7 @@ static bk_err_t cast_pipeline_push_fb_locked(frame_buffer_t *fb)
 {
 	avdk_err_t err;
 
-	LOGI("[cast] pjfb %u\n", (unsigned)fb->length);
+	LOGPF("[cast] pjfb %u\n", (unsigned)fb->length);
 	err = jpeg_stream_pipeline_push_frame(s_pipeline, fb->frame, fb->length, fb);
 	if (err != AVDK_ERR_OK) {
 		if (err == AVDK_ERR_BUSY)
