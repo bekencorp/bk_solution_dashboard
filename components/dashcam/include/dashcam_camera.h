@@ -23,6 +23,10 @@ extern "C" {
  * controls the H264 bond; the assist pair never creates one.
  */
 
+/* Initializes the camera open/close serialization lock. Call once at boot,
+ * before any camera open/close can run concurrently. Idempotent. */
+bk_err_t dashcam_camera_init(void);
+
 bk_err_t dashcam_camera_open(void);
 void dashcam_camera_close(void);
 bk_err_t dashcam_camera_open_for_assist(void);

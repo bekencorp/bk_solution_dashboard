@@ -52,6 +52,52 @@ static bool s_assist_user = false;
 static void *s_isp_encode_bond = NULL;
 static bool s_encoder_on = false;
 
+/*
+ * Serializes every camera open/close path (record + assist, driven from the UI
+ * thread and from async dcam_load workers). s_record_user and s_assist_user
+ * together are the ISP user refcount: the shared MIPI+ISP is powered on when
+ * the first user acquires it and off only when the last user releases it.
+ *
+ * Before this lock the "check s_open / turn_on / set flag" sequence was a
+ * TOCTOU window: two paths could both see !s_open and both call
+ * app_isp_mipi_camera_turn_on(), double-opening the ISP and leaking an
+ * isp_core thread (BK7259SW-3427). Holding the lock across the whole
+ * check-then-act makes each acquire/release atomic and keeps the refcount and
+ * the actual ISP power state consistent.
+ */
+static beken_mutex_t s_cam_lock = NULL;
+
+bk_err_t dashcam_camera_init(void)
+{
+    if (s_cam_lock == NULL)
+    {
+        return rtos_init_mutex(&s_cam_lock);
+    }
+    return BK_OK;
+}
+
+static void dashcam_camera_lock(void)
+{
+    if (s_cam_lock == NULL)
+    {
+        /* Fallback for any caller that runs before dashcam_camera_init(); the
+         * very first open at boot is single-threaded, so this is race-free. */
+        (void)dashcam_camera_init();
+    }
+    if (s_cam_lock != NULL)
+    {
+        rtos_lock_mutex(&s_cam_lock);
+    }
+}
+
+static void dashcam_camera_unlock(void)
+{
+    if (s_cam_lock != NULL)
+    {
+        rtos_unlock_mutex(&s_cam_lock);
+    }
+}
+
 static void dashcam_camera_fill_board(camera_board_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
@@ -176,18 +222,24 @@ static void dashcam_camera_close_isp_if_unused(void)
 
 bk_err_t dashcam_camera_open(void)
 {
-    bool isp_was_open = s_open;
+    bool isp_was_open;
+
+    dashcam_camera_lock();
 
     LOGD("record open req (open=%d record=%d assist=%d)\n",
          (int)s_open, (int)s_record_user, (int)s_assist_user);
 
     if (s_record_user)
     {
+        dashcam_camera_unlock();
         return BK_OK;
     }
 
+    isp_was_open = s_open;
+
     if (dashcam_camera_open_isp() != BK_OK)
     {
+        dashcam_camera_unlock();
         return BK_FAIL;
     }
 
@@ -199,21 +251,26 @@ bk_err_t dashcam_camera_open(void)
             (void)app_isp_camera_turn_off();
             s_open = false;
         }
+        dashcam_camera_unlock();
         return BK_FAIL;
     }
 
     s_record_user = true;
     LOGI("record camera open, ISP->H264 bond active\n");
+    dashcam_camera_unlock();
     return BK_OK;
 }
 
 void dashcam_camera_close(void)
 {
+    dashcam_camera_lock();
+
     LOGD("record close (open=%d record=%d assist=%d)\n",
          (int)s_open, (int)s_record_user, (int)s_assist_user);
 
     if (!s_record_user)
     {
+        dashcam_camera_unlock();
         return;
     }
 
@@ -221,42 +278,52 @@ void dashcam_camera_close(void)
     dashcam_camera_stop_encoder_bond();
     dashcam_camera_close_isp_if_unused();
     LOGI("record camera closed\n");
+    dashcam_camera_unlock();
 }
 
 bk_err_t dashcam_camera_open_for_assist(void)
 {
+    dashcam_camera_lock();
+
     LOGD("assist open req (open=%d record=%d assist=%d)\n",
          (int)s_open, (int)s_record_user, (int)s_assist_user);
 
     if (s_assist_user)
     {
+        dashcam_camera_unlock();
         return BK_OK;
     }
 
     if (dashcam_camera_open_isp() != BK_OK)
     {
+        dashcam_camera_unlock();
         return BK_FAIL;
     }
 
     s_assist_user = true;
     LOGI("assist camera open, ISP->H264 bond %s\n",
          s_record_user ? "kept for recording" : "not created");
+    dashcam_camera_unlock();
     return BK_OK;
 }
 
 void dashcam_camera_close_for_assist(void)
 {
+    dashcam_camera_lock();
+
     LOGD("assist close (open=%d record=%d assist=%d)\n",
          (int)s_open, (int)s_record_user, (int)s_assist_user);
 
     if (!s_assist_user)
     {
+        dashcam_camera_unlock();
         return;
     }
 
     s_assist_user = false;
     dashcam_camera_close_isp_if_unused();
     LOGI("assist camera closed\n");
+    dashcam_camera_unlock();
 }
 
 bool dashcam_camera_is_open(void)

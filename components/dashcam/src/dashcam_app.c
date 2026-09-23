@@ -452,6 +452,10 @@ void dashcam_app_boot_start(void)
 {
     LOGD("boot_start (rec=%d)\n", (int)s_rec);
 
+    /* Bring up the camera open/close lock before the first (single-threaded)
+     * open below, so later concurrent record/assist paths are serialized. */
+    (void)dashcam_camera_init();
+
     if (s_rec != DASHCAM_REC_IDLE)
     {
         return;
