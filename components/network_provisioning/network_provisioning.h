@@ -14,6 +14,7 @@ typedef enum
     BOARDING_OP_TRANSFER_FILE_DATA = 51,
     BOARDING_OP_NAVIGATION_CONTROL = 52,
     BOARDING_OP_NAVIGATION_TYPE_CONTROL = 53,
+    BOARDING_OP_START_BK_MODEM = 54,
     BOARDING_OP_MAX
 } boarding_opcode_cmd_t;
 
@@ -101,3 +102,10 @@ navigation_type_t get_navigation_type(void);
 
 /* Whether BLE-side navigation (casting) is currently active. */
 bool bk_sl_np_is_navigating(void);
+
+#if CONFIG_BK_MODEM
+/* SCH-7259: release NT26_RST and start/stop UART NIC modem (for CLI / boarding). */
+bk_err_t dashboard_modem_uart_start(void);
+bk_err_t dashboard_modem_uart_stop(void);
+void dashboard_modem_cli_init(void);
+#endif

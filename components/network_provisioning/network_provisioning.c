@@ -48,6 +48,12 @@
 #include "ancs_client.h"
 #endif
 
+#if CONFIG_BK_MODEM
+#include "components/modem_driver.h"
+#include <driver/gpio.h>
+#include "gpio_driver.h"
+#endif
+
 /* Firmware version advertised in the BLE provisioning core header. */
 #define DASHBOARD_FW_MAJOR 1
 #define DASHBOARD_FW_MINOR 0
@@ -912,6 +918,14 @@ static void bk_sl_np_ble_msg_handle(uint16_t event, uint8_t *param, uint16_t len
         }
         break;
 
+        #if CONFIG_BK_MODEM
+        case BOARDING_OP_START_BK_MODEM:
+        {
+            (void)dashboard_modem_uart_start();
+        }
+        break;
+        #endif
+
         default:
         {
             LOGI("%s %u, do nothing\r\n", __func__, event);
@@ -1148,6 +1162,92 @@ static void bk_sl_np_ble_disconnect_cb(void)
     /* 同上：turn_off 内已 resume，避免重复 */
 #endif
 }
+
+#if CONFIG_BK_MODEM
+bk_err_t dashboard_modem_uart_start(void)
+{
+    bk_err_t ret;
+
+    /* SCH-7259: P55_NT26_RST is active-low; drive high to release reset. */
+    gpio_dev_unmap(GPIO_55);
+    bk_gpio_disable_pull(GPIO_55);
+    bk_gpio_enable_output(GPIO_55);
+    bk_gpio_set_output_high(GPIO_55);
+
+    LOGI("start 4G UART NIC modem (uart_id=%d)\n", CONFIG_BK_MODEM_UART_ID);
+    ret = bk_modem_init(UART_NIC_MODE, UART_IF);
+    if (ret != BK_OK)
+    {
+        LOGW("bk_modem_init first try failed (%d), retry\n", ret);
+        ret = bk_modem_init(UART_NIC_MODE, UART_IF);
+    }
+    return ret;
+}
+
+bk_err_t dashboard_modem_uart_stop(void)
+{
+    LOGI("stop 4G modem\n");
+    bk_err_t ret = bk_modem_deinit();
+
+    /* Keep NT26 in reset after deinit (P55 is active-low reset). */
+    gpio_dev_unmap(GPIO_55);
+    bk_gpio_disable_pull(GPIO_55);
+    bk_gpio_enable_output(GPIO_55);
+    bk_gpio_set_output_low(GPIO_55);
+
+    return ret;
+}
+
+static void cli_dashboard_modem_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **argv)
+{
+    char *msg = WIFI_CMD_RSP_SUCCEED;
+
+    if (argc < 2)
+    {
+        CLI_LOGI("usage: ap_cmd modem {start|stop}\n");
+        CLI_LOGI("  start: release NT26_RST(P55) and bk_modem_init(UART_NIC_MODE, UART_IF)\n");
+        CLI_LOGI("  stop:  bk_modem_deinit\n");
+        msg = WIFI_CMD_RSP_ERROR;
+        goto out;
+    }
+
+    if (os_strcmp(argv[1], "start") == 0)
+    {
+        if (dashboard_modem_uart_start() != BK_OK)
+        {
+            msg = WIFI_CMD_RSP_ERROR;
+        }
+    }
+    else if (os_strcmp(argv[1], "stop") == 0)
+    {
+        if (dashboard_modem_uart_stop() != BK_OK)
+        {
+            msg = WIFI_CMD_RSP_ERROR;
+        }
+    }
+    else
+    {
+        CLI_LOGI("usage: ap_cmd modem {start|stop}\n");
+        msg = WIFI_CMD_RSP_ERROR;
+    }
+
+out:
+    if (pcWriteBuffer && xWriteBufferLen > 0)
+    {
+        os_memcpy(pcWriteBuffer, msg, os_strlen(msg));
+    }
+}
+
+static const struct cli_command s_dashboard_modem_clis[] = {
+    {"modem", "ap_cmd modem {start|stop}", cli_dashboard_modem_cmd},
+};
+
+void dashboard_modem_cli_init(void)
+{
+    cli_register_commands(s_dashboard_modem_clis,
+                          sizeof(s_dashboard_modem_clis) / sizeof(s_dashboard_modem_clis[0]));
+}
+#endif /* CONFIG_BK_MODEM */
 
 bk_err_t bk_sl_np_init(void)
 {
