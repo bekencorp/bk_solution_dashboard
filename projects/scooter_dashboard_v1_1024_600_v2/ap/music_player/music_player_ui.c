@@ -513,7 +513,9 @@ static void mp_read_id3v2_mp3(const char *path, char *title, int tcap, char *art
  * split stays as a robust fallback. */
 static void mp_read_tags(const char *name, mp_track_t *t)
 {
-    static audio_metadata_t meta;   /* ~2KB; scan is sequential, not reentrant */
+    /* ~2KB; scan is sequential, not reentrant. CPU-only, so keep it in PSRAM
+     * (.psram.bss) instead of the small AP SRAM heap. */
+    static __attribute__((section(".psram.bss"))) audio_metadata_t meta;
     const bk_audio_player_metadata_parser_ops_t *ops = mp_parser_for(name);
     char base_noext[MP_TITLE_MAX + MP_ARTIST_MAX];
     char *dot;

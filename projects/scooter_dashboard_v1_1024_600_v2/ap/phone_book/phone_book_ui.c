@@ -28,6 +28,11 @@
  * very large phonebook; beyond this the list is truncated (logged). */
 #define PB_MAX_ROWS     100
 
+/* CPU-only PBAP snapshot scratch buffers: keep them out of the small AP SRAM
+ * heap by placing them in PSRAM (.psram.bss). Each snapshot is filled and read
+ * within the single LVGL/UI thread, so no extra locking is needed. */
+#define PB_PSRAM_BSS    __attribute__((section(".psram.bss")))
+
 /* Which area the physical key currently drives. */
 typedef enum {
     PB_FOCUS_NONE = 0,   /* whole page: single press returns home */
@@ -272,7 +277,7 @@ static void phone_book_dial_selection(pb_focus_t focus, int sel)
 
     if (focus == PB_FOCUS_CONTACTS)
     {
-        static pbap_contact_info_t snap[PB_MAX_ROWS];
+        static PB_PSRAM_BSS pbap_contact_info_t snap[PB_MAX_ROWS];
         int n = pbap_contacts_snapshot(snap, PB_MAX_ROWS);
         if (sel >= 0 && sel < n)
         {
@@ -281,7 +286,7 @@ static void phone_book_dial_selection(pb_focus_t focus, int sel)
     }
     else if (focus == PB_FOCUS_RECENTS)
     {
-        static pbap_recent_info_t snap[PB_MAX_ROWS];
+        static PB_PSRAM_BSS pbap_recent_info_t snap[PB_MAX_ROWS];
         int n = pbap_recents_snapshot(snap, PB_MAX_ROWS);
         if (sel >= 0 && sel < n)
         {
@@ -544,7 +549,7 @@ static void phone_book_fill_contacts(void)
     phone_book_reset_list(list);
 
 #if CONFIG_PBAP_CONTACTS
-    static pbap_contact_info_t s_snap[PB_MAX_ROWS];
+    static PB_PSRAM_BSS pbap_contact_info_t s_snap[PB_MAX_ROWS];
     lv_font_t *cn = home_ui_get_cn_font();
     int total = pbap_contacts_count();
 
@@ -675,7 +680,7 @@ static void phone_book_fill_recents(void)
     phone_book_reset_list(list);
 
 #if CONFIG_PBAP_CONTACTS
-    static pbap_recent_info_t s_snap[PB_MAX_ROWS];
+    static PB_PSRAM_BSS pbap_recent_info_t s_snap[PB_MAX_ROWS];
     lv_font_t *cn = home_ui_get_cn_font();
     int total = pbap_recents_count();
 

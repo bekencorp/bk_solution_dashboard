@@ -37,7 +37,9 @@ extern void beken_ui_kick_after_display_resume(void);
 #define DASHCAM_UI_LOAD_PRIO        4
 #define DASHCAM_UI_LOAD_STACK       4096
 
-static dashcam_file_info_t s_files[DASHCAM_UI_MAX_ITEMS];
+/* CPU-only file-list snapshot; keep it out of the small AP SRAM heap by
+ * placing it in PSRAM (.psram.bss). */
+static __attribute__((section(".psram.bss"))) dashcam_file_info_t s_files[DASHCAM_UI_MAX_ITEMS];
 static lv_obj_t *s_btns[DASHCAM_UI_MAX_ITEMS];
 static uint32_t s_file_count = 0;
 static bool s_preview_cb_bound = false;
@@ -642,7 +644,7 @@ static void dashcam_ui_load_complete_cb(void *user_data)
     if (!result_is_current ||
         ui->dashcam == NULL || !lv_obj_is_valid(ui->dashcam))
     {
-        os_free(result);
+        psram_free(result);
         return;
     }
 
@@ -652,7 +654,7 @@ static void dashcam_ui_load_complete_cb(void *user_data)
     dashcam_app_attach(ui->dashcam_sky_area);
     dashcam_ui_focus_current_item();
     dashcam_ui_set_status(ui);
-    os_free(result);
+    psram_free(result);
 }
 
 static void dashcam_ui_load_failed_cb(void *user_data)
@@ -683,7 +685,7 @@ static void dashcam_ui_load_worker(void *arg)
     bool page_active;
 
     (void)arg;
-    result = os_malloc(sizeof(*result));
+    result = psram_malloc(sizeof(*result));
     if (result != NULL)
     {
         memset(result, 0, sizeof(*result));
@@ -707,7 +709,7 @@ static void dashcam_ui_load_worker(void *arg)
         result->generation = generation;
         if (lv_async_call(dashcam_ui_load_complete_cb, result) != LV_RESULT_OK)
         {
-            os_free(result);
+            psram_free(result);
         }
     }
     else if (page_active)
@@ -719,7 +721,7 @@ static void dashcam_ui_load_worker(void *arg)
     {
         if (result != NULL)
         {
-            os_free(result);
+            psram_free(result);
         }
 #if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
         (void)dashcam_app_record_start();

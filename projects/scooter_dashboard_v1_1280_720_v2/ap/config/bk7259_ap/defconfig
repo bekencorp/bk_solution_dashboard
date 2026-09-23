@@ -41,6 +41,7 @@ CONFIG_BK_PERIPHERAL=y
 CONFIG_CSI_CAMERA=y
 CONFIG_CSI_GC2053=y
 CONFIG_CSI_CV2005=y
+CONFIG_CSI_CALIB_USE_PSRAM=y
 CONFIG_LCD_DSI=y
 # CONFIG_LCD_HX8399C_MIPI_1080x1920 is not set
 # CONFIG_LCD_HX8394F_MIPI_720x1280=y
@@ -136,6 +137,7 @@ CONFIG_SCOOTER_CAST_JPEG_SRC_HEIGHT=720
 CONFIG_SCOOTER_CAST_JPEG_DST_WIDTH=1280
 CONFIG_SCOOTER_CAST_JPEG_DST_HEIGHT=720
 CONFIG_SCOOTER_CAST_JPEG_ROTATE_DEG=90
+CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK=y
 CONFIG_P2P=y
 CONFIG_SOC_SMP=y
 # CONFIG_FREERTOS_V10 is not set
@@ -198,7 +200,10 @@ CONFIG_APP_MAIN_TASK_STACK_SIZE=12288
 
 # Full BT + Wi-Fi + LVGL + dashcam ISP initialization consumes more than the
 # default 160 dynamic spinlocks (FreeRTOS queues/semaphores/mutexes each hold one).
-CONFIG_SPINLOCK_DYNAMIC_CNT=256
+# RECORD_DURING_PLAYBACK adds a full video-player engine (parser/decode/audio
+# pipelines + threads) on top of live recording, so 256 is exhausted at playback
+# engine start; bump to 512 to match the multimedia example projects.
+CONFIG_SPINLOCK_DYNAMIC_CNT=512
 
 # Board identity = dashboard V1.0 (SCH-7259_V1.0): selects the V1.0 key map
 # (P27/P30/P32/P31/P29) and the LCD power/backlight enable (P45/P46) in
@@ -245,6 +250,7 @@ CONFIG_USB=y
 CONFIG_BK_USB_CHERRYUSB_V1_6=y
 CONFIG_USB_DEVICE=y
 CONFIG_USB_HOST=y
+CONFIG_USB_HOST_STRUCTS_IN_PSRAM=y
 # CONFIG_USB_RISCV_BRIDGE is not set
 CONFIG_USBD_MTP=y
 CONFIG_USBD_MTP_PRODUCT_NAME="BekenMTP"
