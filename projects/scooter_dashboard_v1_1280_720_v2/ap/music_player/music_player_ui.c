@@ -14,6 +14,7 @@
 #include "bk_std_header.h"
 #include "boot_sd_mount.h"
 #include "dashcam_app.h"   /* pause background recording while on the music page */
+#include "a2dp_sink_demo.h"
 
 /* SDK audio player: metadata parsers (used at scan time to read title/artist/
  * duration) plus the full playback API and the plugins we register for local
@@ -1297,6 +1298,26 @@ static bk_audio_player_handle_t mp_player_ensure(void)
     return s_player;
 }
 
+/*
+ * A2DP coexistence: the A2DP sink and the player's onboard-speaker sink drive
+ * the same speaker/DAC, and neither can share it (the SDK's multi-source
+ * speaker path is behind CONFIG_ADK_ONBOARD_SPEAKER_STREAM_SUPPORT_MULTIPLE_SOURCE,
+ * which this project does not enable). So the BT pipeline has to be released
+ * *before* the player opens its own - releasing it on SONG_START would be too
+ * late, the sinks would already have collided.
+ *
+ * Blocking: a2dp_sink_demo_audio_spk_enable() queues to the a2dp_sink task and
+ * waits on a semaphore with no timeout while that task tears down / brings up
+ * the pipeline. It may therefore only be called from the key/LVGL task. Calling
+ * it from mp_player_event_cb would block the player task - which the key
+ * handler is itself already blocked on inside bk_audio_player_* - and put an
+ * untimed cross-task wait under the LVGL disp lock.
+ */
+static void mp_a2dp_spk_enable(bool enable)
+{
+    a2dp_sink_demo_audio_spk_enable(enable ? 1 : 0);
+}
+
 /* ------------------------------------------------------------------ */
 /* Physical-key handlers                                              */
 /* ------------------------------------------------------------------ */
@@ -1430,6 +1451,7 @@ static void mp_np_activate(int sel)
         break;
 
     case 1:  /* btn_prev */
+        mp_a2dp_spk_enable(false);
         bk_audio_player_prev(s_player);
         /* Player advances in list order (== our s_tracks order); keep s_now_idx
          * in step so the SONG_START trampoline shows the right metadata. Mirrors
@@ -1456,20 +1478,12 @@ static void mp_np_activate(int sel)
         {
             /* Nothing playing yet (page just opened / playback stopped): start
              * the selected track. resume() on a STOPPED pipeline is a no-op. */
-            int idx = (s_pl_sel >= 0 && s_pl_sel < s_track_cnt) ? s_pl_sel : 0;
-
-            if (bk_audio_player_jumpto(s_player, idx) == AUDIO_PLAYER_OK)
-            {
-                s_now_idx = idx;
-                s_pb      = MP_PB_PLAYING;
-                mp_now_playing_apply(idx);
-                mp_play_icon_apply();
-                LOGI("np: start track %d\n", idx);
-            }
+            mp_play_index((s_pl_sel >= 0 && s_pl_sel < s_track_cnt) ? s_pl_sel : 0);
         }
         break;
 
     case 3:  /* btn_next */
+        mp_a2dp_spk_enable(false);
         bk_audio_player_next(s_player);
         if (s_track_cnt > 0)
         {
@@ -1510,18 +1524,7 @@ bool music_player_ui_handle_key_long(void)
      * page. Any other focus lets the long press bubble up (return home). */
     if (s_focus == MP_FOCUS_PL && s_pl_rows > 0)
     {
-        if (mp_player_ensure() == NULL)
-        {
-            return true;
-        }
-        if (bk_audio_player_jumpto(s_player, s_pl_sel) == AUDIO_PLAYER_OK)
-        {
-            s_now_idx = s_pl_sel;
-            s_pb      = MP_PB_PLAYING;
-            mp_now_playing_apply(s_pl_sel);
-            mp_play_icon_apply();
-            LOGI("play track %d\n", s_pl_sel);
-        }
+        mp_play_index(s_pl_sel);
         return true;
     }
 
@@ -1543,6 +1546,7 @@ static void mp_play_index(int idx)
     {
         return;
     }
+    mp_a2dp_spk_enable(false);   /* hand the speaker over before the sink opens */
     if (bk_audio_player_jumpto(s_player, idx) == AUDIO_PLAYER_OK)
     {
         s_now_idx = idx;
@@ -1901,6 +1905,12 @@ void music_player_ui_leave(void)
         s_pb      = MP_PB_STOPPED;
         s_now_idx = -1;
     }
+
+    /* Give the speaker back to the A2DP sink. This is the only restore point:
+     * stop() emits no PAUSE event, and neither does a playlist reaching its end
+     * or a SONG_FAILURE, so tying the restore to player events would leave BT
+     * audio muted for good. */
+    mp_a2dp_spk_enable(true);
 
     /* Release the PSRAM track table; the page tree (and its playlist rows) is
      * freed by the page manager after leave, and any late player event bails on
