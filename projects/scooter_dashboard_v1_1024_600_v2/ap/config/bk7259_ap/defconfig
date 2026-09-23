@@ -171,7 +171,6 @@ CONFIG_VG_LITE_GPU=y
 # so this heap size is NOT the cause of that failure. Kept at 0xD000 (52KB)
 # which is the size the assist-view HSRAM budget (vg_lite + pingpong + worker
 # stack) needs; see the assist-view budget analysis below.
-CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ=0xD000
 CONFIG_PSA_MBEDTLS=y
 CONFIG_SW_CRYPTO=y
 CONFIG_AUD_DRIVER_V2=y
