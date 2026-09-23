@@ -77,6 +77,7 @@ The Dashboard V1.0 key-to-GPIO mapping is:
 | Right | GPIO29 | Long press | Open Assist View; Home only |
 | Middle | GPIO30 | Short press | Confirm the focused item: open a page, play a recording or track, perform a music control, dial a number, or perform a call action |
 | Middle | GPIO30 | Double press | Return to Home from a feature page; exit Assist View to Home |
+| Middle | GPIO30 | Long press | Toggle ANCS BLE advertising (off by default). When on, the phone can discover `BK_DASHBOARD_*` and pair for notifications; long-press again to stop |
 
 ### Page Key Behavior
 

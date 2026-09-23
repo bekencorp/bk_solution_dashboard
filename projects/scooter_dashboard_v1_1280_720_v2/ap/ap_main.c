@@ -300,13 +300,6 @@ static void ap_bt_startup_task(void *arg)
         goto end;
     }
 
-#if CONFIG_BLUETOOTH_ANCS_CLIENT
-    if (bk_sl_np_is_provisioned())
-    {
-        BK_LOG_ON_ERR(ancs_client_adv_start());
-    }
-#endif
-
 end:;
     LOGI("%s end\n", __func__);
     s_ap_bt_startup_task_handle = NULL;
@@ -560,10 +553,14 @@ typedef enum
     APP_EVENT_BT_PAIRING,
     APP_EVENT_CONFIG_NETWORK,
     APP_EVENT_OPEN_ASSIST_VIEW,
+    APP_EVENT_ANCS_ADV_TOGGLE,
 } app_event_t;
 
 static beken_queue_t s_app_event_queue = NULL;
 static beken_thread_t s_app_event_thread = NULL;
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+static bool s_ancs_adv_on = false;
+#endif
 
 static void app_event_thread(void *param)
 {
@@ -609,6 +606,20 @@ static void app_event_thread(void *param)
             case APP_EVENT_OPEN_ASSIST_VIEW:
                 beken_ui_key_open_assist_view();
                 break;
+            case APP_EVENT_ANCS_ADV_TOGGLE:
+#if CONFIG_BLUETOOTH_ANCS_CLIENT
+                s_ancs_adv_on = !s_ancs_adv_on;
+                LOGI("ANCS adv %s\n", s_ancs_adv_on ? "on" : "off");
+                if (s_ancs_adv_on)
+                {
+                    BK_LOG_ON_ERR(ancs_client_adv_start());
+                }
+                else
+                {
+                    BK_LOG_ON_ERR(ancs_client_adv_stop());
+                }
+#endif
+                break;
             default:
                 LOGW("unknown app event: %d\n", (int)event);
                 break;
@@ -646,6 +657,7 @@ APP_EVENT_CALLBACK(app_event_key_home, APP_EVENT_KEY_HOME)
 APP_EVENT_CALLBACK(app_event_bt_pairing, APP_EVENT_BT_PAIRING)
 APP_EVENT_CALLBACK(app_event_config_network, APP_EVENT_CONFIG_NETWORK)
 APP_EVENT_CALLBACK(app_event_open_assist_view, APP_EVENT_OPEN_ASSIST_VIEW)
+APP_EVENT_CALLBACK(app_event_ancs_adv_toggle, APP_EVENT_ANCS_ADV_TOGGLE)
 
 #undef APP_EVENT_CALLBACK
 #endif
@@ -690,7 +702,7 @@ static void app_key_init(void)
      *   DOWN   short : DOWN | long : network provisioning (HOME only)
      *   LEFT   short : PREV, or LEFT in phone book | long : assist view
      *   RIGHT  short : NEXT, or RIGHT in phone book | long : assist view
-     *   MIDDLE short : ENTER | double : HOME
+     *   MIDDLE short : ENTER | double : HOME | long : ANCS BLE adv toggle
      * Telephony no longer uses a dedicated key: answer/hangup are group buttons
      * on the incoming/active-call popup, driven by PREV/NEXT + ENTER.
      */
@@ -700,7 +712,7 @@ static void app_key_init(void)
         { .pin_id = KEY_PIN_DOWN,   .short_callback = app_event_key_down,  .double_callback = NULL,              .long_callback = app_event_config_network },
         { .pin_id = KEY_PIN_LEFT,   .short_callback = app_event_key_left,  .double_callback = NULL,              .long_callback = app_event_open_assist_view },
         { .pin_id = KEY_PIN_RIGHT,  .short_callback = app_event_key_right, .double_callback = NULL,              .long_callback = app_event_open_assist_view },
-        { .pin_id = KEY_PIN_MIDDLE, .short_callback = app_event_key_enter, .double_callback = app_event_key_home, .long_callback = NULL },
+        { .pin_id = KEY_PIN_MIDDLE, .short_callback = app_event_key_enter, .double_callback = app_event_key_home, .long_callback = app_event_ancs_adv_toggle },
     };
     bk_key_service_init(s_key_actions,
                         sizeof(s_key_actions) / sizeof(s_key_actions[0]));

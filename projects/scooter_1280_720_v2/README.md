@@ -172,7 +172,7 @@ upgrade entry and progress UI; the corresponding OTA service must be integrated 
 Default key actions:
 
 - Up: short press to answer a call, double press to hang up, and long press to enter Classic Bluetooth pairing mode so a phone can discover and pair with the device again.
-- Left: erase network provisioning data and reboot.
+- Left: short press erases network provisioning data and reboots; long press toggles ANCS BLE advertising (off by default). When on, the phone can discover `BK_DASHBOARD_*` and pair for notifications; long-press again to stop.
 - Right: erase network provisioning data.
 - Middle: short, double and long presses are delegated to the active page for navigation, focus,
   confirmation or return.
