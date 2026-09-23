@@ -3079,9 +3079,9 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     lv_label_set_text(bk_ui->home_song_title, "Electric Dreams");
     lv_label_set_long_mode(bk_ui->home_song_title, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_x(bk_ui->home_song_title, -2);
-    lv_obj_set_y(bk_ui->home_song_title, 183);
+    lv_obj_set_y(bk_ui->home_song_title, 201);
     lv_obj_set_width(bk_ui->home_song_title, 260);
-    lv_obj_set_height(bk_ui->home_song_title, 204);
+    lv_obj_set_height(bk_ui->home_song_title, 180);
     lv_obj_remove_flag(bk_ui->home_song_title, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_CHAIN | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_SCROLL_WITH_ARROW | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_style_bg_color(bk_ui->home_song_title, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(bk_ui->home_song_title, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -3112,7 +3112,7 @@ void init_page_home(bk_lv_ui_t *bk_ui)
 
     bk_ui->home_song_artist = lv_label_create(bk_ui->home_np_panel);
     lv_label_set_text(bk_ui->home_song_artist, "Neon Rider");
-    lv_label_set_long_mode(bk_ui->home_song_artist, LV_LABEL_LONG_MODE_WRAP);
+    lv_label_set_long_mode(bk_ui->home_song_artist, LV_LABEL_LONG_MODE_DOTS);
     lv_obj_set_x(bk_ui->home_song_artist, 2);
     lv_obj_set_y(bk_ui->home_song_artist, 93);
     lv_obj_set_width(bk_ui->home_song_artist, 260);
