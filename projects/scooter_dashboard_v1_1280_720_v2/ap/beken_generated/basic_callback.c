@@ -35,6 +35,21 @@ static int g_global_second = 0;
 static char g_global_meridiem[4] = "AM";
 static int g_timer_initialized = 0;
 
+void lv_digital_clock_reset_after_lvgl_deinit(void)
+{
+    int i;
+
+    g_digital_clock_timer = NULL;
+    g_digital_clock_count = 0;
+    g_timer_initialized = 0;
+    for (i = 0; i < MAX_DIGITAL_CLOCKS; i++)
+    {
+        g_digital_clock_instances[i].label = NULL;
+        g_digital_clock_instances[i].show_second = 0;
+        g_digital_clock_instances[i].use_ampm = 0;
+    }
+}
+
 /**
  * @brief format time string
  * @param buf output buffer

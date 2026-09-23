@@ -469,7 +469,7 @@ void dashcam_ui_enter(void)
 
 void dashcam_ui_leave(void)
 {
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     bk_err_t ret;
 #endif
 
@@ -484,7 +484,7 @@ void dashcam_ui_leave(void)
     memset(s_btns, 0, sizeof(s_btns));
     dashcam_app_detach();
 
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     ret = dashcam_app_record_start();
     if (ret != BK_OK)
     {

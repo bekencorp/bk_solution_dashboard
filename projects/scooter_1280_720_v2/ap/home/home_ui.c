@@ -31,11 +31,17 @@
  * If loading fails, the labels keep their designer default (Latin) font. */
 #define HOME_CN_TTF_PATH   "S:/simhei_new.ttf"
 #define HOME_CN_TTF_SIZE   32
-/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT
- * = 256) is an LRU by glyph COUNT; at 32px each CJK bitmap is ~1KB, so 256 of
- * them (~300KB, all in the HSRAM heap) exhausts HSRAM while music lyrics scroll
- * through many unique characters. 64 covers the on-screen set (title + artist +
- * a lyrics line) and bounds HSRAM use to roughly ~64KB. */
+/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT)
+ * is an LRU by glyph COUNT, not by bytes; left alone it fills the heap with A8
+ * bitmaps as music metadata scrolls through many unique characters.
+ *
+ * 64 is measured, not guessed. Scaling it down per font size (32/36/56, from a
+ * 32KB-per-font byte budget) freed 24KB of bitmaps and cost a frame. The
+ * playlist draws four CJK titles at 30px, so that working set sits right at 64,
+ * and an LRU even slightly smaller than a repeated sequential scan misses on
+ * nearly every lookup and re-rasterizes through stb_truetype every frame. The
+ * 24KB also bought nothing where it hurts: largest_free_block stayed ~22KB
+ * either way, because the pool is fragmented rather than full. */
 #define HOME_CN_TTF_GLYPH_CACHE_CNT 64
 static lv_font_t *s_cn_font = NULL;
 static void *s_cn_font_buf = NULL;
@@ -108,7 +114,7 @@ static lv_font_t *home_cn_font_load(void)
      * to cap the glyph cache (default 256 blows the HSRAM heap, see above). */
     font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size,
                                       HOME_CN_TTF_SIZE,
-                                      LV_FONT_KERNING_NORMAL,
+                                      LV_FONT_KERNING_NONE,
                                       HOME_CN_TTF_GLYPH_CACHE_CNT);
     if (font == NULL)
     {
@@ -140,7 +146,7 @@ lv_font_t *home_ui_create_cn_font(uint32_t px)
         return NULL;
     }
     return lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size, px,
-                                      LV_FONT_KERNING_NORMAL,
+                                      LV_FONT_KERNING_NONE,
                                       HOME_CN_TTF_GLYPH_CACHE_CNT);
 }
 

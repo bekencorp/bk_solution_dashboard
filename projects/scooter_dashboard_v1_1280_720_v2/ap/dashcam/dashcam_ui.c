@@ -9,6 +9,7 @@
 #include "dashcam_player.h"
 #include "dashcam_recorder.h"
 #include "dashcam_storage.h"
+#include "dashcam_video.h"
 #include "lvgl.h"
 #include "lv_port_indev.h"
 #include "dashcam_assitview.h"
@@ -16,6 +17,9 @@
 #include "os/os.h"
 
 extern void beken_ui_before_assist_lvgl_teardown(void);
+extern void beken_ui_before_playback_lvgl_teardown(void);
+extern void beken_ui_before_playback_lvgl_restore(void);
+extern void beken_ui_after_lvgl_deinit(void);
 extern void beken_ui_kick_after_display_resume(void);
 
 #define TAG "d_ui"
@@ -347,13 +351,6 @@ lv_group_t *dashcam_ui_get_group(void)
 
 /* ---------- list population (req2 colors) ---------- */
 
-/*
- * Guard playback so a half-written clip never reaches the player. Two cases are
- * rejected: (1) the clip that is still being recorded (its moov/index is not
- * finalized), and (2) any .mp4 whose container fails a quick sanity check. On
- * 1280 the dashcam page stops recording on enter, so (1) is usually moot, but it
- * is kept for parity with 1024 and to stay safe if that ordering ever changes.
- */
 static bool dashcam_ui_clip_is_playable(const dashcam_file_info_t *info)
 {
     const char *recording_path;
@@ -553,25 +550,28 @@ static void dashcam_ui_populate_list(bk_lv_ui_t *ui, bk_err_t scan_result)
         return;
     }
 
-    /*
-     * The scan sorts clips newest-first (descending by name), so s_files[0] is
-     * the segment the recorder is currently writing to. While recording is
-     * active, hide that newest clip from the playable list: opening the MP4 the
-     * muxer is still appending to would race record-write vs playback-read on
-     * the same file (and the moov/index is not finalized yet). Drop index 0 by
-     * shifting the rest down so the whole UI (list, key-nav, selection) treats
-     * only the finalized clips as playable.
-     */
+    /* Hide the exact active recorder path. Filename ordering is not sufficient:
+     * mixed uptime/wall-clock names and segment rotation can make index 0 stale. */
     if (dashcam_app_rec_state() == DASHCAM_REC_RECORDING && s_file_count > 0)
     {
-        uint32_t k;
+        const char *recording_path = dashcam_recorder_current_path();
 
-        LOGI("skip newest (recording) clip: %s\n", s_files[0].name);
-        for (k = 1; k < s_file_count; k++)
+        if (recording_path != NULL && recording_path[0] != '\0')
         {
-            s_files[k - 1] = s_files[k];
+            for (i = 0; i < s_file_count; i++)
+            {
+                if (strcmp(s_files[i].path, recording_path) == 0)
+                {
+                    LOGI("skip active recording clip: %s\n", s_files[i].name);
+                    for (uint32_t k = i + 1U; k < s_file_count; k++)
+                    {
+                        s_files[k - 1U] = s_files[k];
+                    }
+                    s_file_count--;
+                    break;
+                }
+            }
         }
-        s_file_count--;
     }
 
     if (s_file_count == 0)
@@ -694,7 +694,6 @@ static void dashcam_ui_load_worker(void *arg)
         memset(result, 0, sizeof(*result));
     }
 
-    // dashcam_app_record_stop();
     if (result != NULL)
     {
         result->scan_result = dashcam_storage_scan(result->files,
@@ -727,12 +726,9 @@ static void dashcam_ui_load_worker(void *arg)
         {
             psram_free(result);
         }
-        if (!page_active)
-        {
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
-            (void)dashcam_app_record_start();
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
+        (void)dashcam_app_record_start();
 #endif
-        }
     }
 
     s_load_thread = NULL;
@@ -774,11 +770,22 @@ void dashcam_ui_boot_start(void)
     static const dashcam_assitview_hooks_t assist_hooks =
     {
         .before_lvgl_teardown = beken_ui_before_assist_lvgl_teardown,
+        .after_lvgl_deinit = beken_ui_after_lvgl_deinit,
         .after_display_resume = beken_ui_kick_after_display_resume,
+    };
+    /* Clip playback tears LVGL down too; it shares the handle-reset hook with
+     * assist but needs its own teardown (must not stop playback) and its own
+     * restore (comes up on the records list, not home). */
+    static const dashcam_video_lvgl_hooks_t playback_hooks =
+    {
+        .before_lvgl_teardown = beken_ui_before_playback_lvgl_teardown,
+        .after_lvgl_deinit = beken_ui_after_lvgl_deinit,
+        .before_lvgl_restore = beken_ui_before_playback_lvgl_restore,
     };
 
     LOGD("boot_start\n");
     dashcam_assitview_register_hooks(&assist_hooks);
+    dashcam_video_register_lvgl_hooks(&playback_hooks);
     if (dashcam_ui_load_state_init() != BK_OK)
     {
         LOGE("init load state mutex failed\n");
@@ -835,6 +842,24 @@ void dashcam_ui_suspend_keep_recording(void)
     }
 }
 
+/*
+ * Assist view destroys the LVGL runtime (lv_deinit) and the next lv_init()
+ * lays a fresh allocator over the same pool, so every LVGL handle held here is
+ * dangling even though this module deleted nothing. s_dashcam_group in
+ * particular outlives the page on purpose ("created lazily, persists for the
+ * app"), which is exactly what breaks across the cycle. LVGL is already down
+ * at this point, so only clear pointers - no lv_* call is legal here.
+ */
+void dashcam_ui_reset_after_lvgl_deinit(void)
+{
+    s_dashcam_group = NULL;
+    s_info_timer = NULL;
+    s_preview_cb_bound = false;
+    s_list_focused = false;
+    s_play_info_valid = false;
+    memset(s_btns, 0, sizeof(s_btns));
+}
+
 /* Assist-view leave: LVGL is back, re-arm the paused segment-rotation tick. */
 void dashcam_ui_resume_keep_recording(void)
 {
@@ -870,11 +895,12 @@ void dashcam_ui_enter(void)
     s_page_active = true;
     s_load_generation++;
     dashcam_ui_load_state_unlock();
-    
+
 #if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
-        dashcam_app_record_stop();
+    dashcam_app_record_stop();
 #endif
-    /* Render first, then stop/finalize recording and scan SD on the worker. */
+
+    /* Render first, then scan finalized clips on the worker. */
     dashcam_ui_show_list_message(ui, "Loading...");
     dashcam_ui_reset_play_info(ui);
 
@@ -894,7 +920,7 @@ void dashcam_ui_enter(void)
 
 void dashcam_ui_leave(void)
 {
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     bk_err_t ret;
     bool restart_recording;
 #endif
@@ -903,7 +929,7 @@ void dashcam_ui_leave(void)
     dashcam_ui_load_state_lock();
     s_page_active = false;
     s_load_generation++;
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     restart_recording = !s_load_worker_running;
 #endif
     dashcam_ui_load_state_unlock();
@@ -919,7 +945,7 @@ void dashcam_ui_leave(void)
 
     /* If loading is still running it owns SDIO and restarts recording when the
      * scan returns. Otherwise recording can resume immediately. */
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     if (restart_recording)
     {
         ret = dashcam_app_record_start();
@@ -978,13 +1004,12 @@ bool dashcam_ui_handle_key_home(void)
     }
 
     /*
-     * A clip is playing (direct-DPU playback stops the LVGL task). Double-press
-     * of the MIDDLE key routes here via beken_ui_key_home: stop playback so the
-     * dashcam list page comes back, instead of jumping all the way to HOME. This
-     * handler runs on the application key-event thread, so it only tears down the
-     * player/display handoff; LVGL is restored inside dashcam_app_stop_playback.
+     * Direct-DPU playback has stopped the LVGL task. This handler runs on the
+     * application key-event thread, so only stop the player/display handoff
+     * here. The caller queues the actual HOME page transition with lv_async_call;
+     * it runs after dashcam_video_stop() restores and restarts LVGL.
      */
-    LOGI("home key: stop playback, return to dashcam list\n");
+    LOGI("home key: stop direct-DPU playback\n");
     dashcam_app_stop_playback();
     return true;
 }

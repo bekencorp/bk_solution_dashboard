@@ -99,4 +99,12 @@ menu "Scooter media / display configuration"
         default n
         help
             Continue dashcam recording while recorded video is playing.
+
+    config SCOOTER_DASHCAM_AUTO_RECORD
+        bool "Start dashcam recording automatically"
+        default y
+        help
+            Start recording at boot and resume it automatically after pages
+            that temporarily stop recording. Manual recording remains available
+            when this option is disabled.
 endmenu

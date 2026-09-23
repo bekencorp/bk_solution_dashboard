@@ -20,6 +20,12 @@ extern "C" {
 void phone_book_ui_enter(void);
 void phone_book_ui_leave(void);
 
+/* Drop the retained nav group after an lv_deinit(). It was allocated from the
+ * LVGL memory pool, which the next lv_init() rebuilds in place, so keeping the
+ * handle would hand LVGL memory the new pool already lists as free. Must not
+ * call into LVGL. */
+void phone_book_ui_reset_after_lvgl_deinit(void);
+
 /*
  * The LVGL group holding both lists' rows (contacts followed by recents) for
  * key navigation. beken_ui binds the shared KEYPAD indev to it while the

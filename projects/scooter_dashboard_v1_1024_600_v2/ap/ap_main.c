@@ -365,6 +365,10 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
         LOGI("simulate UP (HOME)\n");
         beken_ui_key_home();
     }
+    else if ((argc >= 2) && (os_strcmp(argv[1], "log_heap") == 0))
+    {
+        beken_ui_log_heap_test();
+    }
     else if ((argc >= 2) && (os_strcmp(argv[1], "dashcam_count") == 0))
     {
         uint32_t count = 0;
@@ -431,7 +435,7 @@ void cli_widgets_cmd(char *pcWriteBuffer, int xWriteBufferLen, int argc, char **
     }
     else
     {
-        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | dashcam_count | dashcam_trim | dashcam_rec_start | dashcam_rec_stop | dashcam_clean_idx\n");
+        LOGI("usage: dashboard np_erase [reboot] | np_start_advertise | dashcam | phone_book | key_enter | key_prev | key_next | key_home | log_heap | dashcam_count | dashcam_trim | dashcam_rec_start | dashcam_rec_stop | dashcam_clean_idx\n");
     }
 }
 

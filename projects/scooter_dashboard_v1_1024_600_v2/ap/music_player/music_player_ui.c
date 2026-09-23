@@ -38,7 +38,7 @@
 
 /* SD music library. */
 #define MP_MUSIC_DIR    "/sd0/Music"
-#define MP_MAX_TRACKS   100          /* cap dynamic rows (AP SRAM heap bound) */
+#define MP_MAX_TRACKS   2          /* cap dynamic rows (AP SRAM heap bound) */
 #define MP_TITLE_MAX    64
 #define MP_ARTIST_MAX   40
 #define MP_PATH_MAX     160
@@ -1913,11 +1913,43 @@ void music_player_ui_leave(void)
     s_track_cnt = 0;
     s_pl_rows   = 0;
 
+    /* Drop the group members before the page manager frees the page tree.
+     * Deleting a row that is still the group's focused object makes
+     * lv_group_remove_obj() refocus, which fires mp_group_focus_cb() ->
+     * mp_refresh_focus() -> mp_apply_selection() against a row whose styles the
+     * destructor has already released, leaking a fresh local style that nothing
+     * will ever free. lv_group_remove_all_objs() does not run the focus
+     * callback, so clearing the group here avoids that entirely. */
+    if (s_music_group != NULL)
+    {
+        lv_group_remove_all_objs(s_music_group);
+    }
+
     /* The eq bars live inside the playlist rows, which the page manager frees
      * after leave; drop our dangling pointers so a re-enter recreates them. */
     mp_eq_forget();
+}
 
-    /* Resume the background recording we paused on enter (idempotent; no-op if
-     * the dev file cap had already stopped it). */
-    (void)dashcam_app_record_start();
+/*
+ * Assist view tears the whole LVGL runtime down (lv_deinit) and builds a new
+ * one over the same memory pool, so every handle below is dangling afterwards
+ * even though nothing explicitly deleted it. The fonts matter most: they are
+ * lv_tiny_ttf allocations out of the pool, and letting a stale one reach a
+ * label makes the glyph cache lv_free() blocks the rebuilt pool already lists
+ * as free ("block already marked as free" in lv_tlsf_free).
+ *
+ * No LVGL call is allowed here - LVGL is down. Only drop pointers; the audio
+ * player, track table and playback state are outside LVGL and stay as they are.
+ */
+void music_player_ui_reset_after_lvgl_deinit(void)
+{
+    s_cn_30 = NULL;
+    s_cn_24 = NULL;
+    s_music_group = NULL;
+    s_ui_timer = NULL;
+    s_ui_idx = -1;
+    s_ui_sec = -1;
+    s_ui_pb  = MP_PB_STOPPED;
+    s_focus = MP_FOCUS_NONE;
+    mp_eq_forget();
 }

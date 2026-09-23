@@ -52,6 +52,11 @@ bool dashcam_ui_handle_key_home(void);
  */
 lv_group_t *dashcam_ui_get_group(void);
 
+/* Drop every retained LVGL handle (records-list group, info timer, row buttons)
+ * after an lv_deinit(). They came from the LVGL memory pool, which the next
+ * lv_init() rebuilds in place. Must not call into LVGL. */
+void dashcam_ui_reset_after_lvgl_deinit(void);
+
 #ifdef __cplusplus
 }
 #endif

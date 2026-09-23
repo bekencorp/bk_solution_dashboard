@@ -853,9 +853,12 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     static lv_style_t home_speed_scale_section_0_minor_tick_style;
     static lv_style_t home_speed_scale_section_0_label_style;
     static lv_style_t home_speed_scale_section_0_main_line_style;
-    lv_style_init(&home_speed_scale_section_0_label_style);
-    lv_style_init(&home_speed_scale_section_0_minor_tick_style);
-    lv_style_init(&home_speed_scale_section_0_main_line_style);
+    /* reset, not init: the styles are static but the home page is rebuilt on
+     * every entry, and lv_style_init() only zeroes the descriptor, orphaning
+     * the property array lv_style_set_prop() allocated last time. */
+    lv_style_reset(&home_speed_scale_section_0_label_style);
+    lv_style_reset(&home_speed_scale_section_0_minor_tick_style);
+    lv_style_reset(&home_speed_scale_section_0_main_line_style);
     lv_style_set_text_color(&home_speed_scale_section_0_label_style, lv_color_hex(0x88ccff));
     lv_style_set_line_color(&home_speed_scale_section_0_label_style, lv_color_hex(0x35a8ff));
     lv_style_set_line_color(&home_speed_scale_section_0_minor_tick_style, lv_color_hex(0x35a8ff));
@@ -1711,9 +1714,10 @@ void init_page_home(bk_lv_ui_t *bk_ui)
     static lv_style_t home_sys_scale_section_0_minor_tick_style;
     static lv_style_t home_sys_scale_section_0_label_style;
     static lv_style_t home_sys_scale_section_0_main_line_style;
-    lv_style_init(&home_sys_scale_section_0_label_style);
-    lv_style_init(&home_sys_scale_section_0_minor_tick_style);
-    lv_style_init(&home_sys_scale_section_0_main_line_style);
+    /* reset, not init: see home_speed_scale_section_0 above. */
+    lv_style_reset(&home_sys_scale_section_0_label_style);
+    lv_style_reset(&home_sys_scale_section_0_minor_tick_style);
+    lv_style_reset(&home_sys_scale_section_0_main_line_style);
     lv_style_set_text_color(&home_sys_scale_section_0_label_style, lv_color_hex(0xffd080));
     lv_style_set_line_color(&home_sys_scale_section_0_label_style, lv_color_hex(0xffb040));
     lv_style_set_line_color(&home_sys_scale_section_0_minor_tick_style, lv_color_hex(0xffb040));

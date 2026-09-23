@@ -30,6 +30,12 @@ lv_group_t *music_player_ui_get_group(void);
 /* Physical-key handlers. Each returns true when it consumed the press so the
  * home-menu default behavior (page cycling / return home) is skipped. */
 bool music_player_ui_handle_key_double(void);
+/* Drop every retained LVGL handle (runtime CJK fonts, key-nav group, UI poll
+ * timer, equalizer bars) after an lv_deinit(). They live in the LVGL memory
+ * pool, which the next lv_init() rebuilds in place, so reusing one would free
+ * memory the new pool already owns. Must not call into LVGL. */
+void music_player_ui_reset_after_lvgl_deinit(void);
+
 bool music_player_ui_handle_key_single(void);
 bool music_player_ui_handle_key_long(void);
 

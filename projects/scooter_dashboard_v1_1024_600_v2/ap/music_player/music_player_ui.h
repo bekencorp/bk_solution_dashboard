@@ -17,6 +17,12 @@ void music_player_ui_enter(void);
 /* Called when leaving the music_player page. */
 void music_player_ui_leave(void);
 
+/* Drop every retained LVGL handle (runtime CJK fonts, key-nav group, UI poll
+ * timer, equalizer bars) after an lv_deinit(). They live in the LVGL memory
+ * pool, which the next lv_init() rebuilds in place, so reusing one would free
+ * memory the new pool already owns. Must not call into LVGL. */
+void music_player_ui_reset_after_lvgl_deinit(void);
+
 /*
  * The LVGL group holding the navigable widgets (the now-playing control buttons
  * followed by the playlist rows) for key navigation. beken_ui binds the shared

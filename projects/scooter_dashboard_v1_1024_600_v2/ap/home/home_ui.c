@@ -315,15 +315,50 @@ lv_group_t *home_ui_get_group(void)
  * If loading fails, the labels keep their designer default (Latin) font. */
 #define HOME_CN_TTF_PATH   "S:/simhei_new.ttf"
 #define HOME_CN_TTF_SIZE   32
-/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT
- * = 256) is an LRU by glyph COUNT; at 32px each CJK bitmap is ~1KB, so 256 of
- * them (~300KB, all in the HSRAM heap) exhausts HSRAM while music lyrics scroll
- * through many unique characters. 64 covers the on-screen set (title + artist +
- * a lyrics line) and bounds HSRAM use to roughly ~64KB. */
-#define HOME_CN_TTF_GLYPH_CACHE_CNT 64
+/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT)
+ * is an LRU by glyph COUNT, not by bytes; left alone it fills the heap with A8
+ * bitmaps as music metadata scrolls through many unique characters.
+ *
+ * The cap counts glyphs but the cost is bytes, and an A8 glyph runs about
+ * px*px, so one flat number prices the sizes unequally. Derive the count from a
+ * per-font byte budget instead: 32px gets 32, 30px gets 36, 24px gets 56, each
+ * bounded near 32KB.
+ *
+ * Profiling says only one of the three fonts is ever actually capped - it holds
+ * 55KB in a full 64 glyphs, while the other two sit at 17 and 20 glyphs, far
+ * under any of these limits. So the budget really only decides that one font's
+ * cap; the other two numbers are inert and are kept only so the rule stays
+ * uniform. The floor exists because an LRU smaller than a repeatedly scanned
+ * working set misses on nearly every lookup and re-rasterizes through
+ * stb_truetype each frame: a previous run at exactly these counts measured the
+ * median frame rate dropping from 14 to 11. Raise the budget if that returns. */
+#define HOME_CN_TTF_GLYPH_CACHE_BUDGET  (32u * 1024u)   /* bytes, per font */
+#define HOME_CN_TTF_GLYPH_CACHE_MIN     24u
+#define HOME_CN_TTF_GLYPH_CACHE_MAX     64u
 static lv_font_t *s_cn_font = NULL;
 static void *s_cn_font_buf = NULL;
 static uint32_t s_cn_font_buf_size = 0;
+
+static uint32_t home_cn_glyph_cache_cnt(uint32_t px)
+{
+    uint32_t cnt;
+
+    if (px == 0)
+    {
+        return HOME_CN_TTF_GLYPH_CACHE_MAX;
+    }
+
+    cnt = HOME_CN_TTF_GLYPH_CACHE_BUDGET / (px * px);
+    if (cnt < HOME_CN_TTF_GLYPH_CACHE_MIN)
+    {
+        cnt = HOME_CN_TTF_GLYPH_CACHE_MIN;
+    }
+    if (cnt > HOME_CN_TTF_GLYPH_CACHE_MAX)
+    {
+        cnt = HOME_CN_TTF_GLYPH_CACHE_MAX;
+    }
+    return cnt;
+}
 
 /* Read the whole TTF into a single PSRAM buffer once. All tiny_ttf fonts (any
  * size) then share this buffer, so it must outlive them (never freed). Returns
@@ -389,11 +424,15 @@ static lv_font_t *home_cn_font_load(void)
 
     /* create_data does NOT copy: it keeps a pointer into s_cn_font_buf, so the
      * buffer must outlive the font (both are never freed). Use the _ex variant
-     * to cap the glyph cache (default 256 blows the HSRAM heap, see above). */
+     * to cap the glyph cache (the engine default blows the HSRAM heap, above).
+     *
+     * Kerning is passed as NONE to say so explicitly; simhei carries no kern
+     * table, so lv_tiny_ttf_create() already turns it off by itself and this
+     * only matters if the .ttf is ever swapped for one that has kerning. */
     font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size,
                                       HOME_CN_TTF_SIZE,
-                                      LV_FONT_KERNING_NORMAL,
-                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
+                                      LV_FONT_KERNING_NONE,
+                                      home_cn_glyph_cache_cnt(HOME_CN_TTF_SIZE));
     if (font == NULL)
     {
         BK_LOGE("home_ui", "tiny_ttf parse %s failed\n", HOME_CN_TTF_PATH);
@@ -415,7 +454,9 @@ lv_font_t *home_ui_get_cn_font(void)
  * Create an additional CJK font at an arbitrary pixel size, sharing the single
  * PSRAM TTF buffer (no extra copy of the font data; only a per-size glyph cache).
  * Returns NULL if the buffer is unavailable. The caller keeps the returned font
- * for the process lifetime (never freed, like s_cn_font) - create each size once.
+ * and creates each size once, but the font lives in the LVGL pool: it does not
+ * survive an lv_deinit(), so the caller must drop its handle in its own
+ * *_reset_after_lvgl_deinit() and let the next page enter re-create it.
  */
 lv_font_t *home_ui_create_cn_font(uint32_t px)
 {
@@ -424,8 +465,8 @@ lv_font_t *home_ui_create_cn_font(uint32_t px)
         return NULL;
     }
     return lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size, px,
-                                      LV_FONT_KERNING_NORMAL,
-                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
+                                      LV_FONT_KERNING_NONE,
+                                      home_cn_glyph_cache_cnt(px));
 }
 
 /*
@@ -2020,4 +2061,31 @@ void home_ui_unload(void)
         psram_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
     }
+}
+
+void home_ui_reset_after_lvgl_deinit(void)
+{
+    /*
+     * lv_deinit() deletes LVGL-owned groups, timers and objects. Their module
+     * handles are not cleared automatically, so invalidate every retained
+     * LVGL pointer before the next beken_ui_init() rebuilds the HOME tree.
+     */
+    s_nav_group = NULL;
+    s_call_group = NULL;
+    s_speed_timer = NULL;
+    s_music_timer = NULL;
+    s_bg_canvas = NULL;
+    s_home_beat_canvas = NULL;
+
+    /*
+     * The font is not process-owned: lv_tiny_ttf_create_data_ex() allocates the
+     * lv_font_t, its ttf_font_desc_t and the glyph caches out of the LVGL pool,
+     * which lv_init() rebuilds from scratch over the same memory. Keeping this
+     * pointer would hand every label a dangling font whose glyph cache later
+     * lv_free()s blocks the new pool already considers free. Drop it and let
+     * home_ui_enter() re-create it; only s_cn_font_buf (PSRAM, holds the raw
+     * .ttf) is genuinely process-owned and is deliberately kept so the reload
+     * costs no SD read.
+     */
+    s_cn_font = NULL;
 }

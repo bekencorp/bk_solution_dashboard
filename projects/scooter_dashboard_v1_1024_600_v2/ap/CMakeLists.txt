@@ -75,3 +75,10 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-variable -O3)
 # Use LV_CONF_PATH to override lv_conf.h defaults. Remove when SDK is fixed.
 set(LV_CONF_OVERRIDE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf_override.h")
 target_compile_definitions(__armino_lvgl PUBLIC "LV_CONF_PATH=\"${LV_CONF_OVERRIDE_PATH}\"")
+
+# lv_conf_override.h points LV_MEM_POOL_ALLOC at display_ui_lv_pool_alloc(), whose
+# header lives in the solution. lv_mem_core_builtin.c is SDK code and has no way to
+# reach it - the lvgl component's include path is its own - so add it here rather
+# than in the SDK, which keeps the pool policy on the product side.
+target_include_directories(__armino_lvgl PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../components/display_ui/include")

@@ -26,6 +26,12 @@ void dashcam_ui_shutdown(void);
 void dashcam_ui_suspend_keep_recording(void);
 void dashcam_ui_resume_keep_recording(void);
 
+/* Drop every retained LVGL handle (key-nav group, info timer, list buttons)
+ * after an lv_deinit(). Those objects came out of the LVGL memory pool, which
+ * the next lv_init() rebuilds in place, so a surviving handle would point at
+ * memory the new pool considers free. Must not call into LVGL. */
+void dashcam_ui_reset_after_lvgl_deinit(void);
+
 void dashcam_ui_enter(void);
 void dashcam_ui_leave(void);
 

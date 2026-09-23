@@ -31,6 +31,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include "components/log.h"
 #include <os/os.h>
 #include "lv_vendor.h"
@@ -40,10 +41,16 @@
 #include "dashcam_config.h"
 #include "dashcam_storage.h"
 #include "dashcam_assitview.h"
+#include "dashcam_video.h"
 #include "ota_ui.h"
 #include "home_ui.h"
 #include "phone_book_ui.h"
 #include "music_player_ui.h"
+#include "notification_popup.h"
+#include "dashcam_app.h"
+
+extern void lv_digital_clock_reset_after_lvgl_deinit(void);
+extern void home_init_reset_after_lvgl_deinit(void);
 
 bk_lv_ui_t bk_lv_tool_ui = {0};
 static lv_timer_t *s_dashcam_boot_timer = NULL;
@@ -101,6 +108,13 @@ typedef enum
 static int32_t s_home_menu_selected = HOME_MENU_HOME;
 static int32_t s_home_menu_active = HOME_MENU_HOME;
 static bool s_home_menu_armed = false;
+
+/*
+ * Page the next beken_ui_init() should bring up. Only clip playback sets it
+ * (to the records list it was launched from); everything else starts on HOME.
+ * One-shot: beken_ui_init() consumes it and puts HOME back.
+ */
+static int32_t s_initial_page = HOME_MENU_HOME;
 
 typedef struct
 {
@@ -626,16 +640,33 @@ static void beken_ui_log_heap(const char *tag)
     lv_mem_monitor(&mon);
 
     BK_LOGI("ui_heap",
-            "%s sram=%u(min %u) psram=%u hsram=%u | lvgl free=%u biggest=%u used%%=%u frag%%=%u\n",
+            "%s heap_free_bytes: sram=%u(min=%u) psram=%u hsram=%u | "
+            "lvgl_pool: total=%uKB current_used=%uKB peak_used=%uKB "
+            "total_free=%uKB largest_free_block=%uKB active_blocks=%u fragmentation=%u%%\n",
             tag,
             (unsigned)rtos_get_free_heap_size(),
             (unsigned)rtos_get_minimum_free_heap_size(),
             (unsigned)rtos_get_psram_free_heap_size(),
             (unsigned)rtos_get_hsram_free_heap_size(),
-            (unsigned)mon.free_size,
-            (unsigned)mon.free_biggest_size,
-            (unsigned)mon.used_pct,
+            (unsigned)(mon.total_size / 1024U),
+            (unsigned)((mon.total_size - mon.free_size) / 1024U),
+            (unsigned)(mon.max_used / 1024U),
+            (unsigned)(mon.free_size / 1024U),
+            (unsigned)(mon.free_biggest_size / 1024U),
+            (unsigned)mon.used_cnt,
             (unsigned)mon.frag_pct);
+
+}
+
+static void beken_ui_log_heap_test_async_cb(void *user_data)
+{
+    (void)user_data;
+    beken_ui_log_heap("cli-log-heap");
+}
+
+void beken_ui_log_heap_test(void)
+{
+    lv_async_call(beken_ui_log_heap_test_async_cb, NULL);
 }
 
 /* Runs in the LVGL task: return to the home page (page-mutual-exclusion path).
@@ -742,28 +773,43 @@ static void beken_ui_cancel_dashcam_boot(void)
  */
 void beken_ui_init(void)
 {
-    lv_obj_t *home = beken_ui_ensure_page(&bk_lv_tool_ui, HOME_MENU_HOME);
+    const int32_t initial = s_initial_page;
+    const home_menu_item_t selected = initial == HOME_MENU_HOME
+                                          ? HOME_MENU_DASHCAM
+                                          : (home_menu_item_t)initial;
 
-    if (home == NULL)
+    /* One-shot: a later rebuild that does not ask for a page lands on HOME. */
+    s_initial_page = HOME_MENU_HOME;
+
+    /*
+     * Safe before any page exists: this only hands function pointers to the
+     * A2DP/HFP stacks and initializes the music-state mutex. The callbacks
+     * already have to tolerate a non-resident home tree, because home is freed
+     * on every page switch (see home_menu_free_inactive_heavy_pages).
+     */
+    home_ui_register_bt_callbacks();
+
+    /*
+     * No page is loaded yet, so steer home_menu_switch_page() away from the
+     * beken_ui_page_leave() it would run on s_home_menu_active: -1 has no
+     * descriptor, which makes the leave a no-op. Everything else the old
+     * open-coded bring-up did - create, lv_screen_load, free the other pages,
+     * build the home nav group, enter, bind the keypad - switch_page does, and
+     * it does it for whichever page was requested.
+     */
+    s_home_menu_active = -1;
+    if (!home_menu_switch_page(initial, selected, initial == HOME_MENU_HOME))
     {
+        s_home_menu_active = HOME_MENU_HOME;
         return;
     }
 
-    lv_screen_load(home);
-    s_home_menu_selected = HOME_MENU_DASHCAM;
-    s_home_menu_active = HOME_MENU_HOME;
-    s_home_menu_armed = true;
-    home_ui_nav_group_build(s_home_menu_selected,
-                            home_menu_focus_changed,
-                            home_menu_activate);
-    ui_keypad_activate_page(HOME_MENU_HOME);
-    home_ui_register_bt_callbacks();
-
-    /* Start the speed-gauge sweep and hazard double-flash. */
-    beken_ui_page_enter(HOME_MENU_HOME);
-
-    /* Begin recording shortly after boot, independent of the visible page. */
-    beken_ui_schedule_dashcam_boot();
+    /* A full LVGL rebuild after Assist or clip playback must not start a
+     * second recorder. */
+    if (!dashcam_assitview_is_active() && !dashcam_video_owns_lvgl())
+    {
+        beken_ui_schedule_dashcam_boot();
+    }
 }
 
 /*
@@ -797,9 +843,113 @@ void beken_ui_before_cast_lvgl_teardown(void)
 void beken_ui_before_assist_lvgl_teardown(void)
 {
     beken_ui_cancel_dashcam_boot();
-    beken_ui_page_leave(HOME_MENU_HOME);
+    home_ui_unload();
     beken_ui_page_leave(HOME_MENU_OTA);
     dashcam_ui_suspend_keep_recording();
+}
+
+/*
+ * Pre-playback hook. Clip playback tears LVGL down the same way the assist view
+ * does, but it runs on the playback worker itself, so - unlike the assist
+ * teardown - this must not call dashcam_ui_suspend_keep_recording() or leave
+ * the dashcam page: both end up in dashcam_app_detach() ->
+ * dashcam_video_stop_sync(), which would wait on the very worker that is
+ * calling us. Only the pages that playback does not own are released here; the
+ * dashcam page's own LVGL handles are dropped by beken_ui_after_lvgl_deinit().
+ */
+void beken_ui_before_playback_lvgl_teardown(void)
+{
+    beken_ui_cancel_dashcam_boot();
+    home_ui_unload();
+    beken_ui_page_leave(HOME_MENU_OTA);
+}
+
+/*
+ * Pre-restore hook, run while LVGL is still down. A clip is always launched
+ * from the dashcam records list, so point the upcoming beken_ui_init() at that
+ * page directly. Navigating after the rebuild instead would build and enter
+ * home first - the most expensive page there is, with a full-screen background
+ * and the CJK font load - then immediately leave it, free it and build dashcam,
+ * which is both slow and visible as a home flash.
+ */
+void beken_ui_before_playback_lvgl_restore(void)
+{
+    s_initial_page = HOME_MENU_DASHCAM;
+}
+
+/*
+ * Run after lv_deinit(), before display_ui_start_lvgl() builds the new runtime.
+ *
+ * lv_deinit() destroys the objects, timers and groups it owns, but application
+ * modules keep raw handles to them. Those handles are not merely stale: LVGL
+ * runs on its own memory pool (LV_MEM_POOL_ALLOC -> display_ui_lv_pool_alloc), which
+ * lv_vendor_deinit() hands back to PSRAM wholesale - no per-allocation
+ * lv_free() involved. Every pre-deinit allocation therefore points into memory
+ * the system heap now owns and will re-issue. Reading one is a use-after-free,
+ * and lv_free()ing one corrupts whoever holds that memory now (or aborts in
+ * lv_tlsf_free() with "block already marked as free" when the new pool happens
+ * to land on top of it).
+ *
+ * Anything cached across the cycle must therefore be dropped here - including
+ * the handles modules deliberately keep "for the app lifetime", such as the
+ * lazily created nav groups and the runtime tiny_ttf CJK fonts. None of these
+ * resets may call into LVGL: it is down.
+ */
+void beken_ui_after_lvgl_deinit(void)
+{
+    memset(&bk_lv_tool_ui, 0, sizeof(bk_lv_tool_ui));
+    memset(&s_keypad_nav, 0, sizeof(s_keypad_nav));
+    s_dashcam_boot_timer = NULL;
+    s_home_menu_selected = HOME_MENU_HOME;
+    s_home_menu_active = HOME_MENU_HOME;
+    s_home_menu_armed = false;
+    /* Default the next bring-up to HOME; the restore hook overrides it later,
+     * after this reset, so a rebuild that never reached beken_ui_init() cannot
+     * leave a stale target behind for the following one. */
+    s_initial_page = HOME_MENU_HOME;
+    home_init_reset_after_lvgl_deinit();
+    home_ui_reset_after_lvgl_deinit();
+    notification_popup_reset_after_lvgl_deinit();
+    lv_digital_clock_reset_after_lvgl_deinit();
+    dashcam_ui_reset_after_lvgl_deinit();
+    dashcam_app_reset_after_lvgl_deinit();
+    phone_book_ui_reset_after_lvgl_deinit();
+    music_player_ui_reset_after_lvgl_deinit();
+}
+
+/*
+ * Casting opts into the same full teardown as assist and playback (strong
+ * overrides of the weak defaults in display_ui_cast_hooks.c).
+ *
+ * Every UI module here drops its retained LVGL handles in
+ * beken_ui_after_lvgl_deinit(), so the cast path can go all the way to
+ * lv_vendor_deinit() instead of only lv_vendor_stop(). That matters while the
+ * dashcam recorder is running: the shallow stop hands back just the vg_lite
+ * contiguous block, and the cast pipeline then fails to allocate its own
+ * (bk_get_gpu_flexa_buffer -> bk_gpu_init -3) because the recorder already
+ * holds the rest of HSRAM. The vg_lite heap is HSRAM here too, so this applies
+ * even though this project's LVGL pool lives in PSRAM.
+ */
+bool beken_ui_cast_supports_lvgl_deinit(void)
+{
+    return true;
+}
+
+void beken_ui_after_cast_lvgl_deinit(void)
+{
+    beken_ui_after_lvgl_deinit();
+}
+
+/*
+ * Taken instead of beken_ui_kick_after_display_resume() on the deep path (see
+ * display_ui_cast_hooks.c: the rebuild branch returns before reaching it). The
+ * rebuild runs beken_ui_init(), which brings HOME up and re-schedules the
+ * dashcam boot, so the only thing still missing is re-arming the segment tick
+ * that beken_ui_before_cast_lvgl_teardown() paused.
+ */
+void beken_ui_after_cast_lvgl_restore(void)
+{
+    dashcam_ui_resume_keep_recording();
 }
 
 /*

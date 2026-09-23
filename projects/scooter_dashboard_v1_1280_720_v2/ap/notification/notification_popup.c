@@ -153,6 +153,15 @@ bk_err_t notification_popup_init(lv_font_t *font)
     return BK_OK;
 }
 
+void notification_popup_reset_after_lvgl_deinit(void)
+{
+    s_notification_timer = NULL;
+    s_notification_popup = NULL;
+    s_notification_title = NULL;
+    s_notification_message = NULL;
+    s_notification_font = NULL;
+}
+
 void notification_popup_show(const char *title, const char *message)
 {
     if (!s_notification_mutex || rtos_lock_mutex(&s_notification_mutex) != BK_OK)

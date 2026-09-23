@@ -10,6 +10,7 @@
 #include "dashcam_player.h"
 #include "dashcam_recorder.h"
 #include "dashcam_storage.h"
+#include "dashcam_video.h"
 #include "lvgl.h"
 #include "lv_port_indev.h"
 #include "dashcam_assitview.h"
@@ -17,6 +18,9 @@
 #include "os/os.h"
 
 extern void beken_ui_before_assist_lvgl_teardown(void);
+extern void beken_ui_before_playback_lvgl_teardown(void);
+extern void beken_ui_before_playback_lvgl_restore(void);
+extern void beken_ui_after_lvgl_deinit(void);
 extern void beken_ui_kick_after_display_resume(void);
 
 #define TAG "d_ui"
@@ -723,7 +727,7 @@ static void dashcam_ui_load_worker(void *arg)
         {
             psram_free(result);
         }
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
         (void)dashcam_app_record_start();
 #endif
     }
@@ -767,11 +771,22 @@ void dashcam_ui_boot_start(void)
     static const dashcam_assitview_hooks_t assist_hooks =
     {
         .before_lvgl_teardown = beken_ui_before_assist_lvgl_teardown,
+        .after_lvgl_deinit = beken_ui_after_lvgl_deinit,
         .after_display_resume = beken_ui_kick_after_display_resume,
+    };
+    /* Clip playback tears LVGL down too; it shares the handle-reset hook with
+     * assist but needs its own teardown (must not stop playback) and its own
+     * restore (comes up on the records list, not home). */
+    static const dashcam_video_lvgl_hooks_t playback_hooks =
+    {
+        .before_lvgl_teardown = beken_ui_before_playback_lvgl_teardown,
+        .after_lvgl_deinit = beken_ui_after_lvgl_deinit,
+        .before_lvgl_restore = beken_ui_before_playback_lvgl_restore,
     };
 
     LOGD("boot_start\n");
     dashcam_assitview_register_hooks(&assist_hooks);
+    dashcam_video_register_lvgl_hooks(&playback_hooks);
     if (dashcam_ui_load_state_init() != BK_OK)
     {
         LOGE("init load state mutex failed\n");
@@ -826,6 +841,24 @@ void dashcam_ui_suspend_keep_recording(void)
     {
         dashcam_app_stop_playback();
     }
+}
+
+/*
+ * Assist view destroys the LVGL runtime (lv_deinit) and the next lv_init()
+ * lays a fresh allocator over the same pool, so every LVGL handle held here is
+ * dangling even though this module deleted nothing. s_dashcam_group in
+ * particular outlives the page on purpose ("created lazily, persists for the
+ * app"), which is exactly what breaks across the cycle. LVGL is already down
+ * at this point, so only clear pointers - no lv_* call is legal here.
+ */
+void dashcam_ui_reset_after_lvgl_deinit(void)
+{
+    s_dashcam_group = NULL;
+    s_info_timer = NULL;
+    s_preview_cb_bound = false;
+    s_list_focused = false;
+    s_play_info_valid = false;
+    memset(s_btns, 0, sizeof(s_btns));
 }
 
 /* Assist-view leave: LVGL is back, re-arm the paused segment-rotation tick. */
@@ -888,7 +921,7 @@ void dashcam_ui_enter(void)
 
 void dashcam_ui_leave(void)
 {
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     bk_err_t ret;
     bool restart_recording;
 #endif
@@ -897,7 +930,7 @@ void dashcam_ui_leave(void)
     dashcam_ui_load_state_lock();
     s_page_active = false;
     s_load_generation++;
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     restart_recording = !s_load_worker_running;
 #endif
     dashcam_ui_load_state_unlock();
@@ -913,7 +946,7 @@ void dashcam_ui_leave(void)
 
     /* If loading is still running it owns SDIO and restarts recording when the
      * scan returns. Otherwise recording can resume immediately. */
-#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
+#if !CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK && CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     if (restart_recording)
     {
         ret = dashcam_app_record_start();

@@ -315,15 +315,51 @@ lv_group_t *home_ui_get_group(void)
  * If loading fails, the labels keep their designer default (Latin) font. */
 #define HOME_CN_TTF_PATH   "S:/simhei_new.ttf"
 #define HOME_CN_TTF_SIZE   32
-/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT
- * = 256) is an LRU by glyph COUNT; at 32px each CJK bitmap is ~1KB, so 256 of
- * them (~300KB, all in the HSRAM heap) exhausts HSRAM while music lyrics scroll
- * through many unique characters. 64 covers the on-screen set (title + artist +
- * a lyrics line) and bounds HSRAM use to roughly ~64KB. */
-#define HOME_CN_TTF_GLYPH_CACHE_CNT 64
+/* Cap the tiny_ttf glyph cache. The engine default (LV_TINY_TTF_CACHE_GLYPH_CNT)
+ * is an LRU by glyph COUNT, not by bytes; left alone it fills the heap with A8
+ * bitmaps as music metadata scrolls through many unique characters.
+ *
+ * The cap counts glyphs but the cost is bytes, and an A8 glyph runs about
+ * px*px, so one flat number prices the sizes unequally. Derive the count from a
+ * per-font byte budget instead: 32px gets 32, 30px gets 36, 24px gets 56, each
+ * bounded near 32KB.
+ *
+ * The numbers come from profiling the 1024x600 build, which draws the same
+ * three sizes from the same .ttf. There only one of the three fonts ever
+ * reached the old cap - 55KB in a full 64 glyphs, the other two idling at 17
+ * and 20 - and cutting it to 32 gave that back without moving the frame rate.
+ * This build has not been measured, and its LVGL heap is PSRAM rather than the
+ * HSRAM pool, so the pressure it relieves is smaller here. The floor exists
+ * because an LRU smaller than a repeatedly scanned working set misses on nearly
+ * every lookup and re-rasterizes through stb_truetype each frame; raise the
+ * budget if that shows up. */
+#define HOME_CN_TTF_GLYPH_CACHE_BUDGET  (32u * 1024u)   /* bytes, per font */
+#define HOME_CN_TTF_GLYPH_CACHE_MIN     24u
+#define HOME_CN_TTF_GLYPH_CACHE_MAX     64u
 static lv_font_t *s_cn_font = NULL;
 static void *s_cn_font_buf = NULL;
 static uint32_t s_cn_font_buf_size = 0;
+
+static uint32_t home_cn_glyph_cache_cnt(uint32_t px)
+{
+    uint32_t cnt;
+
+    if (px == 0)
+    {
+        return HOME_CN_TTF_GLYPH_CACHE_MAX;
+    }
+
+    cnt = HOME_CN_TTF_GLYPH_CACHE_BUDGET / (px * px);
+    if (cnt < HOME_CN_TTF_GLYPH_CACHE_MIN)
+    {
+        cnt = HOME_CN_TTF_GLYPH_CACHE_MIN;
+    }
+    if (cnt > HOME_CN_TTF_GLYPH_CACHE_MAX)
+    {
+        cnt = HOME_CN_TTF_GLYPH_CACHE_MAX;
+    }
+    return cnt;
+}
 
 /* Read the whole TTF into a single PSRAM buffer once. All tiny_ttf fonts (any
  * size) then share this buffer, so it must outlive them (never freed). Returns
@@ -392,8 +428,8 @@ static lv_font_t *home_cn_font_load(void)
      * to cap the glyph cache (default 256 blows the HSRAM heap, see above). */
     font = lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size,
                                       HOME_CN_TTF_SIZE,
-                                      LV_FONT_KERNING_NORMAL,
-                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
+                                      LV_FONT_KERNING_NONE,
+                                      home_cn_glyph_cache_cnt(HOME_CN_TTF_SIZE));
     if (font == NULL)
     {
         BK_LOGE("home_ui", "tiny_ttf parse %s failed\n", HOME_CN_TTF_PATH);
@@ -414,8 +450,10 @@ lv_font_t *home_ui_get_cn_font(void)
 /*
  * Create an additional CJK font at an arbitrary pixel size, sharing the single
  * PSRAM TTF buffer (no extra copy of the font data; only a per-size glyph cache).
- * Returns NULL if the buffer is unavailable. The caller keeps the returned font
- * for the process lifetime (never freed, like s_cn_font) - create each size once.
+ * Returns NULL if the buffer is unavailable. The caller reuses the same buffer
+ * and creates each size once, but the font lives in the LVGL pool: it does not
+ * survive an lv_deinit(), so the caller must drop its handle in its own
+ * *_reset_after_lvgl_deinit() and let the next page enter re-create it.
  */
 lv_font_t *home_ui_create_cn_font(uint32_t px)
 {
@@ -424,12 +462,13 @@ lv_font_t *home_ui_create_cn_font(uint32_t px)
         return NULL;
     }
     return lv_tiny_ttf_create_data_ex(s_cn_font_buf, s_cn_font_buf_size, px,
-                                      LV_FONT_KERNING_NORMAL,
-                                      HOME_CN_TTF_GLYPH_CACHE_CNT);
+                                      LV_FONT_KERNING_NONE,
+                                      home_cn_glyph_cache_cnt(px));
 }
 
 /*
- * The home background is a 1280x720 image. Two paths render it as a plain
+ * The home background matches the configured UI canvas. Two paths render it as
+ * a plain
  * PSRAM bitmap (a fast blit, no per-frame work):
  *
  *  1) Fast path: a worker thread (boot_bg_preload) decodes the JPEG
@@ -461,8 +500,8 @@ void home_ui_install_bg(void)
         return;
     }
 
-    const int32_t w = 1280;
-    const int32_t h = 720;
+    const int32_t w = SCREEN_WIDTH;
+    const int32_t h = SCREEN_HEIGHT;
     const size_t buf_size = (size_t)w * (size_t)h * 2u + 1024u; /* RGB565 + slack */
 
     if (s_bg_canvas != NULL && lv_obj_is_valid(s_bg_canvas))
@@ -842,45 +881,6 @@ static void home_call_nav_sync(void)
         /* No call (or dialing): drop the modal so keys return to the page. */
         beken_ui_keypad_set_modal_group(NULL);
     }
-}
-
-/*
- * Incoming-call popup title + number opacity control. The old attention blink
- * is disabled (see home_call_blink_sync); these helpers now only keep the popup
- * fully opaque and tear down any leftover timer.
- */
-static lv_timer_t *s_call_blink_timer = NULL;
-
-static void home_call_blink_set_opa(lv_opa_t opa)
-{
-    bk_lv_ui_t *ui = &bk_lv_tool_ui;
-
-    if (home_music_obj_valid(ui->home_cp_title))
-    {
-        lv_obj_set_style_opa(ui->home_cp_title, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-    if (home_music_obj_valid(ui->home_cp_num))
-    {
-        lv_obj_set_style_opa(ui->home_cp_num, opa, LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-}
-
-static void home_call_blink_stop(void)
-{
-    if (s_call_blink_timer != NULL)
-    {
-        lv_timer_delete(s_call_blink_timer);
-        s_call_blink_timer = NULL;
-    }
-    home_call_blink_set_opa(LV_OPA_COVER);
-}
-
-static void home_call_blink_sync(void)
-{
-    /* Incoming-call attention blink is disabled per request: the popup title +
-     * number stay steady (fully opaque) instead of pulsing. Keep the timer
-     * stopped in every state. */
-    home_call_blink_stop();
 }
 
 static void home_music_set_label(lv_obj_t *label, const char *text)
@@ -1405,7 +1405,6 @@ static void home_music_update_apply(const home_music_update_async_t *update)
     }
 
     s_home_music.progress_accum_ms = 0;
-    home_call_blink_sync();
 
     home_music_sync_timer();
     home_music_apply();
@@ -1433,7 +1432,6 @@ static void home_music_phone_apply(const home_music_phone_async_t *update)
         s_home_music.progress_accum_ms = 0;
     }
 
-    home_call_blink_sync();
     home_music_sync_timer();
     home_music_apply();
     home_call_nav_sync();
@@ -2004,7 +2002,6 @@ void home_ui_enter(void)
     home_music_pending_apply();
     home_music_apply();
     home_music_sync_timer();
-    home_call_blink_sync();
 
     /* Bind the call buttons on the freshly-built page and re-engage the keypad
      * call modal if we re-entered mid-call. */
@@ -2021,7 +2018,6 @@ void home_ui_leave(void)
         s_speed_timer = NULL;
     }
     home_music_stop_timer();
-    home_call_blink_stop();
 
     /* Drop any call modal so it cannot hijack the next page's keypad. The call
      * buttons belong to the home tree (freed on unload); a re-enter re-engages
@@ -2063,4 +2059,31 @@ void home_ui_unload(void)
         psram_free(s_home_beat_canvas_buf);
         s_home_beat_canvas_buf = NULL;
     }
+}
+
+void home_ui_reset_after_lvgl_deinit(void)
+{
+    /*
+     * lv_deinit() deletes LVGL-owned groups, timers and objects. Their module
+     * handles are not cleared automatically, so invalidate every retained
+     * LVGL pointer before the next beken_ui_init() rebuilds the HOME tree.
+     */
+    s_nav_group = NULL;
+    s_call_group = NULL;
+    s_speed_timer = NULL;
+    s_music_timer = NULL;
+    s_bg_canvas = NULL;
+    s_home_beat_canvas = NULL;
+
+    /*
+     * The font is not process-owned: lv_tiny_ttf_create_data_ex() allocates the
+     * lv_font_t, its ttf_font_desc_t and the glyph caches out of the LVGL pool,
+     * which lv_init() rebuilds from scratch over the same memory. Keeping this
+     * pointer would hand every label a dangling font whose glyph cache later
+     * lv_free()s blocks the new pool already considers free. Drop it and let
+     * home_ui_enter() re-create it; only s_cn_font_buf (PSRAM, holds the raw
+     * .ttf) is genuinely process-owned and is deliberately kept so the reload
+     * costs no SD read.
+     */
+    s_cn_font = NULL;
 }

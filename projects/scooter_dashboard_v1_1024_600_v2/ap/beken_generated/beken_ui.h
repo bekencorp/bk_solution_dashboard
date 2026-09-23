@@ -527,6 +527,11 @@ LV_FONT_DECLARE(lv_font_pingfang_SC_30);
 void beken_ui_init(void);
 
 /**
+ * @brief Print current heap and LVGL pool statistics from the LVGL task
+ */
+void beken_ui_log_heap_test(void);
+
+/**
  * @brief Get the configured screen width
  * @return Screen width in pixels
  */

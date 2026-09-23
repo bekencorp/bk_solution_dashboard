@@ -45,6 +45,7 @@ void home_ui_install_bg(void);
 void home_ui_enter(void);
 void home_ui_leave(void);
 void home_ui_unload(void);
+void home_ui_reset_after_lvgl_deinit(void);
 void home_ui_register_bt_callbacks(void);
 void home_ui_nav_group_build(int32_t selected_item,
                              home_ui_nav_callback_t focus_cb,

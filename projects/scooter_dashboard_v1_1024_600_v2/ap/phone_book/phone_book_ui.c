@@ -23,15 +23,28 @@
 #define PB_NAME_HEIGHT  42
 #define PB_NUM_WIDTH    220
 
-/* Upper bound on rows created at once. LVGL objects are allocated from the small
- * AP SRAM heap (~5 objects/row), so cap the count to avoid exhausting it on a
- * very large phonebook; beyond this the list is truncated (logged). */
-#define PB_MAX_ROWS     100
+/* Upper bounds on rows created at once. Each entry expands into several LVGL
+ * objects, styles, events and group nodes, so keep both lists bounded; entries
+ * beyond these limits are truncated (logged). */
+#define PB_MAX_CONTACT_ROWS 10
+#define PB_MAX_RECENT_ROWS  5
 
-/* CPU-only PBAP snapshot scratch buffers: keep them out of the small AP SRAM
- * heap by placing them in PSRAM (.psram.bss). Each snapshot is filled and read
- * within the single LVGL/UI thread, so no extra locking is needed. */
+#if CONFIG_PBAP_CONTACTS
+/*
+ * Shared PBAP snapshot scratch buffers, placed in PSRAM (.psram.bss) so the
+ * snapshot storage does not sit in the small AP SRAM heap.
+ *
+ * These replace what used to be four separate function-local `static` arrays
+ * (two contact + two recent snapshots): every access runs in the single
+ * LVGL/UI thread and is transient - the row builders copy strings straight
+ * into LVGL labels and the dialer reads the number immediately - so one
+ * contacts buffer and one recents buffer can be safely shared across the
+ * dial and list-build paths.
+ */
 #define PB_PSRAM_BSS    __attribute__((section(".psram.bss")))
+static PB_PSRAM_BSS pbap_contact_info_t s_pb_contact_snap[PB_MAX_CONTACT_ROWS];
+static PB_PSRAM_BSS pbap_recent_info_t  s_pb_recent_snap[PB_MAX_RECENT_ROWS];
+#endif
 
 /* Which area the physical key currently drives. */
 typedef enum {
@@ -277,20 +290,18 @@ static void phone_book_dial_selection(pb_focus_t focus, int sel)
 
     if (focus == PB_FOCUS_CONTACTS)
     {
-        static PB_PSRAM_BSS pbap_contact_info_t snap[PB_MAX_ROWS];
-        int n = pbap_contacts_snapshot(snap, PB_MAX_ROWS);
+        int n = pbap_contacts_snapshot(s_pb_contact_snap, PB_MAX_CONTACT_ROWS);
         if (sel >= 0 && sel < n)
         {
-            snprintf(number, sizeof(number), "%s", snap[sel].number);
+            snprintf(number, sizeof(number), "%s", s_pb_contact_snap[sel].number);
         }
     }
     else if (focus == PB_FOCUS_RECENTS)
     {
-        static PB_PSRAM_BSS pbap_recent_info_t snap[PB_MAX_ROWS];
-        int n = pbap_recents_snapshot(snap, PB_MAX_ROWS);
+        int n = pbap_recents_snapshot(s_pb_recent_snap, PB_MAX_RECENT_ROWS);
         if (sel >= 0 && sel < n)
         {
-            snprintf(number, sizeof(number), "%s", snap[sel].number);
+            snprintf(number, sizeof(number), "%s", s_pb_recent_snap[sel].number);
         }
     }
 
@@ -549,14 +560,13 @@ static void phone_book_fill_contacts(void)
     phone_book_reset_list(list);
 
 #if CONFIG_PBAP_CONTACTS
-    static PB_PSRAM_BSS pbap_contact_info_t s_snap[PB_MAX_ROWS];
     lv_font_t *cn = home_ui_get_cn_font();
     int total = pbap_contacts_count();
 
-    n = pbap_contacts_snapshot(s_snap, PB_MAX_ROWS);
+    n = pbap_contacts_snapshot(s_pb_contact_snap, PB_MAX_CONTACT_ROWS);
     for (int i = 0; i < n; i++)
     {
-        phone_book_add_contact_row(list, s_snap[i].name, s_snap[i].number, cn);
+        phone_book_add_contact_row(list, s_pb_contact_snap[i].name, s_pb_contact_snap[i].number, cn);
     }
     if (total > n)
     {
@@ -680,14 +690,13 @@ static void phone_book_fill_recents(void)
     phone_book_reset_list(list);
 
 #if CONFIG_PBAP_CONTACTS
-    static PB_PSRAM_BSS pbap_recent_info_t s_snap[PB_MAX_ROWS];
     lv_font_t *cn = home_ui_get_cn_font();
     int total = pbap_recents_count();
 
-    n = pbap_recents_snapshot(s_snap, PB_MAX_ROWS);
+    n = pbap_recents_snapshot(s_pb_recent_snap, PB_MAX_RECENT_ROWS);
     for (int i = 0; i < n; i++)
     {
-        phone_book_add_recent_row(list, &s_snap[i], cn);
+        phone_book_add_recent_row(list, &s_pb_recent_snap[i], cn);
     }
     if (total > n)
     {
@@ -857,4 +866,19 @@ void phone_book_ui_leave(void)
 #if CONFIG_PBAP_CONTACTS
     pbap_contacts_set_updated_cb(NULL, NULL);
 #endif
+}
+
+/*
+ * The nav group is created lazily and normally persists for the app, but
+ * assist view runs lv_deinit() and the next lv_init() rebuilds the allocator
+ * over the same pool - so the group is gone and its address is now free space.
+ * Drop the handle (no lv_* call is legal here, LVGL is down) and let
+ * phone_book_ui_group_ensure() create a new one on the next page enter.
+ */
+void phone_book_ui_reset_after_lvgl_deinit(void)
+{
+    s_phone_book_group = NULL;
+    s_focus = PB_FOCUS_NONE;
+    s_contact_rows = 0;
+    s_recent_rows = 0;
 }

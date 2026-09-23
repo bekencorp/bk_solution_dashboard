@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 bk_err_t notification_popup_init(lv_font_t *font);
+void notification_popup_reset_after_lvgl_deinit(void);
 void notification_popup_show(const char *title, const char *message);
 
 #ifdef __cplusplus
