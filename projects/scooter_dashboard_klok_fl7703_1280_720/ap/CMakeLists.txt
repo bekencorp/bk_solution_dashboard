@@ -1,11 +1,9 @@
-set(video_player_glue_dir ${CMAKE_CURRENT_SOURCE_DIR}/video_player_glue)
 set(beken_generated_dir ${CMAKE_CURRENT_SOURCE_DIR}/ui/beken_generated)
 
 set(incs
     .
     klok_player
     music_player
-    ${video_player_glue_dir}/include
     ${beken_generated_dir}
     ${beken_generated_dir}/fonts
     ${beken_generated_dir}/custom
@@ -19,11 +17,6 @@ set(srcs
     tp/klok_gt911.c
     klok_player/klok_player_adapter.c
     music_player/music_player_ui.c
-    ${video_player_glue_dir}/src/video_player_cli.c
-    ${video_player_glue_dir}/src/video_play_engine_api.c
-    ${video_player_glue_dir}/src/video_play_callbacks.c
-    ${video_player_glue_dir}/src/video_play_gpu_postprocess.c
-    ${video_player_glue_dir}/src/audio_player_device.c
 )
 
 file(GLOB_RECURSE beken_generated_source
@@ -56,6 +49,7 @@ set(priv_req
     sdcard_mtp
     fatfs
     audio_play
+    h264_video_player
     bk_audio_player
     bk_bluetooth
     bluetooth_dual

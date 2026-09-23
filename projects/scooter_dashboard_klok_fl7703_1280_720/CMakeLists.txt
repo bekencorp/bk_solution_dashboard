@@ -20,6 +20,7 @@ set(EXTRA_COMPONENTS_DIRS
     ${KLOK_COMPONENTS_DIR}/blue_audio_player_service
     ${KLOK_COMPONENTS_DIR}/blue_audio_recorder_service
     ${KLOK_COMPONENTS_DIR}/sw_sbc_decoder
+    ${KLOK_COMPONENTS_DIR}/h264_video_player
 )
 
 project(app)

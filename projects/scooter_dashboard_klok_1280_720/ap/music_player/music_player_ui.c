@@ -70,6 +70,8 @@
 #define MP_LYRIC_SINGLE_W   750   /* wider than this splits into two rows */
 #define MP_LYRIC_OUT_MS     190
 #define MP_LYRIC_IN_MS      260
+/* Temporarily disable slide-in; keep helpers for a later re-enable. */
+#define MP_LYRIC_SLIDE_ENABLE 0
 
 typedef enum {
     MP_LYRIC_IDLE = 0,
@@ -622,7 +624,12 @@ static void mp_lyric_out_done(lv_anim_t *a)
 {
     (void)a;
     mp_lyric_commit_pending();
+#if MP_LYRIC_SLIDE_ENABLE
     mp_lyric_start_phase(MP_LYRIC_IN);
+#else
+    s_lyric_phase = MP_LYRIC_IDLE;
+    mp_lyric_anim_exec(NULL, 100);
+#endif
 }
 
 static void mp_lyric_in_done(lv_anim_t *a)
@@ -733,7 +740,13 @@ static void mp_set_lyric(const char *title, bool has_media_title)
      * the latency is roughly halved. */
     lv_anim_delete(&s_lyric_anim_tag, mp_lyric_anim_exec);
     mp_lyric_commit_pending();
+#if MP_LYRIC_SLIDE_ENABLE
     mp_lyric_start_phase(MP_LYRIC_IN);
+#else
+    /* Park at the settled pose so lyrics are not left at the entrance corner. */
+    s_lyric_phase = MP_LYRIC_IDLE;
+    mp_lyric_anim_exec(NULL, 100);
+#endif
 }
 
 static void mp_ui_bt_state(void)
