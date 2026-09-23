@@ -94,7 +94,7 @@ avdk_err_t app_mipi_camera_power_enable(bool enable)
 
     auxldo_cfg = (pm_auxldo_ctrl_cfg_t){0};
     auxldo_cfg.ldo = AUXLDOS_SEL_1P2V;
-    auxldo_cfg.out = PM_AUXLDO_1P2V_OUT_1P2V;
+    auxldo_cfg.out = PM_AUXLDO_1P2V_OUT_1P7V;
     auxldo_cfg.user = PM_AUXLDO_USER_CAMERA;
     auxldo_cfg.state = ldo_en;
     AVDK_RETURN_ON_ERROR(bk_pm_auxldo_ctrl_vote(&auxldo_cfg), TAG, "camera 1p2v ldo vote failed");
