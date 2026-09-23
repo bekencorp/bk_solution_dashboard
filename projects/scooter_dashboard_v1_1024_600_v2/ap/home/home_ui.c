@@ -663,6 +663,138 @@ static void *s_home_beat_canvas_buf = NULL;
 static void home_music_apply(void);
 static void home_music_pending_apply(void);
 
+/*
+ * Move a scale's line needle, invalidating only the needle's own bounding box.
+ *
+ * lv_scale_set_line_needle_value() anchors the line at the scale's top-left and
+ * stores absolute coordinates, while lv_line's self size is max(point.x) by
+ * max(point.y) measured from the object's own origin. The box therefore always
+ * reaches from that corner to the far end of the needle - up to 300x300 on this
+ * 320x320 gauge - and lv_line_set_points_mutable() invalidates it twice, once
+ * for the old size and once for the new. Two gauges stepping every 10ms measured
+ * 177k pixels per frame, against 49ms of LVGL render time in an 61ms frame.
+ *
+ * The geometry below is lv_scale's, unchanged; only the anchor differs. The
+ * object sits on the needle's own bounding box and the points are relative to
+ * it, so the invalidated box is |dx| by |dy|. Pixels land where they did before:
+ * LV_ALIGN_TOP_LEFT applies the same parent offset either way and it cancels out
+ * of (point - origin), and lv_line draws from lv_obj_get_coords().x1.
+ *
+ * The size is set explicitly rather than left to LV_SIZE_CONTENT because the
+ * sweep crosses 180, 270 and 360 degrees exactly, where one of dx/dy is 0 and a
+ * content-sized object would collapse to zero height or width.
+ *
+ * The needle stays registered with the scale through the initial
+ * lv_scale_set_line_needle_value() in home_init.c, so LV_EVENT_STYLE_CHANGED on
+ * the scale still restores the stock placement - the next timer tick re-applies
+ * this one.
+ */
+static void home_gauge_set_needle(lv_obj_t *scale, lv_obj_t *needle, int32_t length, int32_t value)
+{
+    int32_t w = lv_obj_get_style_width(scale, LV_PART_MAIN);
+    int32_t h = lv_obj_get_style_height(scale, LV_PART_MAIN);
+    int32_t cx, cy, len, angle, range, vmin, vmax, dx, dy, x0, y0;
+    lv_point_precise_t *pts;
+
+    pts = (lv_line_is_point_array_mutable(needle) && lv_line_get_point_count(needle) >= 2)
+          ? lv_line_get_points_mutable(needle) : NULL;
+
+    if (w != h || pts == NULL)
+    {
+        /* Not a square gauge, or the point array lv_scale allocates on its first
+         * call is not there yet. Let the stock setter deal with it. */
+        lv_scale_set_line_needle_value(scale, needle, length, value);
+        return;
+    }
+
+    cx = w / 2;
+    cy = h / 2;
+
+    if (length >= cx)
+    {
+        len = cx;
+    }
+    else if (length >= 0)
+    {
+        len = length;
+    }
+    else if (length + cx < 0)
+    {
+        len = 0;
+    }
+    else
+    {
+        len = cx + length;
+    }
+
+    vmin = lv_scale_get_range_min_value(scale);
+    vmax = lv_scale_get_range_max_value(scale);
+    range = (int32_t)lv_scale_get_angle_range(scale);
+
+    if (value < vmin)
+    {
+        angle = 0;
+    }
+    else if (value > vmax)
+    {
+        angle = range;
+    }
+    else
+    {
+        angle = range * (value - vmin) / (vmax - vmin);
+    }
+    angle += lv_scale_get_rotation(scale);
+
+    dx = (len * lv_trigo_cos(angle)) >> LV_TRIGO_SHIFT;
+    dy = (len * lv_trigo_sin(angle)) >> LV_TRIGO_SHIFT;
+
+    x0 = (dx < 0) ? (cx + dx) : cx;
+    y0 = (dy < 0) ? (cy + dy) : cy;
+
+    lv_obj_align(needle, LV_ALIGN_TOP_LEFT, x0, y0);
+    lv_obj_set_size(needle, LV_ABS(dx) + 1, LV_ABS(dy) + 1);
+
+    pts[0].x = cx - x0;
+    pts[0].y = cy - y0;
+    pts[1].x = cx + dx - x0;
+    pts[1].y = cy + dy - y0;
+    lv_line_set_points_mutable(needle, pts, 2);
+}
+
+/*
+ * Shrink the two gauge readouts to fit their text.
+ *
+ * Both are laid out at the full panel width - 372 and 380 - with
+ * LV_TEXT_ALIGN_CENTER, so a one or two digit number centres itself inside an
+ * 82px band spanning the panel, and lv_label_refr_text() invalidates all of it
+ * on every update. That is 62k pixels a frame between the two, half of what this
+ * page redraws, and it was free only while the needle's bounding box still
+ * covered the whole gauge and swallowed it.
+ *
+ * Sizing to content and centring the object puts the same glyphs in the same
+ * pixels: the panels carry no padding or border, so LV_ALIGN_TOP_MID centres on
+ * the axis the text was already centred on, and holding y at 151 leaves the
+ * text's top edge where it was.
+ *
+ * Done here rather than in home_init.c because that file is generated, and it
+ * has to run after every page rebuild, which is what home_ui_enter() gives us.
+ */
+static void home_gauge_labels_fit(void)
+{
+    bk_lv_ui_t *ui = &bk_lv_tool_ui;
+
+    if (ui->home_speed_val && lv_obj_is_valid(ui->home_speed_val))
+    {
+        lv_obj_set_size(ui->home_speed_val, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_align(ui->home_speed_val, LV_ALIGN_TOP_MID, 1, 151);
+    }
+    if (ui->home_volt_txt && lv_obj_is_valid(ui->home_volt_txt))
+    {
+        lv_obj_set_size(ui->home_volt_txt, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_align(ui->home_volt_txt, LV_ALIGN_TOP_MID, 0, 151);
+    }
+}
+
 static void speed_gauge_apply(void)
 {
     bk_lv_ui_t *ui = &bk_lv_tool_ui;
@@ -675,13 +807,13 @@ static void speed_gauge_apply(void)
         return;
     }
 
-    lv_scale_set_line_needle_value(ui->home_speed_scale, ui->home_speed_scale_needle_0,
-                                   SPEED_NEEDLE_LENGTH, s_speed_value);
+    home_gauge_set_needle(ui->home_speed_scale, ui->home_speed_scale_needle_0,
+                          SPEED_NEEDLE_LENGTH, s_speed_value);
     if (ui->home_sys_scale && lv_obj_is_valid(ui->home_sys_scale) &&
         ui->home_sys_scale_needle_0 && lv_obj_is_valid(ui->home_sys_scale_needle_0))
     {
-        lv_scale_set_line_needle_value(ui->home_sys_scale, ui->home_sys_scale_needle_0,
-                                       SYS_NEEDLE_LENGTH, s_sys_value);
+        home_gauge_set_needle(ui->home_sys_scale, ui->home_sys_scale_needle_0,
+                              SYS_NEEDLE_LENGTH, s_sys_value);
     }
     if (ui->home_volt_txt && lv_obj_is_valid(ui->home_volt_txt))
     {
@@ -1948,6 +2080,7 @@ void home_ui_enter(void)
     {
         lv_obj_move_foreground(ui->home_sys_scale_needle_0);
     }
+    home_gauge_labels_fit();
     speed_gauge_apply();
     s_speed_timer = lv_timer_create(speed_gauge_timer_cb, SPEED_ANIM_PERIOD_MS, NULL);
 
