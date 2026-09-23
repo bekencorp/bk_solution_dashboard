@@ -14,6 +14,7 @@ set(incs
 set(srcs
     display_ui.c
     display_ui_cast_hooks.c
+    lv_mem_pool.c
 )
 
 armino_component_register(

@@ -11,6 +11,7 @@
 #include "dashcam_h264_flexa_decoder.h"
 #include "dashcam_player.h"
 #include "dashcam_storage.h"
+#include "display_ui.h"
 #include "display_ui_cast_context.h"
 #include "hpdma/lv_hpdma.h"
 #include "lv_vendor.h"
@@ -23,9 +24,6 @@
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
-
-extern void lv_gpu_init(uint32_t tess_width, uint32_t tess_height);
-extern void lv_gpu_deinit(void);
 
 #define DASHCAM_VIDEO_BUF_COUNT               3U
 #define DASHCAM_VIDEO_QUEUE_DEPTH             4U
@@ -64,7 +62,7 @@ typedef struct
     volatile bool running;
     volatile bool stopping;
     volatile bool stop_queued;
-    bool lvgl_gpu_released;
+    bool lvgl_released;
     beken_queue_t queue;
     beken_thread_t worker;
     beken_semaphore_t stop_complete;
@@ -83,8 +81,27 @@ typedef struct
 } dashcam_video_ctx_t;
 
 static dashcam_video_ctx_t s_dashcam_video;
+static dashcam_video_lvgl_hooks_t s_lvgl_hooks = {0};
 
 static bool dashcam_video_all_buffers_reclaimed(void);
+
+void dashcam_video_register_lvgl_hooks(const dashcam_video_lvgl_hooks_t *hooks)
+{
+    if (hooks == NULL)
+    {
+        s_lvgl_hooks.before_lvgl_teardown = NULL;
+        s_lvgl_hooks.after_lvgl_deinit = NULL;
+        s_lvgl_hooks.before_lvgl_restore = NULL;
+        return;
+    }
+
+    s_lvgl_hooks = *hooks;
+}
+
+bool dashcam_video_owns_lvgl(void)
+{
+    return s_dashcam_video.lvgl_released;
+}
 
 static void dashcam_video_frame_free(void *frame)
 {
@@ -331,13 +348,43 @@ static void dashcam_video_restore_lvgl(void)
         }
     }
 
-    if (s_dashcam_video.lvgl_gpu_released)
+    if (s_dashcam_video.lvgl_released)
     {
-        lv_gpu_init(0U, 0U);
-        s_dashcam_video.lvgl_gpu_released = false;
+        /*
+         * Tell the UI which page to come up on before the tree is built, so
+         * the rebuild lands on the dashcam records list in one pass.
+         */
+        if (s_lvgl_hooks.before_lvgl_restore != NULL)
+        {
+            s_lvgl_hooks.before_lvgl_restore();
+        }
+
+        /*
+         * Rebuild the runtime torn down in MSG_START. display_ui_start_lvgl()
+         * re-creates the GPU/vg_lite context (lv_vendor_init owns it now), the
+         * draw buffers, the LVGL pool and the object tree, reusing display_ui's
+         * retained frame buffers. No lv_vendor_keypad_reset() is needed:
+         * lv_port_indev_init() runs inside it and the new indev starts with no
+         * key state.
+         *
+         * lvgl_released stays set across the call: beken_ui_init() runs inside
+         * it and must see that this tree is coming back from playback, or it
+         * schedules the power-on recording start all over again.
+         */
+        bk_err_t started = display_ui_start_lvgl();
+
+        s_dashcam_video.lvgl_released = false;
+        if (started != BK_OK)
+        {
+            LOGE("display_ui_start_lvgl failed after playback\n");
+            return;
+        }
     }
-    lv_vendor_keypad_reset();
-    lv_vendor_start();
+    else
+    {
+        lv_vendor_keypad_reset();
+        lv_vendor_start();
+    }
 
     for (uint32_t waited = 0;
          waited < DASHCAM_VIDEO_RECLAIM_WAIT_MS && !dashcam_video_all_buffers_reclaimed();
@@ -388,6 +435,18 @@ static void dashcam_video_worker(void *arg)
         switch (msg.type)
         {
             case DASHCAM_VIDEO_MSG_START:
+                /*
+                 * Leave the standby pages while the LVGL task is still alive,
+                 * holding the display lock the way the assist view does - and
+                 * release it again before lv_vendor_stop(), which blocks on the
+                 * LVGL task's exit and would deadlock against a held lock.
+                 */
+                if (s_lvgl_hooks.before_lvgl_teardown != NULL)
+                {
+                    lv_vendor_disp_lock();
+                    s_lvgl_hooks.before_lvgl_teardown();
+                    lv_vendor_disp_unlock();
+                }
                 lv_vendor_stop();
                 if (lv_hpdma_memcpy_wait_finish(3000U) != BK_OK)
                 {
@@ -400,8 +459,27 @@ static void dashcam_video_worker(void *arg)
                         break;
                     }
                 }
-                lv_gpu_deinit();
-                s_dashcam_video.lvgl_gpu_released = true;
+                /*
+                 * Release the whole LVGL runtime, not just its task and the
+                 * vg_lite context. lv_vendor_stop() leaves the 120 KiB partial
+                 * draw buffer and the swdraw worker stacks allocated; the full
+                 * deinit hands that HSRAM back to the H264 decoder and GPU for
+                 * the duration of the clip. lv_vendor_deinit() also owns the
+                 * lv_gpu_deinit() that used to be done explicitly here, so
+                 * calling both would underflow the GPU driver refcount.
+                 */
+                if (display_ui_deinit_lvgl() != BK_OK)
+                {
+                    LOGE("display_ui_deinit_lvgl failed\n");
+                    dashcam_video_restore_lvgl();
+                    exit_worker = true;
+                    break;
+                }
+                s_dashcam_video.lvgl_released = true;
+                if (s_lvgl_hooks.after_lvgl_deinit != NULL)
+                {
+                    s_lvgl_hooks.after_lvgl_deinit();
+                }
                 s_dashcam_video.display =
                     (bk_display_ctlr_handle_t)app_mipi_lcd_handle_get();
                 if (s_dashcam_video.display == NULL)
@@ -537,7 +615,7 @@ bk_err_t dashcam_video_start_sink(lv_obj_t *parent, const char *path)
     s_dashcam_video.active = true;
     s_dashcam_video.stopping = false;
     s_dashcam_video.stop_queued = false;
-    s_dashcam_video.lvgl_gpu_released = false;
+    s_dashcam_video.lvgl_released = false;
     s_dashcam_video.width = DASHCAM_RECORD_WIDTH;
     s_dashcam_video.height = DASHCAM_RECORD_HEIGHT;
     s_dashcam_video.input_stats_start_ms = rtos_get_time();

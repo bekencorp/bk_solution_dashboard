@@ -67,6 +67,12 @@ void dashcam_app_attach(lv_obj_t *preview_parent);
  * keeps the background recording running. */
 void dashcam_app_detach(void);
 
+/* Drop the cached preview-parent handle after an lv_deinit() destroyed the
+ * object tree. Unlike dashcam_app_detach() this touches neither the recorder
+ * nor the video sink (assist view keeps recording across the teardown) and
+ * makes no LVGL call, because LVGL is down when it runs. */
+void dashcam_app_reset_after_lvgl_deinit(void);
+
 /* Play a recorded clip. Recording keeps running underneath (they coexist). */
 bk_err_t dashcam_app_play(const char *path);
 /* Stop clip playback. Background recording is left untouched. */

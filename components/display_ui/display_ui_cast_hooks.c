@@ -2,12 +2,14 @@
 
 #include <os/os.h>
 #include <common/bk_err.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <components/log.h>
 #include <components/bk_display.h>
 #include "cast_jpeg_pipeline.h"
 #include "lv_vendor.h"
 
+#include "display_ui.h"
 #include "display_ui_cast_context.h"
 
 #define TAG "display_ui_cast"
@@ -40,10 +42,44 @@ __attribute__((weak)) uint32_t beken_ui_after_cast_ui_painted_delay_ms(void)
     return 0;
 }
 
+/*
+ * Full-teardown opt-in.
+ *
+ * lv_vendor_stop() only parks the LVGL task; the runtime keeps its HSRAM -
+ * the 120KB partial draw buffer, the LVGL memory pool and the task stack -
+ * and lv_gpu_deinit() hands back just the ~52KB vg_lite contiguous block. That
+ * is not enough once the dashcam recorder is running: the cast pipeline needs
+ * its own contiguous 52KB back through bk_get_gpu_flexa_buffer() plus the GPU
+ * output buffers, and with the recorder's ISP flexa + H264E buffers already in
+ * HSRAM the allocation fails ("bk_get_gpu_flexa_buffer failed" -> bk_gpu_init
+ * -3 -> "turn on cast jpeg pipeline failed").
+ *
+ * lv_vendor_deinit() releases all of it (~355KB), but only a product whose UI
+ * modules drop every retained LVGL handle can survive the following lv_init().
+ * Such a product overrides beken_ui_cast_supports_lvgl_deinit() to return true
+ * and implements the two hooks below; everyone else keeps the shallow path.
+ */
+__attribute__((weak)) bool beken_ui_cast_supports_lvgl_deinit(void)
+{
+    return false;
+}
+
+/* Run after lv_deinit(), before the rebuild. Must not call into LVGL. */
+__attribute__((weak)) void beken_ui_after_cast_lvgl_deinit(void) {}
+
+/*
+ * Run after display_ui_start_lvgl(), which already rebuilt the page tree via
+ * the product's display_ui init callback. Only the non-LVGL half of the
+ * teardown is left to undo here.
+ */
+__attribute__((weak)) void beken_ui_after_cast_lvgl_restore(void) {}
+
 static volatile int s_dpu_casting_reopen_pending = 0;
 static volatile int s_lvgl_suspended_for_cast = 0;
 /* Set when this cast session actually called lv_vendor_stop. */
 static int s_cast_lvgl_was_stopped = 0;
+/* Set when it went all the way to lv_vendor_deinit (implies was_stopped). */
+static int s_cast_lvgl_was_deinited = 0;
 static volatile int s_dpu_switched_to_cast = 0;
 static int s_cast_hooks_registered = 0;
 
@@ -51,6 +87,49 @@ static avdk_err_t cast_bank_steer_noop_cb(void *frame)
 {
     (void)frame;
     return AVDK_ERR_OK;
+}
+
+/*
+ * Undo whatever display_ui_cast_pre_start() did to LVGL. Called from both
+ * resume paths (cancelled before the first frame, and normal cast end).
+ */
+static void cast_lvgl_restore(void)
+{
+    if (!s_cast_lvgl_was_stopped)
+    {
+        return;
+    }
+    s_cast_lvgl_was_stopped = 0;
+
+    if (s_cast_lvgl_was_deinited)
+    {
+        s_cast_lvgl_was_deinited = 0;
+        /*
+         * Rebuilds the whole runtime: lv_vendor_init() (which re-acquires the
+         * GPU because the display runs output_compress), the product's UI init
+         * callback, then lv_vendor_start(). The frame buffers survived the
+         * deinit, so the DPU flush above stays valid.
+         */
+        if (display_ui_start_lvgl() != BK_OK)
+        {
+            LOGE("[cast] LVGL rebuild failed; display stays down\n");
+            return;
+        }
+        lv_vendor_disp_lock();
+        beken_ui_after_cast_lvgl_restore();
+        lv_vendor_disp_unlock();
+        LOGI("LVGL display resumed (full rebuild)\n");
+        return;
+    }
+
+    /* Cast teardown closed the shared vg_lite; re-acquire before LVGL runs. */
+    lv_gpu_init(0, 0);
+    lv_vendor_start();
+    rtos_delay_milliseconds(50);
+    lv_vendor_disp_lock();
+    beken_ui_kick_after_display_resume();
+    lv_vendor_disp_unlock();
+    LOGI("LVGL display resumed\n");
 }
 
 bk_err_t lvgl_app_suspend_display(void)
@@ -96,15 +175,8 @@ bk_err_t lvgl_app_resume_display(void)
          * not be lv_vendor_start()ed again. The cast hook path sets it in pre_start.
          */
         if (s_cast_lvgl_was_stopped) {
-            s_cast_lvgl_was_stopped = 0;
-            /* Cast teardown closed the shared vg_lite; re-acquire before LVGL runs. */
-            lv_gpu_init(0, 0);
-            lv_vendor_start();
-            rtos_delay_milliseconds(50);
-            lv_vendor_disp_lock();
-            beken_ui_kick_after_display_resume();
-            lv_vendor_disp_unlock();
-            LOGI("LVGL display resume: casting cancelled after LVGL stop, restarted\n");
+            LOGI("LVGL display resume: casting cancelled after LVGL stop, restarting\n");
+            cast_lvgl_restore();
         } else {
             LOGI("LVGL display resume: cast cancelled before first frame, LVGL still running\n");
         }
@@ -134,15 +206,7 @@ bk_err_t lvgl_app_resume_display(void)
     }
 
     if (s_cast_lvgl_was_stopped) {
-        s_cast_lvgl_was_stopped = 0;
-        /* Cast teardown closed the shared vg_lite; re-acquire before LVGL runs. */
-        lv_gpu_init(0, 0);
-        lv_vendor_start();
-        rtos_delay_milliseconds(50);
-        lv_vendor_disp_lock();
-        beken_ui_kick_after_display_resume();
-        lv_vendor_disp_unlock();
-        LOGI("LVGL display resumed\n");
+        cast_lvgl_restore();
     } else {
         LOGI("LVGL still running after cast end; skip lv_vendor_start\n");
     }
@@ -154,6 +218,7 @@ static void display_ui_cast_pre_start(void)
     uint32_t post_paint_ms = beken_ui_after_cast_ui_painted_delay_ms();
 
     s_cast_lvgl_was_stopped = 0;
+    s_cast_lvgl_was_deinited = 0;
     s_lvgl_suspended_for_cast = 1;
 
     /*
@@ -191,12 +256,23 @@ static void display_ui_cast_pre_start(void)
     }
 
     lv_vendor_stop();
-    lv_gpu_deinit();
     s_cast_lvgl_was_stopped = 1;
 
-    lvgl_app_dpu_apply_casting_config();
+    /*
+     * lv_vendor_deinit() subsumes lv_gpu_deinit() (it owns gpu_inited) and on
+     * top of that frees the draw buffer, the LVGL memory pool and the task
+     * stack, which is what the cast GPU allocations need while recording.
+     */
+    if (beken_ui_cast_supports_lvgl_deinit() && display_ui_deinit_lvgl() == BK_OK) {
+        s_cast_lvgl_was_deinited = 1;
+        beken_ui_after_cast_lvgl_deinit();
+        LOGI("[cast] pipeline prep: LVGL deinitialized + GPU released before pipeline create\n");
+    } else {
+        lv_gpu_deinit();
+        LOGI("[cast] pipeline prep: LVGL stopped + GPU released before pipeline create\n");
+    }
 
-    LOGI("[cast] pipeline prep: LVGL stopped + GPU released before pipeline create\n");
+    lvgl_app_dpu_apply_casting_config();
 }
 
 static void display_ui_cast_first_frame_apply(void)

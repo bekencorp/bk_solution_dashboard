@@ -172,7 +172,7 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
  
 /* Four segments are required while the GPU scales 720 input lines to the
  * 608-line aligned output surface. */
-#define H264_DECODER_SEG_NUMBER             3U
+#define H264_DECODER_SEG_NUMBER             4U
  
  /* Keep the GPU Flexa depth synchronized with the H264 segment ring. */
 #define H264_DECODER_GPU_FLEXA_BUFF_CNT     H264_DECODER_SEG_NUMBER
@@ -212,9 +212,9 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
 #define H264_DECODER_FLEXA_RING_HEAP_SRAM     2
 
 #if CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
-#define H264_DECODER_FLEXA_RING_HEAP  H264_DECODER_FLEXA_RING_HEAP_SRAM
-#else
 #define H264_DECODER_FLEXA_RING_HEAP  H264_DECODER_FLEXA_RING_HEAP_HSRAM
+#else
+#define H264_DECODER_FLEXA_RING_HEAP  H264_DECODER_FLEXA_RING_HEAP_SRAM
 #endif
 
 #if (H264_DECODER_FLEXA_RING_HEAP != H264_DECODER_FLEXA_RING_HEAP_HSRAM) && \

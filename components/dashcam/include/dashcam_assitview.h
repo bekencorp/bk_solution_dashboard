@@ -6,6 +6,7 @@
 typedef struct
 {
     void (*before_lvgl_teardown)(void);
+    void (*after_lvgl_deinit)(void);
     void (*after_display_resume)(void);
 } dashcam_assitview_hooks_t;
 

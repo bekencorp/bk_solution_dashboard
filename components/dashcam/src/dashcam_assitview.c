@@ -3,6 +3,7 @@
 #include "dashcam_assitview.h"
 #include "dashcam_config.h"
 #include "app_gpu.h"
+#include "display_ui.h"
 #include "display_ui_cast_context.h"
 #include "lvgl.h"
 #include "components/log.h"
@@ -25,43 +26,6 @@ static gpu_board_config_t gpu_board;
 static void *s_gpu_bond = NULL;
 static bool s_assitview_active = false;
 static dashcam_assitview_hooks_t s_assitview_hooks = {0};
-
-/*
- * GPU (vg_lite) ownership handoff between LVGL and the assist bond.
- *
- * After the display_ui output_compress refactor, LVGL renders every frame
- * through vg_lite and OWNS the single global vg_lite context: it is created once
- * in lv_vendor_init() (lv_gpu_init -> vg_lite_init) and only torn down in
- * lv_vendor_deinit(). lv_vendor_start()/lv_vendor_stop() just start/stop the
- * LVGL task and do NOT touch vg_lite.
- *
- * The assist bond drives the same GPU via app_gpu_turn_on()/app_gpu_turn_off(),
- * and app_gpu_turn_off() -> bk_gpu_deinit() FULLY closes vg_lite (vg_lite_close
- * + frees the contiguous command-buffer heap). If we let that happen while LVGL
- * still believes it owns a live context, LVGL's first compressed flush after
- * assist dereferences the freed context and MemFaults in set_render_target().
- *
- * So we hand the GPU off explicitly: release LVGL's vg_lite once the LVGL task
- * is stopped and before the assist bond takes the GPU, and re-acquire it after
- * the assist bond is fully torn down and before LVGL resumes.
- *
- * We reuse LVGL's own GPU lifecycle (lv_gpu_init/lv_gpu_deinit, i.e.
- * bk_gpu_driver_init + vg_lite_init) rather than app_gpu_turn_on/off: the latter
- * is the ISP->GPU flexa *controller* (needs an ISP handle + gpu_board_config,
- * spins up the gpu worker thread and pingpong buffers) which LVGL never uses.
- * lv_gpu_init(0,0) exactly mirrors how lv_vendor_init() created the context. */
-extern void lv_gpu_init(uint32_t tess_width, uint32_t tess_height);
-extern void lv_gpu_deinit(void);
-
-static void dashcam_assitview_lvgl_gpu_release(void)
-{
-    lv_gpu_deinit();
-}
-
-static void dashcam_assitview_lvgl_gpu_acquire(void)
-{
-    lv_gpu_init(0, 0);
-}
 
 void dashcam_assitview_init(void)
 {
@@ -87,7 +51,7 @@ void dashcam_assitview_init(void)
     app_gpu_board_config_set(&gpu_board);
 }
 
-void dashcam_assitview_gpu_bond_attach(void)
+static bk_err_t dashcam_assitview_gpu_bond_attach(void)
 {
     int ret;
 
@@ -104,14 +68,14 @@ void dashcam_assitview_gpu_bond_attach(void)
     if (ret != BK_OK)
     {
         LOGE("dashcam_camera_open_for_assist failed, ret: %d", ret);
-        return;
+        return BK_FAIL;
     }
 
     if (app_isp_handle_get() == NULL)
     {
         LOGE("isp handle NULL after camera open; cannot bond GPU");
         dashcam_camera_close_for_assist();
-        return;
+        return BK_FAIL;
     }
 
     /* Diagnostic: gpu_ctlr_init() allocates CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ
@@ -139,7 +103,7 @@ void dashcam_assitview_gpu_bond_attach(void)
     {
         LOGE("app_gpu_turn_on failed, ret: %d", ret);
         dashcam_camera_close_for_assist();
-        return;
+        return BK_FAIL;
     }
 
     s_gpu_bond = NULL;
@@ -150,11 +114,12 @@ void dashcam_assitview_gpu_bond_attach(void)
         (void)app_gpu_turn_off(app_gpu_handle_get());
         s_gpu_bond = NULL;
         dashcam_camera_close_for_assist();
-        return;
+        return BK_FAIL;
     }
     LOGI("assitview gpu bond attached (src %dx%d dst %dx%d)\n",
          gpu_board.flexa.src_width, gpu_board.flexa.src_height,
          gpu_board.flexa.dst_width, gpu_board.flexa.dst_height);
+    return BK_OK;
 }
 
 void dashcam_assitview_deinit(void)
@@ -166,6 +131,7 @@ void dashcam_assitview_register_hooks(const dashcam_assitview_hooks_t *hooks)
     if (hooks == NULL)
     {
         s_assitview_hooks.before_lvgl_teardown = NULL;
+        s_assitview_hooks.after_lvgl_deinit = NULL;
         s_assitview_hooks.after_display_resume = NULL;
         return;
     }
@@ -240,14 +206,39 @@ void dashcam_assitview_start(void)
     lv_vendor_stop();
     ASSIT_HSRAM_PROBE("2.after_lv_vendor_stop");
 
-    /* LVGL task is now stopped: release its vg_lite context so the assist bond
-     * can take exclusive GPU ownership (re-acquired in dashcam_assitview_stop). */
-    dashcam_assitview_lvgl_gpu_release();
+    /*
+     * Release the complete LVGL runtime, not only its worker task and VG-Lite
+     * context. This also releases the 120 KiB partial draw buffer and the
+     * software-render worker stack needed by Assist GPU while recording.
+     * Display frame buffers are owned and retained by display_ui for reinit.
+     */
+    if (display_ui_deinit_lvgl() != BK_OK)
+    {
+        LOGE("display_ui_deinit_lvgl failed\n");
+        s_assitview_active = false;
+        return;
+    }
+    if (s_assitview_hooks.after_lvgl_deinit != NULL)
+    {
+        s_assitview_hooks.after_lvgl_deinit();
+    }
 
     lvgl_app_dpu_apply_casting_config();
-    ASSIT_HSRAM_PROBE("3.after_dpu_casting_cfg");
+    ASSIT_HSRAM_PROBE("3.after_lvgl_deinit");
 
-    dashcam_assitview_gpu_bond_attach();
+    if (dashcam_assitview_gpu_bond_attach() != BK_OK)
+    {
+        /*
+         * LVGL is already gone at this point, so returning here would leave a
+         * dead screen with s_assitview_active still set - the UI only came
+         * back because the user happened to press the exit key. Unwind through
+         * the normal stop path instead: the bond and GPU are already released
+         * by the attach error paths, camera close is idempotent, and it is
+         * what rebuilds LVGL and clears the flag.
+         */
+        LOGE("assist bring-up failed, restoring LVGL UI\n");
+        dashcam_assitview_stop();
+    }
 
 #undef ASSIT_HSRAM_PROBE
 }
@@ -256,12 +247,6 @@ void dashcam_assitview_stop(void)
 {
     if (!s_assitview_active)
     {
-        return;
-    }
-
-    if (s_assitview_hooks.after_display_resume == NULL)
-    {
-        LOGE("after_display_resume hook is not registered\n");
         return;
     }
 
@@ -275,20 +260,18 @@ void dashcam_assitview_stop(void)
         (void)app_gpu_turn_off(app_gpu_handle_get());
     }
     dashcam_camera_close_for_assist();
-    /* app_gpu_turn_off() closed vg_lite; re-acquire it for LVGL BEFORE resuming
-     * the LVGL task, otherwise LVGL's first compressed flush faults on the freed
-     * context. */
-    dashcam_assitview_lvgl_gpu_acquire();
     /*
-     * Restore the HOME screen while the LVGL task is still stopped. Starting
-     * LVGL first leaves a window where stale focus/input can activate Dashcam
-     * before the delayed HOME restore runs.
+     * lv_vendor_deinit() destroyed the complete LVGL runtime. Recreate it and
+     * the HOME object tree while reusing display_ui's retained frame buffers.
+     * Keep Assist marked active during init so the UI does not schedule a
+     * second automatic recording start.
      */
-    lv_vendor_keypad_reset();
-    lv_vendor_disp_lock();
-    s_assitview_hooks.after_display_resume();
-    lv_vendor_disp_unlock();
+    if (display_ui_start_lvgl() != BK_OK)
+    {
+        LOGE("display_ui_start_lvgl failed after assist\n");
+        return;
+    }
 
     s_assitview_active = false;
-    lv_vendor_start();
+    LOGI("assist exit: LVGL fully reinitialized\n");
 }

@@ -33,6 +33,7 @@
 
 #include "lvgl.h"
 #include "lv_vendor.h"
+#include "lv_mem_pool.h"
 
 #include "display_ui_cast_context.h"
 #include "sdkconfig.h"
@@ -204,23 +205,48 @@ static bk_err_t lvgl_start_internal(void)
      * pixel (disp_w * disp_h bytes), smaller than the old RGB565 w*h*2. Mirrors
      * the reference widgets_v9 sizing for output_compress. */
     uint32_t fb_sz = (uint32_t)lv_vnd_config.disp_width * lv_vnd_config.disp_height;
-    lv_vnd_config.frame_buffer[0] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_CODED, fb_sz);
-    lv_vnd_config.frame_buffer[1] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, fb_sz);
-    if (lv_vnd_config.frame_buffer[0] == NULL || lv_vnd_config.frame_buffer[1] == NULL) {
-        LOGE("LVGL frame buffer alloc failed (need %u bytes each)\n", (unsigned)fb_sz);
-        if (lv_vnd_config.frame_buffer[0])
-            bk_frame_buffer_free(lv_vnd_config.frame_buffer[0]);
-        if (lv_vnd_config.frame_buffer[1])
-            bk_frame_buffer_free(lv_vnd_config.frame_buffer[1]);
+    if (s_lvgl_fb[0] == NULL && s_lvgl_fb[1] == NULL)
+    {
+        s_lvgl_fb[0] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_CODED, fb_sz);
+        s_lvgl_fb[1] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, fb_sz);
+        if (s_lvgl_fb[0] == NULL || s_lvgl_fb[1] == NULL)
+        {
+            LOGE("LVGL frame buffer alloc failed (need %u bytes each)\n", (unsigned)fb_sz);
+            if (s_lvgl_fb[0] != NULL)
+            {
+                bk_frame_buffer_free(s_lvgl_fb[0]);
+                s_lvgl_fb[0] = NULL;
+            }
+            if (s_lvgl_fb[1] != NULL)
+            {
+                bk_frame_buffer_free(s_lvgl_fb[1]);
+                s_lvgl_fb[1] = NULL;
+            }
+            return BK_FAIL;
+        }
+        s_lvgl_fb_size = fb_sz;
+    }
+    else if (s_lvgl_fb[0] == NULL || s_lvgl_fb[1] == NULL || s_lvgl_fb_size != fb_sz)
+    {
+        LOGE("invalid retained LVGL frame buffers: fb0=%p fb1=%p old=%u new=%u\n",
+             s_lvgl_fb[0], s_lvgl_fb[1], (unsigned)s_lvgl_fb_size, (unsigned)fb_sz);
         return BK_FAIL;
     }
-    s_lvgl_fb[0] = lv_vnd_config.frame_buffer[0];
-    s_lvgl_fb[1] = lv_vnd_config.frame_buffer[1];
-    s_lvgl_fb_size = fb_sz;
+    else
+    {
+        LOGI("reuse LVGL frame buffers: fb0=%p fb1=%p size=%u\n",
+             s_lvgl_fb[0], s_lvgl_fb[1], (unsigned)fb_sz);
+    }
+    lv_vnd_config.frame_buffer[0] = s_lvgl_fb[0];
+    lv_vnd_config.frame_buffer[1] = s_lvgl_fb[1];
 
     lv_vnd_config.args = s_dpu_handle;
     lv_vnd_config.flush_cb = bk_widgets_flush_cb;
-    lv_vendor_init(&lv_vnd_config);
+    if (lv_vendor_init(&lv_vnd_config) != BK_OK)
+    {
+        LOGE("lv_vendor_init failed\n");
+        return BK_FAIL;
+    }
 
 #if (CONFIG_TP)
     drv_tp_open(lv_vnd_config.width, lv_vnd_config.height, TP_MIRROR_NONE);
@@ -268,6 +294,41 @@ bk_err_t display_ui_init_display_hw(void)
 bk_err_t display_ui_start_lvgl(void)
 {
     return lvgl_start_internal();
+}
+
+bk_err_t display_ui_deinit_lvgl(void)
+{
+    if (!lv_vendor_is_initialized())
+    {
+        return BK_OK;
+    }
+
+    lv_vendor_deinit();
+    if (lv_vendor_is_initialized())
+    {
+        LOGE("lv_vendor_deinit did not complete\n");
+        return BK_FAIL;
+    }
+
+    /*
+     * lv_deinit() destroys the allocator's control block but not the pool it
+     * was built on, so the LV_MEM_SIZE block stays reserved and keeps the
+     * freed heap split around it. Release it once nothing can allocate from
+     * LVGL any more; the next lv_vendor_init() takes a fresh block through
+     * LV_MEM_POOL_ALLOC. A no-op for the LV_STDLIB_CUSTOM projects, which
+     * never reserve one.
+     *
+     * The lv_vendor_is_initialized() check above is what makes this safe to do
+     * from out here rather than inside lv_vendor_deinit(): that function has
+     * three early returns BEFORE lv_deinit() - not initialized, called from
+     * the LVGL task, and a NULL vnd_data - and LVGL is still live on all of
+     * them. None of them clears the flag, so we skip the free. The flag is
+     * only cleared on the path that ran lv_deinit() to completion.
+     */
+    display_ui_lv_pool_free();
+
+    LOGI("LVGL UI deinitialized; frame buffers retained\n");
+    return BK_OK;
 }
 
 bk_err_t display_ui_init(void)

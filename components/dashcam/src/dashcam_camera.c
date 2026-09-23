@@ -210,12 +210,31 @@ static bk_err_t dashcam_camera_open_isp(void)
 
 static void dashcam_camera_close_isp_if_unused(void)
 {
+    bk_err_t ret;
+
     if (!s_open || s_record_user || s_assist_user)
     {
         return;
     }
 
-    (void)app_isp_camera_turn_off();
+    /*
+     * app_isp_camera_turn_off() bails out on the first failing teardown step
+     * and leaves isp_cam_handle.camera_ctlr_handle set. Discarding that error
+     * and clearing s_open anyway used to desync this layer from the driver
+     * permanently: every later open saw !s_open, called
+     * app_isp_mipi_camera_turn_on() and got AVDK_ERR_BUSY "camera already
+     * turned on", so the camera could not be reopened until a reboot (assist
+     * view then failed every time). Keep s_open set when the close fails so
+     * the refcount still describes reality and the next open reuses the ISP
+     * that is in fact still on.
+     */
+    ret = app_isp_camera_turn_off();
+    if (ret != BK_OK)
+    {
+        LOGE("app_isp_camera_turn_off failed: %d, ISP left open\n", (int)ret);
+        return;
+    }
+
     s_open = false;
     LOGI("camera ISP closed\n");
 }
@@ -248,8 +267,20 @@ bk_err_t dashcam_camera_open(void)
         dashcam_camera_stop_encoder_bond();
         if (!isp_was_open && !s_assist_user)
         {
-            (void)app_isp_camera_turn_off();
-            s_open = false;
+            /* Same rule as dashcam_camera_close_isp_if_unused(): only report
+             * the ISP as closed if the driver actually closed it, otherwise
+             * this layer and the driver desync and the camera can never be
+             * reopened. */
+            bk_err_t off_ret = app_isp_camera_turn_off();
+
+            if (off_ret != BK_OK)
+            {
+                LOGE("app_isp_camera_turn_off failed: %d, ISP left open\n", (int)off_ret);
+            }
+            else
+            {
+                s_open = false;
+            }
         }
         dashcam_camera_unlock();
         return BK_FAIL;

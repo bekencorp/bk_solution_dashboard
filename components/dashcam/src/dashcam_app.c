@@ -464,9 +464,13 @@ void dashcam_app_boot_start(void)
     (void)dashcam_storage_init();
     /* Must run before camera/recorder open: continuous recording never idles. */
     (void)dashcam_storage_boot_reclaim();
+#if CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     dashcam_app_start_capture();
     dashcam_app_start_tick();
     LOGI("continuous recording started, rec=%d\n", (int)s_rec);
+#else
+    LOGI("automatic recording disabled\n");
+#endif
 }
 
 bk_err_t dashcam_app_record_start(void)
@@ -548,12 +552,14 @@ void dashcam_app_attach(lv_obj_t *preview_parent)
      * before boot_start ran, or after a full shutdown. There is no live camera
      * preview to show (playback-only video surface) - recording just keeps
      * running in the background and the page is used for clip playback. */
+#if CONFIG_SCOOTER_DASHCAM_AUTO_RECORD
     if (s_rec == DASHCAM_REC_IDLE)
     {
         (void)dashcam_storage_boot_reclaim();
         dashcam_app_start_capture();
         dashcam_app_start_tick();
     }
+#endif
 
     LOGI("page attached, rec=%d\n", (int)s_rec);
 }
@@ -575,6 +581,17 @@ void dashcam_app_detach(void)
 
     dashcam_app_refresh_status();
     LOGI("page detached, recording continues, rec=%d\n", (int)s_rec);
+}
+
+void dashcam_app_reset_after_lvgl_deinit(void)
+{
+    /*
+     * lv_deinit() took the whole object tree with it, so the preview parent is
+     * a dangling lv_obj_t. dashcam_app_play() gates on it being non-NULL and
+     * would hand it to dashcam_video_start_sink(); clear it and let the next
+     * dashcam_app_attach() supply the parent from the rebuilt tree.
+     */
+    s_parent = NULL;
 }
 
 void dashcam_app_shutdown(void)
