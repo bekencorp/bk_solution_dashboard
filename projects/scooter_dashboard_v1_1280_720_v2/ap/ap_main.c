@@ -707,6 +707,9 @@ static void app_cli_init(void)
 {
     cli_widgets_init();
     sdcard_mtp_init();
+#if CONFIG_BK_MODEM
+    dashboard_modem_cli_init();
+#endif
 }
 
 /* ==================== Main ==================== */
