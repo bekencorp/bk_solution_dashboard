@@ -197,6 +197,12 @@ static bool dashcam_video_blend_gpu_ensure_init(void)
     }
 
     bk_gpu_driver_init();
+    if (bk_gpu_vg_lite_apply_mem_config(0, 0) == 0)
+    {
+        LOGE("blend_start: vg_lite mem config failed\n");
+        s_blend_gpu_init_failed = true;
+        return false;
+    }
     ret = vg_lite_init(0, 0);
     if (ret != VG_LITE_SUCCESS)
     {

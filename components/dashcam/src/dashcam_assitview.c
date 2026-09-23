@@ -4,6 +4,7 @@
 #include "dashcam_config.h"
 #include "app_gpu.h"
 #include "display_ui.h"
+#include "gpu_core.h"
 #include "display_ui_cast_context.h"
 #include "lvgl.h"
 #include "components/log.h"
@@ -78,19 +79,18 @@ static bk_err_t dashcam_assitview_gpu_bond_attach(void)
         return BK_FAIL;
     }
 
-    /* Diagnostic: gpu_ctlr_init() allocates CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ
-     * (64KB) for the vg_lite heap AND, right after, a ~40KB pingpong output
-     * buffer (bk_get_gpu_output_buffer), both from the same HSRAM heap. Log total
-     * free and trial-allocate the vg_lite heap size to tell "total shortage"
-     * (free < 64KB) apart from "fragmentation" (free >> 64KB but trial fails). */
+    /* Diagnostic: gpu_ctlr_init() allocates the calculated VG-Lite heap and then
+     * a pingpong output buffer from the same HSRAM heap. Trial-allocate the
+     * calculated size to tell total shortage apart from fragmentation. */
     {
         extern size_t rtos_get_hsram_free_heap_size(void);
         extern size_t rtos_get_hsram_minimum_free_heap_size(void);
-        void *probe = hsram_malloc(CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ);
+        uint32_t vg_mem_sz = bk_gpu_vg_lite_apply_mem_config(0, 0);
+        void *probe = (vg_mem_sz != 0) ? hsram_malloc(vg_mem_sz) : NULL;
         LOGI("HSRAM before gpu_on: free=%u min_ever=%u trial_vglite(%uK)=%s",
              (unsigned)rtos_get_hsram_free_heap_size(),
              (unsigned)rtos_get_hsram_minimum_free_heap_size(),
-             (unsigned)(CONFIG_VG_LITE_GPU_CONTIGUOUS_MEM_SZ / 1024),
+             (unsigned)(vg_mem_sz / 1024),
              probe ? "OK" : "FAIL");
         if (probe != NULL)
         {
