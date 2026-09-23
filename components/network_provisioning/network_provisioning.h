@@ -15,6 +15,8 @@ typedef enum
     BOARDING_OP_NAVIGATION_CONTROL = 52,
     BOARDING_OP_NAVIGATION_TYPE_CONTROL = 53,
     BOARDING_OP_START_BK_MODEM = 54,
+    BOARDING_OP_CONTRAL_CAMERA_RECORDING = 55,
+    BOARDING_OP_GET_CAMERA_RECORDING_STATUS = 56,
     BOARDING_OP_MAX
 } boarding_opcode_cmd_t;
 
@@ -94,6 +96,16 @@ typedef struct
 {
     uint8_t type;
 } __attribute__((packed)) navigation_type_control_t;
+
+typedef struct
+{
+    uint8_t enable;
+} __attribute__((packed)) camera_recording_control_t;
+
+typedef struct
+{
+    uint8_t status;
+} __attribute__((packed)) camera_recording_status_t;
 
 bk_err_t bk_sl_np_init(void);
 bk_err_t bk_sl_np_start_provisioning(void);

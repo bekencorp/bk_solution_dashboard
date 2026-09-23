@@ -53,6 +53,7 @@
 #include <driver/gpio.h>
 #include "gpio_driver.h"
 #endif
+#include "dashcam_app.h"
 
 /* Firmware version advertised in the BLE provisioning core header. */
 #define DASHBOARD_FW_MAJOR 1
@@ -660,6 +661,60 @@ static void handle_navigation_type_control_msg(uint8_t *data_ptr, uint16_t lengt
     if(s_send) s_send(BOARDING_OP_NAVIGATION_TYPE_CONTROL, EVT_STATUS_OK);
 }
 
+static void handle_control_camera_recording_msg(uint8_t *data_ptr, uint16_t length)
+{
+    /* The BLE provisioning queue frees data_ptr after this function returns */
+    if ((data_ptr == NULL) || (length < sizeof(camera_recording_control_t)))
+    {
+        LOGE("%s %d invalid payload (ptr=%p, len=%u)\n", __func__, __LINE__, data_ptr, length);
+        if (s_send)
+        {
+            s_send(BOARDING_OP_CONTRAL_CAMERA_RECORDING, EVT_STATUS_ERROR);
+        }
+        return;
+    }
+    camera_recording_control_t *recording_ctrl = (camera_recording_control_t *)data_ptr;
+    LOGI("%s %d enable=%u\n", __func__, __LINE__, recording_ctrl->enable);
+    bk_err_t ret = BK_OK;
+    if (recording_ctrl->enable)
+    {
+        LOGI("%s %d enable camera recording\n", __func__, __LINE__);
+        ret = dashcam_app_record_start();
+        if (ret != BK_OK)
+        {
+            LOGE("%s %d enable camera recording failed (%d)\n", __func__, __LINE__, ret);
+        }
+    }
+    else
+    {
+        LOGI("%s %d disable camera recording\n", __func__, __LINE__);
+        dashcam_app_record_stop();
+    }
+    if (ret != BK_OK)
+    {
+        if(s_send) s_send(BOARDING_OP_CONTRAL_CAMERA_RECORDING, EVT_STATUS_ERROR);
+    }else
+    {
+        if(s_send) s_send(BOARDING_OP_CONTRAL_CAMERA_RECORDING, EVT_STATUS_OK);
+    }
+}
+
+static void handle_get_camera_recording_status_msg(uint8_t *data_ptr, uint16_t length)
+{
+    /* GET: no request body; boarding may pass length==0 and data_ptr==NULL. */
+    (void)data_ptr;
+    (void)length;
+
+    camera_recording_status_t resp;
+    resp.status = (dashcam_app_rec_state() == DASHCAM_REC_RECORDING) ? 1u : 0u;
+    LOGI("%s %d rec_status=%u\n", __func__, __LINE__, resp.status);
+    if (s_send_data)
+    {
+        s_send_data(BOARDING_OP_GET_CAMERA_RECORDING_STATUS, EVT_STATUS_OK,
+                    (const char *)&resp, sizeof(resp));
+    }
+}
+
 static void bk_sl_np_ble_msg_handle(uint16_t event, uint8_t *param, uint16_t length)
 {
     switch (event)
@@ -925,6 +980,18 @@ static void bk_sl_np_ble_msg_handle(uint16_t event, uint8_t *param, uint16_t len
         }
         break;
         #endif
+
+        case BOARDING_OP_CONTRAL_CAMERA_RECORDING:
+        {
+            handle_control_camera_recording_msg(param, length);
+        }
+        break;
+
+        case BOARDING_OP_GET_CAMERA_RECORDING_STATUS:
+        {
+            handle_get_camera_recording_status_msg(param, length);
+        }
+        break;
 
         default:
         {

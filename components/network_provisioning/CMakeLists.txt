@@ -6,7 +6,7 @@ list(APPEND srcs
 )
 
 set(priv_reqs bk_common include bk_network_provisioning json bluetooth_dual media bk_network_transfer
-              bk_bluetooth)
+              bk_bluetooth dashcam lvgl)
 
 if (CONFIG_BK_MODEM)
     list(APPEND priv_reqs bk_modem driver bk_cli)

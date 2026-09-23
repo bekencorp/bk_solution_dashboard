@@ -290,6 +290,43 @@ static void display_ui_cast_post_stop(void)
     (void)lvgl_app_resume_display();
 }
 
+/*
+ * dpu_flush_complete_handle() releases a frame only when the next one is
+ * promoted at VSync, so the last cast frame stays parked in the DPU with the
+ * cast release callback attached. Hand the DPU an LVGL frame buffer here, while
+ * the cast GPU pool is still alive, so that callback runs now and the buffer
+ * goes back to the pool. Without this it fires once LVGL restarts in post_stop,
+ * after the pool was freed, and double-frees the slab.
+ */
+static void display_ui_cast_drain_display(void)
+{
+    bk_display_ctlr_handle_t dpu = display_ui_get_dpu_handle();
+    uint8_t *fb = display_ui_get_lvgl_fb(0);
+    avdk_err_t fr;
+
+    if ((dpu == NULL) || (fb == NULL))
+    {
+        LOGW("[cast] drain skip: dpu=%p lvgl fb[0]=%p\n", (void *)dpu, (void *)fb);
+        return;
+    }
+
+    fr = bk_display_flush(dpu, fb, cast_bank_steer_noop_cb);
+    if (fr != AVDK_ERR_OK)
+    {
+        LOGW("[cast] drain flush r=%d\n", (int)fr);
+        return;
+    }
+
+    if (cast_jpeg_pipeline_wait_display_flush(200U) != BK_OK)
+    {
+        LOGW("[cast] drain: no cast frame retired in 200ms\n");
+    }
+    else
+    {
+        LOGI("[cast] drain: last cast frame retired to pool\n");
+    }
+}
+
 void display_ui_register_cast_hooks_once(void)
 {
     cast_jpeg_pipeline_hooks_t hooks = { 0 };
@@ -300,6 +337,7 @@ void display_ui_register_cast_hooks_once(void)
     hooks.pre_start = display_ui_cast_pre_start;
     hooks.first_frame_apply = display_ui_cast_first_frame_apply;
     hooks.post_stop = display_ui_cast_post_stop;
+    hooks.drain_display = display_ui_cast_drain_display;
     cast_jpeg_pipeline_register_hooks(&hooks);
     s_cast_hooks_registered = 1;
 }

@@ -579,6 +579,21 @@ static void ancs_adv_prepare(bk_ble_gap_cb_event_t event)
 
 bk_err_t ancs_client_adv_start(void)
 {
+    bk_err_t ret;
+
+#if CONFIG_BLUETOOTH_CTKD_BT_TO_BLE || CONFIG_BLUETOOTH_CTKD_BLE_TO_BT
+    // support for SC BOND
+    uint8_t iocap = BK_IO_CAP_KEYBOARD_DISPLAY;
+    uint8_t auth_req = BK_LE_AUTH_REQ_SC_MITM_BOND;
+    uint8_t key_distr = BK_BLE_KEY_DISTR_ENC_KEY_MASK; //BK_BLE_KEY_DISTR_ID_KEY_MASK (if RPA Random address, need to distribute ID key);
+    key_distr |= ((BK_BLE_KEY_DISTR_ENC_KEY_MASK | BK_BLE_KEY_DISTR_ID_KEY_MASK | BK_BLE_KEY_DISTR_CSR_KEY_MASK) << 4);
+    ret = bk_dm_prf_gap_set_security_method(iocap, auth_req, key_distr);
+    if (ret != BK_OK)
+    {
+        ANCS_LOGE("set security method err %d", ret);
+    }
+#endif
+
     ANCS_LOGI("start advertising\n");
     bk_ble_gap_ext_adv_params_t params =
     {
@@ -612,7 +627,6 @@ bk_err_t ancs_client_adv_start(void)
     char name[24] = {0};
     size_t index = 0;
     size_t name_len;
-    bk_err_t ret;
 
     if (!s_ancs.initialized || s_ancs.advertising)
     {

@@ -52,6 +52,14 @@ typedef struct {
 	void (*first_frame_apply)(void);
 	/* Called when cast stops or startup fails, for state restore/cleanup. */
 	void (*post_stop)(void);
+	/*
+	 * Called during teardown while the cast GPU pool is still alive. Must hand
+	 * the DPU a non-cast frame so it retires the last cast frame through the
+	 * cast release callback: dpu_flush_complete_handle() only releases the
+	 * previous frame when a new one is promoted, so the last cast frame would
+	 * otherwise stay parked until LVGL restarts, i.e. after the pool is freed.
+	 */
+	void (*drain_display)(void);
 } cast_jpeg_pipeline_hooks_t;
 
 void cast_jpeg_pipeline_register_hooks(const cast_jpeg_pipeline_hooks_t *hooks);

@@ -49,6 +49,7 @@ static cast_jpeg_pipeline_hooks_t s_cast_hooks = {
 	.pre_start = cast_hooks_noop_void,
 	.first_frame_apply = cast_hooks_noop_void,
 	.post_stop = cast_hooks_noop_void,
+	.drain_display = cast_hooks_noop_void,
 };
 
 static cast_jpeg_video_recv_alloc_gate_fn s_video_recv_alloc_gate_fn;
@@ -71,12 +72,14 @@ void cast_jpeg_pipeline_register_hooks(const cast_jpeg_pipeline_hooks_t *hooks)
 		s_cast_hooks.pre_start = cast_hooks_noop_void;
 		s_cast_hooks.first_frame_apply = cast_hooks_noop_void;
 		s_cast_hooks.post_stop = cast_hooks_noop_void;
+		s_cast_hooks.drain_display = cast_hooks_noop_void;
 		return;
 	}
 
 	s_cast_hooks.pre_start = hooks->pre_start ? hooks->pre_start : cast_hooks_noop_void;
 	s_cast_hooks.first_frame_apply = hooks->first_frame_apply ? hooks->first_frame_apply : cast_hooks_noop_void;
 	s_cast_hooks.post_stop = hooks->post_stop ? hooks->post_stop : cast_hooks_noop_void;
+	s_cast_hooks.drain_display = hooks->drain_display ? hooks->drain_display : cast_hooks_noop_void;
 }
 
 static jpeg_stream_pipeline_handle_t s_pipeline;
@@ -194,6 +197,14 @@ static uint32_t            s_cast_gpu_pool_bytes;
 static void               *s_cast_gpu_stack[CAST_GPU_POOL_SLOTS];
 static int                 s_cast_gpu_stack_n;
 static volatile uint8_t    s_cast_gpu_pool_active;
+/*
+ * Addresses cast_gpu_pool_free_all() has already returned to the slab heap.
+ * The DPU releases a frame only when the next one is promoted, so a cast
+ * release callback can still arrive after teardown freed the pool. Without
+ * this record cast_gpu_pool_is_our_ptr() no longer recognises the address and
+ * the callback frees it a second time (bk_mem_slab_free -> BK_ASSERT).
+ */
+static void *volatile      s_cast_gpu_retired[CAST_GPU_POOL_SLOTS];
 
 /*
  * Match bk_gpu_ctlr_default.c gpu_flex_data_frame_done / gpu_flex_main_entry
@@ -223,6 +234,30 @@ static bool cast_gpu_pool_is_our_ptr(const void *p)
 			return true;
 	}
 	return false;
+}
+
+static bool cast_gpu_pool_is_retired_ptr(const void *p)
+{
+	if (p == NULL)
+	{
+		return false;
+	}
+	for (int i = 0; i < CAST_GPU_POOL_SLOTS; i++)
+	{
+		if (p == s_cast_gpu_retired[i])
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void cast_gpu_retired_clear(void)
+{
+	for (int i = 0; i < CAST_GPU_POOL_SLOTS; i++)
+	{
+		s_cast_gpu_retired[i] = NULL;
+	}
 }
 
 static void cast_gpu_pool_push(void *p)
@@ -272,6 +307,9 @@ static void cast_gpu_pool_free_all(void)
 
 	for (int i = 0; i < CAST_GPU_POOL_SLOTS; i++) {
 		if (s_cast_gpu_pool_ptr[i] != NULL) {
+			/* Publish before the free so a late callback racing us still
+			 * recognises the address and drops it instead of freeing. */
+			s_cast_gpu_retired[i] = s_cast_gpu_pool_ptr[i];
 			bk_frame_buffer_free(s_cast_gpu_pool_ptr[i]);
 			s_cast_gpu_pool_ptr[i] = NULL;
 		}
@@ -305,6 +343,10 @@ static bk_err_t cast_gpu_pool_alloc(uint32_t dst_w, uint32_t dst_h, bool compres
 		os_memset(p, 0, sz);
 		s_cast_gpu_pool_ptr[i] = p;
 	}
+
+	/* These slabs are live again; a stale "retired" entry for a recycled
+	 * address would make cast_gpu_free_output() drop it and starve the pool. */
+	cast_gpu_retired_clear();
 
 	s_cast_gpu_pool_bytes = sz;
 	s_cast_gpu_stack_n    = 0;
@@ -356,6 +398,12 @@ static void cast_gpu_free_output(void *p)
 			LOGPF("[cast] pool free %p avail %d/%d\n",
 			     p, s_cast_gpu_stack_n, CAST_GPU_POOL_SLOTS);
 		}
+		return;
+	}
+
+	if (cast_gpu_pool_is_retired_ptr(p)) {
+		/* Teardown already returned this slab to the heap. */
+		LOGW("[cast] late release of retired buffer %p, drop\n", p);
 		return;
 	}
 
@@ -730,6 +778,15 @@ bk_err_t cast_jpeg_pipeline_turn_off(void)
 		s_cast_pipeline_running = 0;
 	}
 	s_disp = NULL;
+
+	/*
+	 * The pipeline no longer produces frames, but the DPU still holds the last
+	 * cast frame together with cast_flush_signal_cb. Retire it now, while the
+	 * pool is still active, so the callback returns the buffer to the pool
+	 * instead of firing after cast_gpu_pool_free_all().
+	 */
+	s_cast_hooks.drain_display();
+
 	s_cast_gpu_pool_active = 0;
 
 	/*

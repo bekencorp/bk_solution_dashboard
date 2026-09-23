@@ -24,6 +24,8 @@ static void (*s_ble_disconnect_cb)(void);
 
 #define BOARDING_QUEUE_DEPTH 100
 #define BOARDING_MAX_PAYLOAD 1019
+/* Cast teardown (turn_off) runs on this thread; match media_info thread stack. */
+#define BOARDING_THREAD_STACK_SIZE (1024 * 6)
 
 static void ble_ota_timer_hdl(void *param1, void *param2)
 {
@@ -522,7 +524,7 @@ bk_err_t wifi_boarding_demo_service_main(void)
                              BEKEN_DEFAULT_WORKER_PRIORITY,
                              "boarding_thd",
                              (beken_thread_function_t)boarding_message_handle,
-                             2560,
+                             BOARDING_THREAD_STACK_SIZE,
                              NULL);
 
     if (ret != BK_OK)
