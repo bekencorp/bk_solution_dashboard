@@ -907,8 +907,9 @@ static bk_err_t dashcam_storage_delete_until_space(uint32_t *deleted_out,
                                                    uint32_t *failed_out)
 {
     /* Storage maintenance is serialized by the app; keep the 2 KB candidate
-     * set out of the caller's embedded task stack. */
-    static char names[DASHCAM_RECYCLE_MAX_DELETE][DASHCAM_STORAGE_MAX_NAME];
+     * set out of the caller's embedded task stack. CPU-only scan buffer, so
+     * place it in PSRAM (.psram.bss) instead of AP SRAM. */
+    static __attribute__((section(".psram.bss"))) char names[DASHCAM_RECYCLE_MAX_DELETE][DASHCAM_STORAGE_MAX_NAME];
     uint32_t candidate_count = 0;
     uint32_t deleted = 0;
     uint32_t failed = 0;

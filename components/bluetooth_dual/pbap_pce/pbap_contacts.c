@@ -723,13 +723,13 @@ static void worker_task(beken_thread_arg_t arg)
         }
         if (msg.event == PBAP_MSG_EXIT) {
             if (msg.data_ptr) {
-                os_free(msg.data_ptr);
+                psram_free(msg.data_ptr);
             }
             break;
         }
         worker_handle_event(&msg);
         if (msg.data_ptr) {
-            os_free(msg.data_ptr);
+            psram_free(msg.data_ptr);
             msg.data_ptr = NULL;
         }
     }
@@ -745,7 +745,7 @@ static void copy_body_and_post(pbap_msg_t *msg, const uint8_t *data, uint16_t da
     msg->data_ptr = NULL;
     msg->data_len = data_len;
     if (data_len > 0 && data && data_len <= BK_PBAP_PCE_DEFAULT_MAX_RECV_SIZE) {
-        msg->data_ptr = (uint8_t *)os_malloc(data_len);
+        msg->data_ptr = (uint8_t *)psram_malloc(data_len);
         if (msg->data_ptr) {
             os_memcpy(msg->data_ptr, data, data_len);
         } else {
@@ -790,7 +790,7 @@ static void pbap_pce_cb(bk_pbap_pce_cb_event_t event, bk_pbap_pce_cb_param_t *pa
     if (rtos_push_to_queue(&s_evt_queue, &msg, BEKEN_NO_WAIT) != kNoErr) {
         LOGW("evt queue full, drop event %d\n", (int)event);
         if (msg.data_ptr) {
-            os_free(msg.data_ptr);
+            psram_free(msg.data_ptr);
         }
     }
 }

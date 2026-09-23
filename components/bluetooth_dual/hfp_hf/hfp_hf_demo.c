@@ -191,7 +191,7 @@ static void hf_post_voice_data(const uint8_t *data, uint16_t data_len)
     if (bt_audio_hf_demo_msg_que == NULL)
         return;
 
-    demo_msg.data = (char *) os_malloc(data_len);
+    demo_msg.data = (char *) psram_malloc(data_len);
     if (demo_msg.data == NULL)
     {
         LOGI("%s, malloc failed\r\n", __func__);
@@ -208,7 +208,7 @@ static void hf_post_voice_data(const uint8_t *data, uint16_t data_len)
         LOGI("%s, send queue failed\r\n", __func__);
         if (demo_msg.data)
         {
-            os_free(demo_msg.data);
+            psram_free(demo_msg.data);
         }
     }
 }
@@ -604,7 +604,7 @@ void bt_audio_hf_demo_main(void *arg)
                 case BT_AUDIO_VOICE_IND_MSG:
                 {
                     hfp_hf_audio_handle_data((const uint8_t *)msg.data, msg.len);
-                    os_free(msg.data);
+                    psram_free(msg.data);
                 }
                 break;
 
@@ -679,7 +679,7 @@ static int bt_audio_hf_demo_task_deinit(void)
         {
             if (msg.type == BT_AUDIO_VOICE_IND_MSG && msg.data)
             {
-                os_free(msg.data);
+                psram_free(msg.data);
                 msg.data = NULL;
             }
             os_memset(&msg, 0, sizeof(msg));

@@ -172,7 +172,7 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
  
 /* Four segments are required while the GPU scales 720 input lines to the
  * 608-line aligned output surface. */
-#define H264_DECODER_SEG_NUMBER             4U
+#define H264_DECODER_SEG_NUMBER             3U
  
  /* Keep the GPU Flexa depth synchronized with the H264 segment ring. */
 #define H264_DECODER_GPU_FLEXA_BUFF_CNT     H264_DECODER_SEG_NUMBER
@@ -192,21 +192,59 @@ static inline uint32_t hw_h264_frame_buf_alloc_size(uint32_t payload_plus_pad)
 /* Select the Flexa ring heap at build time:
  *   0: uncoded PSRAM (default, preserves HSRAM for concurrent recording)
  *   1: HSRAM (lower latency when sufficient HSRAM is available) */
+/*
+ * Flexa ring memory backend. Three backends are supported:
+ *   - HSRAM      : dedicated high-speed SRAM raw heap (default, recording-only).
+ *   - PSRAM      : bk_frame_buffer MEM_SLAB_HEAP_UNCODED (returns aligned blocks).
+ *   - SRAM       : general AP SRAM heap via os_malloc/os_free.
+ *
+ * HSRAM and the OS heap are plain raw heaps that do not guarantee 64-byte
+ * alignment, so they share the manual pointer-alignment malloc/free path (the
+ * raw pointer is stored just below the aligned user pointer). The uncoded
+ * PSRAM path uses bk_frame_buffer, which already returns aligned blocks.
+ *
+ * CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK routes the ring to the general
+ * AP SRAM heap (os_malloc): during record-while-playback a decoder ring must
+ * coexist with the recording ring, and the tight HSRAM pool cannot hold both.
+ */
+#define H264_DECODER_FLEXA_RING_HEAP_HSRAM  0
+#define H264_DECODER_FLEXA_RING_HEAP_PSRAM  1
+#define H264_DECODER_FLEXA_RING_HEAP_SRAM     2
+
 #if CONFIG_SCOOTER_DASHCAM_RECORD_DURING_PLAYBACK
-#define H264_DECODER_FLEXA_RING_USE_HSRAM 0
+#define H264_DECODER_FLEXA_RING_HEAP  H264_DECODER_FLEXA_RING_HEAP_SRAM
 #else
-#define H264_DECODER_FLEXA_RING_USE_HSRAM 1
+#define H264_DECODER_FLEXA_RING_HEAP  H264_DECODER_FLEXA_RING_HEAP_HSRAM
 #endif
 
-#if (H264_DECODER_FLEXA_RING_USE_HSRAM != 0) && \
-    (H264_DECODER_FLEXA_RING_USE_HSRAM != 1)
-#error "H264_DECODER_FLEXA_RING_USE_HSRAM must be 0 or 1"
+#if (H264_DECODER_FLEXA_RING_HEAP != H264_DECODER_FLEXA_RING_HEAP_HSRAM) && \
+    (H264_DECODER_FLEXA_RING_HEAP != H264_DECODER_FLEXA_RING_HEAP_PSRAM) && \
+    (H264_DECODER_FLEXA_RING_HEAP != H264_DECODER_FLEXA_RING_HEAP_SRAM)
+#error "H264_DECODER_FLEXA_RING_HEAP must be HSRAM, PSRAM or OS"
 #endif
 
-#if H264_DECODER_FLEXA_RING_USE_HSRAM
-#define H264_DECODER_FLEXA_RING_HEAP_NAME        "HSRAM"
+/* HSRAM and SRAM(os) are plain heaps needing the manual-alignment path; only
+ * the PSRAM(bk_frame_buffer) backend returns pre-aligned blocks. This flag
+ * selects the raw-heap malloc/free path vs the bk_frame_buffer path. */
+#define H264_DECODER_FLEXA_RING_USE_RAW_HEAP \
+    (H264_DECODER_FLEXA_RING_HEAP != H264_DECODER_FLEXA_RING_HEAP_PSRAM)
+#define H264_DECODER_FLEXA_RING_USE_SRAM \
+    (H264_DECODER_FLEXA_RING_HEAP == H264_DECODER_FLEXA_RING_HEAP_SRAM)
+
+#if H264_DECODER_FLEXA_RING_USE_SRAM
+#define H264_DECODER_FLEXA_RING_RAW_MALLOC(sz)  os_malloc(sz)
+#define H264_DECODER_FLEXA_RING_RAW_FREE(p)     os_free(p)
 #else
+#define H264_DECODER_FLEXA_RING_RAW_MALLOC(sz)  hsram_malloc(sz)
+#define H264_DECODER_FLEXA_RING_RAW_FREE(p)     hsram_free(p)
+#endif
+
+#if H264_DECODER_FLEXA_RING_HEAP == H264_DECODER_FLEXA_RING_HEAP_SRAM
+#define H264_DECODER_FLEXA_RING_HEAP_NAME        "AP SRAM (os)"
+#elif H264_DECODER_FLEXA_RING_HEAP == H264_DECODER_FLEXA_RING_HEAP_PSRAM
 #define H264_DECODER_FLEXA_RING_HEAP_NAME        "uncoded PSRAM"
+#else
+#define H264_DECODER_FLEXA_RING_HEAP_NAME        "HSRAM"
 #endif
 
 /* Debug-only tail canary. When enabled, the reserved safety pad after the
@@ -371,7 +409,7 @@ static video_player_video_decoder_ops_t s_ops_template;
 // Flexa ring allocation helpers
  // ---------------------------------------------------------------------------
  
-#if !H264_DECODER_FLEXA_RING_USE_HSRAM
+#if !H264_DECODER_FLEXA_RING_USE_RAW_HEAP
 /* Total bytes to request from the uncoded PSRAM slab for a logical ring of
  * `size`. We round the request up to the 64-byte alignment and add an aligned
  * DMA safety margin. Keeping the *requested* size aligned is essential: the
@@ -391,7 +429,7 @@ static void *h264_decoder_flexa_ring_malloc(uint32_t alignment, uint32_t size, v
     void *raw;
     uint32_t total;
 
-#if H264_DECODER_FLEXA_RING_USE_HSRAM
+#if H264_DECODER_FLEXA_RING_USE_RAW_HEAP
     uintptr_t start;
     uintptr_t aligned;
 
@@ -406,7 +444,8 @@ static void *h264_decoder_flexa_ring_malloc(uint32_t alignment, uint32_t size, v
     }
 
     total = size + alignment - 1U + (uint32_t)sizeof(void *);
-    raw = hsram_malloc(total);
+    LOGI("%s ring malloc total: %u", H264_DECODER_FLEXA_RING_HEAP_NAME, total);
+    raw = H264_DECODER_FLEXA_RING_RAW_MALLOC(total);
     if (raw == NULL)
     {
         return NULL;
@@ -453,15 +492,15 @@ static void h264_decoder_flexa_ring_free(void *raw)
 {
     if (raw != NULL)
     {
-#if H264_DECODER_FLEXA_RING_USE_HSRAM
-        hsram_free(raw);
+#if H264_DECODER_FLEXA_RING_USE_RAW_HEAP
+        H264_DECODER_FLEXA_RING_RAW_FREE(raw);
 #else
         bk_frame_buffer_free(raw);
 #endif
     }
 }
 
-#if H264_DECODER_FLEXA_RING_CANARY && !H264_DECODER_FLEXA_RING_USE_HSRAM
+#if H264_DECODER_FLEXA_RING_CANARY && !H264_DECODER_FLEXA_RING_USE_RAW_HEAP
 #include "cache.h"
 
 /* The gap between the logical ring end and the mem_slab tail guard word, i.e.
@@ -539,14 +578,14 @@ static void h264_decoder_flexa_ring_canary_check(const hw_h264_decoder_ctx_t *ct
  {
      if (ctx->sps_data != NULL)
      {
-         os_free(ctx->sps_data);
+         psram_free(ctx->sps_data);
          ctx->sps_data = NULL;
      }
      ctx->sps_size = 0;
  
      if (ctx->pps_data != NULL)
      {
-         os_free(ctx->pps_data);
+         psram_free(ctx->pps_data);
          ctx->pps_data = NULL;
      }
      ctx->pps_size = 0;
@@ -588,7 +627,7 @@ static void h264_decoder_flexa_ring_canary_check(const hw_h264_decoder_ctx_t *ct
          if (len == 0U || len > H264_PARAM_SET_MAX_SIZE || off + len > cfg_size) return AVDK_ERR_INVAL;
          if (i == 0U)
          {
-             ctx->sps_data = (uint8_t *)os_malloc(len);
+             ctx->sps_data = (uint8_t *)psram_malloc(len);
              if (ctx->sps_data == NULL) return AVDK_ERR_NOMEM;
              os_memcpy(ctx->sps_data, &cfg[off], len);
              ctx->sps_size = len;
@@ -617,7 +656,7 @@ static void h264_decoder_flexa_ring_canary_check(const hw_h264_decoder_ctx_t *ct
          if (len == 0U || len > H264_PARAM_SET_MAX_SIZE || off + len > cfg_size) return AVDK_ERR_INVAL;
          if (i == 0U)
          {
-             ctx->pps_data = (uint8_t *)os_malloc(len);
+             ctx->pps_data = (uint8_t *)psram_malloc(len);
              if (ctx->pps_data == NULL) return AVDK_ERR_NOMEM;
              os_memcpy(ctx->pps_data, &cfg[off], len);
              ctx->pps_size = len;
@@ -1163,7 +1202,7 @@ static avdk_err_t hw_h264_decoder_setup_pipeline(hw_h264_decoder_ctx_t *ctx)
 
     /* H264 Flexa does not support PP scaling. Keep its NV12 ring at the
      * macroblock-aligned decode dimensions and let the GPU scale it. The ring
-     * heap is selected by H264_DECODER_FLEXA_RING_USE_HSRAM. */
+     * heap is selected by H264_DECODER_FLEXA_RING_USE_RAW_HEAP. */
     ctx->flexa_pp_size = hw_h264_calc_flexa_pp_size(ctx->mb_w);
     ctx->flexa_pp_buf  = h264_decoder_flexa_ring_malloc(
                             H264_DECODER_FLEXA_PP_ALIGN,
@@ -1701,7 +1740,7 @@ fail_release_prealloc:
 
 static video_player_video_decoder_ops_t *hw_h264_decoder_create(void)
 {
-    hw_h264_decoder_instance_t *inst = os_malloc(sizeof(hw_h264_decoder_instance_t));
+    hw_h264_decoder_instance_t *inst = psram_malloc(sizeof(hw_h264_decoder_instance_t));
     if (inst == NULL)
     {
         LOGE("%s: alloc instance failed\n", __func__);
@@ -1716,7 +1755,7 @@ static void hw_h264_decoder_destroy(video_player_video_decoder_ops_t *ops)
 {
     if (ops == NULL || ops == &s_ops_template) return;
     hw_h264_decoder_instance_t *inst = __containerof(ops, hw_h264_decoder_instance_t, ops);
-    os_free(inst);
+    psram_free(inst);
 }
 
 static video_player_video_decoder_ops_t s_ops_template = {

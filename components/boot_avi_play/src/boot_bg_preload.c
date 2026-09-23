@@ -132,7 +132,7 @@ static void preload_thread(void *arg)
     }
     opened = true;
 
-    pool = os_malloc(BG_TJPGD_POOL_SIZE);
+    pool = psram_malloc(BG_TJPGD_POOL_SIZE);
     if (pool == NULL)
     {
         LOGE("tjpgd pool alloc(%u) failed\n", (unsigned)BG_TJPGD_POOL_SIZE);
@@ -176,7 +176,7 @@ static void preload_thread(void *arg)
 done:
     if (pool != NULL)
     {
-        os_free(pool);
+        psram_free(pool);
     }
     if (opened)
     {
