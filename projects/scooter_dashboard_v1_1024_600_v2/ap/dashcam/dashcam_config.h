@@ -72,6 +72,11 @@ extern "C" {
 
 /* Board and panel integration used by the shared dashcam component. */
 #define DASHCAM_CAMERA_PIN_RESET        ((uint8_t)-1)
+#define DASHCAM_CAMERA_PIN_SCL          GPIO_69
+#define DASHCAM_CAMERA_PIN_SDA          GPIO_70
+#define DASHCAM_CAMERA_I2C_ID           1
+#define DASHCAM_CAMERA_PIN_PWDN         ((uint8_t)-1)
+#define DASHCAM_CAMERA_PIN_XCLK         GPIO_59
 #define DASHCAM_CAMERA_HMIRROR          0
 #define DASHCAM_CAMERA_VFLIP            0
 #define DASHCAM_ASSIST_ROTATION         180
