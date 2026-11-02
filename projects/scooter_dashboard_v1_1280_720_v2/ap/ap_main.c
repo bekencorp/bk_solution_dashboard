@@ -175,6 +175,11 @@ static void app_ancs_notification_cb(const ancs_notification_attrs_t *attributes
 }
 #endif
 
+static void app_msg_popup_show(const char *msg)
+{
+    notification_popup_show("", msg);
+}
+
 static void ap_bt_app_init(void)
 {
 #if CONFIG_BT
@@ -293,7 +298,7 @@ static void ap_bt_startup_task(void *arg)
         goto end;
     }
 
-    ret = bk_sl_np_init();
+    ret = bk_sl_np_init(app_msg_popup_show);
     if (ret != BK_OK)
     {
         LOGE("network provisioning init failed %d\n", ret);
