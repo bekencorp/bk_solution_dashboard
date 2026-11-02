@@ -306,6 +306,11 @@ bk_err_t display_ui_deinit_lvgl(void)
         return BK_FAIL;
     }
 
+    #if CONFIG_TP
+    drv_tp_close();
+    #endif
+
+
     /*
      * lv_deinit() destroys the allocator's control block but not the pool it
      * was built on, so the LV_MEM_SIZE block stays reserved and keeps the

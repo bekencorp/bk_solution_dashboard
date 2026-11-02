@@ -16,32 +16,9 @@
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 
-/* MIPI sensor wiring (mirrors dashcam_video.c defaults). */
-#ifndef DASHCAM_CAMERA_PIN_SCL
-#define DASHCAM_CAMERA_PIN_SCL    GPIO_69
-#endif
-#ifndef DASHCAM_CAMERA_PIN_SDA
-#define DASHCAM_CAMERA_PIN_SDA    GPIO_70
-#endif
-#ifndef DASHCAM_CAMERA_I2C_ID
-#define DASHCAM_CAMERA_I2C_ID     1
-#endif
-/*
- * SCH-7259_V1.0 (dashboard v1) board: the GC2053 RSTN line is hardware
- * pulled high, so the sensor is released from reset without firmware help.
- * GPIO_71 on this board is BK3515NS BT_EN, so driving it as camera reset
- * would clash with Bluetooth bring-up. Use the 0xFF "no pin" sentinel so
- * csi_gc2053.c skips the reset toggle entirely (it guards on pin_reset != 0xFF).
- */
-#ifndef DASHCAM_CAMERA_PIN_RESET
-#define DASHCAM_CAMERA_PIN_RESET  ((uint8_t)-1)
-#endif
-#ifndef DASHCAM_CAMERA_PIN_PWDN
-#define DASHCAM_CAMERA_PIN_PWDN   ((uint8_t)-1)
-#endif
-#ifndef DASHCAM_CAMERA_PIN_XCLK
-#define DASHCAM_CAMERA_PIN_XCLK   GPIO_59
-#endif
+/* MIPI sensor wiring is board-specific and must be provided per project in
+ * ap/dashcam/dashcam_config.h: DASHCAM_CAMERA_PIN_SCL/SDA, DASHCAM_CAMERA_I2C_ID,
+ * DASHCAM_CAMERA_PIN_RESET/PWDN/XCLK. */
 #define DASHCAM_CAMERA_SENSOR_WIDTH   1920
 #define DASHCAM_CAMERA_SENSOR_HEIGHT  1080
 #define DASHCAM_CAMERA_SENSOR_FPS     25
