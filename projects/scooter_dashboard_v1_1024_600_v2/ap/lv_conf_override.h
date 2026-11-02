@@ -112,29 +112,6 @@
 #undef LV_USE_TJPGD
 #define LV_USE_TJPGD 1
 
-/*
- * The effective stack is a QUARTER of this value: lv_thread_init() divides by
- * sizeof(StackType_t)=4, but the CONFIG_SOC_SMP path hands the result to
- * rtos_create_hsram_thread(), whose stack argument is in BYTES. So 16KB here
- * gives each swdraw thread 4KB, and LV_DRAW_SW_DRAW_UNIT_CNT=2 of them cost 8KB
- * of HSRAM. The stock 8KB default would leave 2KB and UsageFault.
- *
- * 4KB is tight on purpose, to keep those two stacks out of HSRAM, and it holds
- * only because no JPEG is ever decoded from a draw thread: TJPGD's
- * decoder_info() alone would put a 4KB work buffer on the stack. The home
- * background is decoded once into an RGB565 PSRAM bitmap - on the dedicated
- * "bg_preload" thread, which hands TJPGD a heap pool instead of a stack buffer,
- * or failing that on the UI thread in home_ui_install_bg() - and only that
- * bitmap is ever used as an image source. Raise this back to 64KB if a .jpg is
- * ever handed to an lv_image directly.
- *
- * Must be set here, not in defconfig: lv_conf.h hardcodes
- * LV_DRAW_THREAD_STACK_SIZE, so the Kconfig value is ignored.
- */
-#undef LV_DRAW_THREAD_STACK_SIZE
-#define LV_DRAW_THREAD_STACK_SIZE (16 * 1024)
-
-
 #undef LV_USE_NATIVE_HELIUM_ASM
 #define LV_USE_NATIVE_HELIUM_ASM 0
 
