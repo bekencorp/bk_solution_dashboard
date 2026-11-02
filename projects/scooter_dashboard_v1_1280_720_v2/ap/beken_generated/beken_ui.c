@@ -600,7 +600,11 @@ static void home_menu_open_async_cb(void *user_data)
 
 static void beken_ui_nav_to_page(home_menu_item_t page)
 {
+    /* CLI / key thread. lv_async_call links the timer before user_data is
+     * published; the LVGL task may be walking that list under this lock. */
+    lv_vendor_disp_lock();
     lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)page);
+    lv_vendor_disp_unlock();
 }
 
 void beken_ui_nav_to_dashcam(void)
@@ -666,7 +670,9 @@ static void beken_ui_log_heap_test_async_cb(void *user_data)
 
 void beken_ui_log_heap_test(void)
 {
+    lv_vendor_disp_lock();
     lv_async_call(beken_ui_log_heap_test_async_cb, NULL);
+    lv_vendor_disp_unlock();
 }
 
 /* Runs in the LVGL task: return to the home page (page-mutual-exclusion path).
@@ -1036,7 +1042,11 @@ void beken_ui_key_home(void)
         return;
     }
 
+    /* Same race as page navigation: do not touch the LVGL timer list
+     * from the CLI / app-event thread without g_disp_mutex. */
+    lv_vendor_disp_lock();
     lv_async_call(home_menu_return_home_async_cb, NULL);
+    lv_vendor_disp_unlock();
 }
 
 static void beken_ui_send_direction_key(uint32_t key)
