@@ -1,10 +1,10 @@
-# scooter_1280_720_v2 开发指南
+# scooter_1280_720 开发指南
 
 - [English](./README.md)
 
 ## 概述
 
-`scooter_1280_720_v2` 是两轮车智能仪表方案（BK7259）的 V2 产品工程，面向
+`scooter_1280_720` 是两轮车智能仪表方案（BK7259）的 V2 产品工程，面向
 1280x720 横屏显示。工程采用 BK7259（AP，主控）+ BK3515N（蓝牙从控）双芯片架构，
 集成 **MIPI DSI + DPU + LVGL 仪表显示、开机 AVI 播放、行车记录、手机 JPEG 投屏、
 BLE / Wi-Fi 配网、经典蓝牙音频、联系人与拨号、本地音乐和 OTA 界面**。
@@ -15,7 +15,7 @@ OTA 页面以及对应的物理按键交互。
 ## 目录结构
 
 ```text
-scooter_1280_720_v2/
+scooter_1280_720/
 ├── ap/                         # 主控（AP）应用
 │   ├── ap_main.c               # 板级、显示、蓝牙和按键初始化入口
 │   ├── config/bk7259_ap/       # AP defconfig 与 GPIO 配置
@@ -39,14 +39,14 @@ scooter_1280_720_v2/
 目标芯片为 `bk7259`，通过 Docker 构建脚本编译：
 
 ```bash
-cd projects/scooter_1280_720_v2
+cd projects/scooter_1280_720
 ./dbuild.sh make bk7259
 ```
 
 Windows PowerShell：
 
 ```powershell
-cd projects/scooter_1280_720_v2
+cd projects/scooter_1280_720
 .\dbuild.ps1 make bk7259
 ```
 
@@ -98,10 +98,10 @@ BK3515N UART 链路默认使用 UART1，复位脚为 GPIO51，CTS / RTS 为 GPIO
 
 主要源文件：
 
-- `projects/scooter_1280_720_v2/ap/ap_main.c`：显示初始化编排；
+- `projects/scooter_1280_720/ap/ap_main.c`：显示初始化编排；
 - `components/boot_avi_play/`：开机 AVI 播放及主页背景预加载；
-- `projects/scooter_1280_720_v2/ap/home/home_ui.c`：车速、灯光、蓝牙音乐和通话状态显示；
-- `projects/scooter_1280_720_v2/ap/beken_generated/`：UI 页面与资源。
+- `projects/scooter_1280_720/ap/home/home_ui.c`：车速、灯光、蓝牙音乐和通话状态显示；
+- `projects/scooter_1280_720/ap/beken_generated/`：UI 页面与资源。
 
 ### 行车记录
 
@@ -110,14 +110,14 @@ BK3515N UART 链路默认使用 UART1，复位脚为 GPIO51，CTS / RTS 为 GPIO
 
 主要源文件：
 
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_app.c`：摄像头、录像和回放状态机；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_camera.c`：ISP / CSI 摄像头管理；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_recorder.c`：H.264 录像封装；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_storage.c`：目录扫描、文件命名、空间统计和旧文件回收；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_player.c`、`dashcam_video_v3.c`：
+- `projects/scooter_1280_720/ap/dashcam/dashcam_app.c`：摄像头、录像和回放状态机；
+- `projects/scooter_1280_720/ap/dashcam/dashcam_camera.c`：ISP / CSI 摄像头管理；
+- `projects/scooter_1280_720/ap/dashcam/dashcam_recorder.c`：H.264 录像封装；
+- `projects/scooter_1280_720/ap/dashcam/dashcam_storage.c`：目录扫描、文件命名、空间统计和旧文件回收；
+- `projects/scooter_1280_720/ap/dashcam/dashcam_player.c`、`dashcam_video_v3.c`：
   录像解码、缩放和 LVGL 显示；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_assitview.c`：转向辅助视图；
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_ui.c`：录像列表与按键操作。
+- `projects/scooter_1280_720/ap/dashcam/dashcam_assitview.c`：转向辅助视图；
+- `projects/scooter_1280_720/ap/dashcam/dashcam_ui.c`：录像列表与按键操作。
 
 默认参数定义在 `dashcam/dashcam_config.h`：预览为 960x540，录像为 1280x720 @ 25 fps，
 回放显示为 960x540，每段 60 秒。开发配置最多保留 1000 个文件；发布配置可切换为按剩余

@@ -1,10 +1,10 @@
-# scooter_1280_720_v2 Development Guide
+# scooter_1280_720 Development Guide
 
 - [中文](./README_CN.md)
 
 ## Overview
 
-`scooter_1280_720_v2` is the V2 product project for the BK7259 two-wheeler smart dashboard,
+`scooter_1280_720` is the V2 product project for the BK7259 two-wheeler smart dashboard,
 targeting a 1280x720 landscape display. It uses a BK7259 (AP, main controller) + BK3515N
 (Bluetooth secondary controller) dual-chip architecture and integrates **MIPI DSI + DPU + LVGL
 dashboard display, boot AVI playback, dashcam recording, phone JPEG casting, BLE / Wi-Fi
@@ -16,7 +16,7 @@ local music and OTA pages together with physical-key interaction.
 ## Directory Layout
 
 ```text
-scooter_1280_720_v2/
+scooter_1280_720/
 ├── ap/                         # Application processor (AP) app
 │   ├── ap_main.c               # Board, display, Bluetooth and key initialization
 │   ├── config/bk7259_ap/       # AP defconfig and GPIO configuration
@@ -40,14 +40,14 @@ scooter_1280_720_v2/
 The target chip is `bk7259`. Build it through the Docker wrapper:
 
 ```bash
-cd projects/scooter_1280_720_v2
+cd projects/scooter_1280_720
 ./dbuild.sh make bk7259
 ```
 
 On Windows PowerShell:
 
 ```powershell
-cd projects/scooter_1280_720_v2
+cd projects/scooter_1280_720
 .\dbuild.ps1 make bk7259
 ```
 
@@ -103,10 +103,10 @@ synchronous decoding delays when the dashboard appears.
 
 Main source files:
 
-- `projects/scooter_1280_720_v2/ap/ap_main.c`: display initialization orchestration;
+- `projects/scooter_1280_720/ap/ap_main.c`: display initialization orchestration;
 - `components/boot_avi_play/`: boot AVI playback and home background preload;
-- `projects/scooter_1280_720_v2/ap/home/home_ui.c`: speed, lights, Bluetooth music and call state;
-- `projects/scooter_1280_720_v2/ap/beken_generated/`: UI pages and assets.
+- `projects/scooter_1280_720/ap/home/home_ui.c`: speed, lights, Bluetooth music and call state;
+- `projects/scooter_1280_720/ap/beken_generated/`: UI pages and assets.
 
 ### Dashcam
 
@@ -116,15 +116,15 @@ Recordings are stored under `/sd0/dashcam`.
 
 Main source files:
 
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_app.c`: camera, recording and playback state machine;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_camera.c`: ISP / CSI camera management;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_recorder.c`: H.264 recording container;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_storage.c`: directory scanning, file naming,
+- `projects/scooter_1280_720/ap/dashcam/dashcam_app.c`: camera, recording and playback state machine;
+- `projects/scooter_1280_720/ap/dashcam/dashcam_camera.c`: ISP / CSI camera management;
+- `projects/scooter_1280_720/ap/dashcam/dashcam_recorder.c`: H.264 recording container;
+- `projects/scooter_1280_720/ap/dashcam/dashcam_storage.c`: directory scanning, file naming,
   space accounting and old-file recycling;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_player.c`, `dashcam_video_v3.c`: decode,
+- `projects/scooter_1280_720/ap/dashcam/dashcam_player.c`, `dashcam_video_v3.c`: decode,
   scaling and LVGL display;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_assitview.c`: turn assist view;
-- `projects/scooter_1280_720_v2/ap/dashcam/dashcam_ui.c`: recording list and key interaction.
+- `projects/scooter_1280_720/ap/dashcam/dashcam_assitview.c`: turn assist view;
+- `projects/scooter_1280_720/ap/dashcam/dashcam_ui.c`: recording list and key interaction.
 
 Defaults are defined in `dashcam/dashcam_config.h`: 960x540 preview, 1280x720 recording at
 25 fps, 960x540 playback and 60-second segments. Development builds retain up to 1000 files.
