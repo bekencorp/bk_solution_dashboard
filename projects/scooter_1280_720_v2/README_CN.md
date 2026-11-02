@@ -126,7 +126,7 @@ BK3515N UART 链路默认使用 UART1，复位脚为 GPIO51，CTS / RTS 为 GPIO
 ### 手机投屏、导航与配网
 
 手机 App 通过 SDP 发现设备并建立 CTRL / VIDEO / AUDIO 通道，将 JPEG 视频流送入
-`jpeg_stream_pipeline` 解码、旋转并显示。断开连接后关闭投屏管线、恢复 LVGL 并重新启动
+`decode_stream_pipeline` 解码、旋转并显示。断开连接后关闭投屏管线、恢复 LVGL 并重新启动
 SDP 广播。
 
 BLE boarding 通道同时承载 Wi-Fi 配网、导航控制及导航文件分片传输：

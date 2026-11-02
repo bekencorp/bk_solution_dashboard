@@ -45,7 +45,7 @@ set(priv_req  bk_init bk_common media_service bk_cli bk_display bk_peripheral av
               bk_network_provisioning easy_flash bk_vfs
               bluetooth_dual bluetooth_secondary_controller
               bk_network_transfer media network_provisioning key_app bk_gpu display_ui
-              jpeg_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
+              decode_stream_pipeline fatfs bk_bluetooth avdk_driver bk_camera
               bk_video_recorder bk_video_player bk_encoder app boot_avi_play
               bk_audio_player dashcam)
 

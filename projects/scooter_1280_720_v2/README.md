@@ -133,7 +133,7 @@ Release builds can use free-space-based circular recording that removes the olde
 ### Phone Casting, Navigation and Provisioning
 
 The phone App discovers the device through SDP and establishes CTRL / VIDEO / AUDIO channels.
-JPEG frames are decoded and rotated by `jpeg_stream_pipeline` before display. On disconnect,
+JPEG frames are decoded and rotated by `decode_stream_pipeline` before display. On disconnect,
 the casting path is stopped, LVGL is restored and SDP advertising restarts.
 
 The BLE boarding channel also carries Wi-Fi provisioning, navigation control and chunked
