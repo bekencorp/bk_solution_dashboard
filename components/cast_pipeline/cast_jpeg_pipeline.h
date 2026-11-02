@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <components/bk_display.h>
 #include <common/bk_err.h>
 #include <common/avdk_pixel_types.h>
@@ -80,6 +81,9 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp);
 
 /** Stop pipeline, destroy, restore LVGL/DPU for UI. */
 bk_err_t cast_jpeg_pipeline_turn_off(void);
+
+/** True while the pipeline is started and able to consume pushed frames. */
+bool cast_jpeg_pipeline_is_running(void);
 
 /**
  * Wait for a DPU flush interrupt observed by the cast display callback.

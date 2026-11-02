@@ -107,7 +107,9 @@ typedef struct
     uint8_t status;
 } __attribute__((packed)) camera_recording_status_t;
 
-bk_err_t bk_sl_np_init(void);
+typedef void (*np_msg_cb_t)(const char *msg);
+
+bk_err_t bk_sl_np_init(np_msg_cb_t msg_cb);
 bk_err_t bk_sl_np_start_provisioning(void);
 bool bk_sl_np_is_provisioned(void);
 navigation_type_t get_navigation_type(void);

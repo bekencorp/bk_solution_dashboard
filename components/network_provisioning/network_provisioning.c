@@ -1316,7 +1316,7 @@ void dashboard_modem_cli_init(void)
 }
 #endif /* CONFIG_BK_MODEM */
 
-bk_err_t bk_sl_np_init(void)
+bk_err_t bk_sl_np_init(np_msg_cb_t msg_cb)
 {
     bk_err_t ret = BK_OK;
     netif_if_t reconnect_netif = NETIF_IF_INVALID;
@@ -1360,9 +1360,9 @@ bk_err_t bk_sl_np_init(void)
 
 #if CONFIG_MEDIA_RECEIVE_DEMO
 #if CONFIG_MEDIA_DEMO_MODE_TCP
-    media_bk_network_transfer_init("tcp_service", NULL);
+    media_bk_network_transfer_init("tcp_service", msg_cb);
 #else
-    media_bk_network_transfer_init("udp_service", NULL);
+    media_bk_network_transfer_init("udp_service", msg_cb);
 #endif
 #endif
 

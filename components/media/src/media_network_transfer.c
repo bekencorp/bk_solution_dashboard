@@ -29,6 +29,8 @@
 #define LOGPF(...) do {} while (0)
 #endif
 
+static media_network_msg_cb_t s_app_msg_cb = NULL;
+
 
 typedef struct
 {
@@ -47,6 +49,89 @@ void media_bk_net_cast_video_alloc_gate(int allow)
 	s_cast_video_alloc_allowed = allow ? 1U : 0U;
 }
 
+/*
+ * Queried by the unfragment layer for every incoming video fragment. While the
+ * cast sink is closed no frame buffer can be handed out, so dropping here keeps
+ * the packets out of the reassembly pool entirely.
+ */
+static bool media_bk_net_video_rx_gate(chan_type_t chan)
+{
+	(void)chan;
+	return s_cast_video_alloc_allowed ? true : false;
+}
+
+/*
+ * Cast session channel vote.
+ *
+ * A cast session spans the CTRL and VIDEO sockets. Tearing it down as soon as
+ * either socket drops kills a session the peer is still using, and a single
+ * socket hiccup is enough to trigger it. Track which channels are up and only
+ * tear down once the last one is gone.
+ */
+#define CAST_CHAN_BIT_CTRL   (1U << 0)
+#define CAST_CHAN_BIT_VIDEO  (1U << 1)
+
+static volatile uint32_t s_cast_chan_up_mask;
+
+static uint32_t cast_chan_vote_bit(uint8_t chan_type)
+{
+    if (chan_type == NTWK_TRANS_CHAN_CTRL)
+    {
+        return CAST_CHAN_BIT_CTRL;
+    }
+    if (chan_type == NTWK_TRANS_CHAN_VIDEO)
+    {
+        return CAST_CHAN_BIT_VIDEO;
+    }
+    return 0U;
+}
+
+static void cast_chan_vote_connected(uint8_t chan_type)
+{
+    uint32_t bit = cast_chan_vote_bit(chan_type);
+    GLOBAL_INT_DECLARATION();
+
+    if (bit == 0U)
+    {
+        return;
+    }
+
+    GLOBAL_INT_DISABLE();
+    s_cast_chan_up_mask |= bit;
+    GLOBAL_INT_RESTORE();
+}
+
+/* Returns true when this disconnect brought the last live channel down. */
+static bool cast_chan_vote_disconnected(uint8_t chan_type)
+{
+    uint32_t bit = cast_chan_vote_bit(chan_type);
+    uint32_t before;
+    uint32_t after;
+    GLOBAL_INT_DECLARATION();
+
+    if (bit == 0U)
+    {
+        return false;
+    }
+
+    GLOBAL_INT_DISABLE();
+    before = s_cast_chan_up_mask;
+    s_cast_chan_up_mask &= ~bit;
+    after = s_cast_chan_up_mask;
+    GLOBAL_INT_RESTORE();
+
+    return (before != 0U) && (after == 0U);
+}
+
+static void cast_chan_vote_reset(void)
+{
+    GLOBAL_INT_DECLARATION();
+
+    GLOBAL_INT_DISABLE();
+    s_cast_chan_up_mask = 0U;
+    GLOBAL_INT_RESTORE();
+}
+
 void get_last_debug_info(media_data_process_debug_info_t *info)
 {
     if (s_media_video_cfg) {
@@ -59,6 +144,19 @@ void get_last_debug_info(media_data_process_debug_info_t *info)
 bk_err_t media_bk_net_cntrl_recv(uint8_t *data, uint32_t length)
 {
     LOGI("ctrl_recv: len=%u\n", (unsigned)length);
+    if ((length == 5U) && (s_media_video_cfg != NULL))
+    {
+        uint8_t codec_type = data[0];
+        uint16_t width = data[1] | (data[2]<<8);
+        uint16_t height = data[3] | (data[4]<<8);
+        LOGI("codec type:%d width:%d height:%d\r\n", codec_type, width, height);
+        if ((((uint32_t)width * height) !=
+             ((uint32_t)s_media_video_cfg->width * s_media_video_cfg->height)) &&
+            (s_app_msg_cb != NULL))
+        {
+            s_app_msg_cb("navi width height ERROR!!!");
+        }
+    }
     return BK_OK;
 }
 
@@ -82,7 +180,13 @@ static uint32_t s_malloc_count = 0;
 frame_buffer_t *media_bk_net_frame_malloc(uint32_t size)
 {
     if (!s_cast_video_alloc_allowed) {
-        LOGW("frame_malloc: denied (cast alloc gate), size=%u\n", (unsigned)size);
+        /* The rx gate normally drops these packets earlier; anything reaching
+         * here is in-flight, so keep the log rate-limited. */
+        static uint32_t s_denied_count = 0;
+        if ((s_denied_count++ % 512U) == 0U) {
+            LOGW("frame_malloc: denied (cast alloc gate), size=%u total=%u\n",
+                 (unsigned)size, (unsigned)s_denied_count);
+        }
         return NULL;
     }
     s_malloc_count++;
@@ -121,8 +225,13 @@ bk_err_t media_bk_net_frame_send (frame_buffer_t *data)
 
     bk_err_t ret = cast_jpeg_pipeline_push_frame_buffer(data);
     if (ret != BK_OK) {
-        LOGE("frame_send: cast push failed, len=%u ret=%d\n",
-            (unsigned)data->length, (int)ret);
+        /* Backpressure and H264 GOP drops both land here and can persist for a
+         * whole GOP, so keep the log rate-limited. */
+        static uint32_t s_push_fail_count = 0;
+        if ((s_push_fail_count++ % 128U) == 0U) {
+            LOGW("frame_send: cast push rejected, len=%u ret=%d total=%u\n",
+                (unsigned)data->length, (int)ret, (unsigned)s_push_fail_count);
+        }
         media_frame_queue_free(data);
         /* Back off so the WiFi recv task does not spin tight on malloc/push. */
         if (ret == BK_ERR_BUSY)
@@ -169,6 +278,8 @@ void media_bk_net_msg_evt_handle(ntwk_trans_event_t *event)
         {
             if(strcmp(ctxt->service_name, "tcp_service") == 0)
             {
+                cast_chan_vote_connected(event->chan_type);
+
                 /*
                  * 原仅 CTRL 连上才开 JPEG 解码；App 若先连视频口、不配网/未连控制口，
                  * 解码器永不启动，投屏无画面、固定 JPEG 红块 demo 也不会跑。 ||
@@ -176,7 +287,23 @@ void media_bk_net_msg_evt_handle(ntwk_trans_event_t *event)
                  */
                 if (event->chan_type == NTWK_TRANS_CHAN_CTRL)
                 {
+                    LOGI("%s NETWORK CTRL channle connected \r\n", __func__);
                     msg.event = MEDIA_EVT_REMOTE_DEVICE_CONNECTED;
+                }
+                else if (event->chan_type == NTWK_TRANS_CHAN_VIDEO)
+                {
+                    LOGI("%s NETWORK VIDEO channle connected \r\n", __func__);
+                    /*
+                     * The video socket can drop and reconnect while the session
+                     * as a whole survives the vote. Its disconnect closed the
+                     * alloc gate, so reopen it here; otherwise the unfragment
+                     * layer never gets a frame buffer again and the video stays
+                     * black until the whole session is rebuilt.
+                     */
+                    if (cast_jpeg_pipeline_is_running())
+                    {
+                        media_bk_net_cast_video_alloc_gate(1);
+                    }
                 }
             }
         } break;
@@ -184,10 +311,13 @@ void media_bk_net_msg_evt_handle(ntwk_trans_event_t *event)
         {
             if(strcmp(ctxt->service_name, "tcp_service") == 0)
             {
+                bool     session_down = cast_chan_vote_disconnected(event->chan_type);
+                uint32_t reason       = 0U;
+
                 if (event->chan_type == NTWK_TRANS_CHAN_CTRL)
                 {
-                    msg.event = MEDIA_EVT_CAST_SESSION_TEARDOWN;
-                    msg.param = MEDIA_CAST_TEARDOWN_REASON_CTRL_TCP;
+                    LOGI("%s NETWORK CTRL channle disconnected \r\n", __func__);
+                    reason = MEDIA_CAST_TEARDOWN_REASON_CTRL_TCP;
                 }
                 else if (event->chan_type == NTWK_TRANS_CHAN_VIDEO)
                 {
@@ -196,15 +326,30 @@ void media_bk_net_msg_evt_handle(ntwk_trans_event_t *event)
                      * avoids overlap with cast_jpeg_pipeline_turn_off (malloc+send
                      * same tick as teardown → heap assert in decoder deinit path).
                      */
+                    LOGI("%s NETWORK VIDEO channle disconnected \r\n", __func__);
                     media_bk_net_cast_video_alloc_gate(0);
-                    msg.event = MEDIA_EVT_CAST_SESSION_TEARDOWN;
-                    msg.param = MEDIA_CAST_TEARDOWN_REASON_VIDEO_TCP;
+                    reason = MEDIA_CAST_TEARDOWN_REASON_VIDEO_TCP;
+                }
+
+                if (reason != 0U)
+                {
+                    if (session_down)
+                    {
+                        msg.event = MEDIA_EVT_CAST_SESSION_TEARDOWN;
+                        msg.param = reason;
+                    }
+                    else
+                    {
+                        LOGI("%s: chan %u down, session kept alive (up_mask=0x%x)\n",
+                             __func__, (unsigned)event->chan_type,
+                             (unsigned)s_cast_chan_up_mask);
+                    }
                 }
             }
         } break;
         case NTWK_TRANS_EVT_STOP:
         {
-
+            cast_chan_vote_reset();
         } break;
         default:
             break;
@@ -227,7 +372,7 @@ void media_bk_net_msg_evt_handle(ntwk_trans_event_t *event)
     }
 }
 
-bk_err_t media_tcp_network_transfer_start(char *service_name, void *param)
+static bk_err_t media_tcp_network_transfer_start(void)
 {
     LOGI("%s start\r\n", __func__);
 
@@ -254,7 +399,7 @@ bk_err_t media_tcp_network_transfer_start(char *service_name, void *param)
 }
 
 
-bk_err_t media_udp_network_transfer_start(char *service_name, void *param)
+static bk_err_t media_udp_network_transfer_start(void)
 {
     LOGI("%s start\r\n", __func__);
 
@@ -295,7 +440,7 @@ bk_err_t media_network_transfer_stop(void)
     return BK_OK;
 }
 
-bk_err_t media_bk_network_transfer_init(char *service_name, void *param)
+bk_err_t media_bk_network_transfer_init(char *service_name, media_network_msg_cb_t msg_cb)
 {
     LOGI("%s start\r\n", __func__);
 
@@ -321,16 +466,17 @@ bk_err_t media_bk_network_transfer_init(char *service_name, void *param)
     cast_jpeg_pipeline_set_frame_buffer_release(media_frame_queue_free);
     cast_jpeg_pipeline_set_video_recv_alloc_gate_fn(media_bk_net_cast_video_alloc_gate);
     media_bk_net_cast_video_alloc_gate(0);
-
+    cast_chan_vote_reset();
+    s_app_msg_cb = msg_cb;
     if (strcmp(service_name, "tcp_service") == 0)
     {
         bk_tcp_trans_service_init(service_name);
-        media_tcp_network_transfer_start(service_name, param);
+        media_tcp_network_transfer_start();
     }
     else if (strcmp(service_name, "udp_service") == 0)
     {
         bk_udp_trans_service_init(service_name);
-        media_udp_network_transfer_start(service_name, param);
+        media_udp_network_transfer_start();
     }
     else
     {
@@ -367,12 +513,14 @@ bk_err_t media_bk_network_transfer_deinit(char *service_name)
 
     cast_jpeg_pipeline_set_video_recv_alloc_gate_fn(NULL);
     s_cast_video_alloc_allowed = 1U;
+    cast_chan_vote_reset();
 
     if (s_media_video_cfg != NULL)
     {
         os_free(s_media_video_cfg);
         s_media_video_cfg = NULL;
     }
+    s_app_msg_cb = NULL;
 
     LOGI("%s end\r\n", __func__);
     return BK_OK;

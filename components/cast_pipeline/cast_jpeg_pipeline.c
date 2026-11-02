@@ -760,6 +760,11 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	return BK_OK;
 }
 
+bool cast_jpeg_pipeline_is_running(void)
+{
+	return s_cast_pipeline_running ? true : false;
+}
+
 bk_err_t cast_jpeg_pipeline_turn_off(void)
 {
 	cast_video_recv_gate_call(0);

@@ -72,6 +72,17 @@
  #define JSP_TASK_STACK_DEFAULT        (4U * 1024U)
  #define JSP_TASK_PRIORITY_DEFAULT     BEKEN_DEFAULT_WORKER_PRIORITY
  #define JSP_QUEUE_DEPTH_DEFAULT       1U
+/* H264 cannot drop arbitrary frames, so it needs real queue slots to ride out
+ * decode jitter. JPEG is unaffected: it drains the queue before every push, so
+ * a deeper queue never holds more than the one frame just pushed. */
+ #define JSP_QUEUE_DEPTH_H264_MIN      4U
+/* Set back to 1 to re-enable GOP-aware dropping. Kept off while the phone-side
+ * frame loss is under investigation: the pipeline must not discard anything of
+ * its own, otherwise local and remote losses cannot be told apart. */
+ #define JSP_H264_GOP_DROP_ENABLE      1
+/* Head of an H264 access unit scanned for NALU classification. */
+ #define JSP_H264_SCAN_BYTES           512U
+ #define JSP_H264_SCAN_MAX_NALU        8U
  #define JSP_RING_ALIGNMENT            64U
  #define JSP_QUEUE_POP_TIMEOUT_MS      50U
  #define JSP_DIAG_LOG_FIRST_N          10U
@@ -92,9 +103,32 @@
 	 uint8_t  sof_marker;
 	 uint8_t  precision;
 	 uint8_t  components;
-	 uint8_t  h[3];
+ 	 uint8_t  h[3];
 	 uint8_t  v[3];
  } jsp_jpeg_meta_t;
+
+/* H264 NALU types we care about (nal_unit_type, ITU-T H.264 table 7-1). */
+#define JSP_H264_NALU_SLICE   1U   /* non-IDR slice, needs its reference chain */
+#define JSP_H264_NALU_IDR     5U   /* IDR slice, self-contained */
+#define JSP_H264_NALU_SEI     6U
+#define JSP_H264_NALU_SPS     7U
+#define JSP_H264_NALU_PPS     8U
+#define JSP_H264_NALU_AUD     9U
+
+/* slice_type of the first slice, already folded down from the 5..9 range. */
+#define JSP_H264_SLICE_P        0U
+#define JSP_H264_SLICE_B        1U
+#define JSP_H264_SLICE_I        2U
+#define JSP_H264_SLICE_SP       3U
+#define JSP_H264_SLICE_SI       4U
+#define JSP_H264_SLICE_UNKNOWN  0xFFU
+
+typedef struct {
+	uint8_t is_h264;    /* at least one well-formed NALU header was found */
+	uint8_t has_idr;    /* access unit carries an IDR slice */
+	uint8_t has_sps;
+	uint8_t slice_type; /* JSP_H264_SLICE_*, UNKNOWN if no slice header parsed */
+} jsp_h264_meta_t;
  
  /* ------------------------------------------------------------------ */
  /* Internal context (actual type behind the opaque handle)             */
@@ -104,8 +138,10 @@
  
 	 /* Hardware handles */
 	 bk_jpeg_decode_ctlr_handle_t  jpeg_handle;
+	 bk_h264_decode_ctlr_handle_t h264_handle;
 	 bk_gpu_ctlr_handle_t          gpu_handle;
 	 void                         *bond;
+	 void                         *h264_bond;
  
 	 /* FLEXA ring buffer */
 	 uint8_t  *ring_buf;          /* 64-byte aligned address */
@@ -119,6 +155,12 @@
 	 volatile uint8_t  running;
 	 uint32_t          push_seq;
 	 uint32_t          dec_seq;
+
+	 /* H264 GOP-aware drop state: once the reference chain is broken, keep
+	  * dropping until the next IDR rather than feeding the decoder frames whose
+	  * references never arrived. */
+	 uint8_t           h264_drop_until_idr;
+	 uint32_t          h264_gop_dropped;
  };
  
  static uint16_t jsp_be16(const uint8_t *p)
@@ -207,6 +249,211 @@
 	 }
 	 return 0;
  }
+
+/* Annex-B start code at buf[i]? Reports 4-byte form first so the NALU header
+ * lands on the right byte for both 00 00 00 01 and 00 00 01. */
+static int jsp_h264_start_code(const uint8_t *buf, uint32_t len, uint32_t i, uint32_t *sc_len)
+{
+	if ((i + 4U) <= len && buf[i] == 0x00U && buf[i + 1U] == 0x00U &&
+		buf[i + 2U] == 0x00U && buf[i + 3U] == 0x01U)
+	{
+		*sc_len = 4U;
+		return 1;
+	}
+	if ((i + 3U) <= len && buf[i] == 0x00U && buf[i + 1U] == 0x00U && buf[i + 2U] == 0x01U)
+	{
+		*sc_len = 3U;
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Minimal bit reader used only on the first bytes of a slice header.
+ * Emulation prevention bytes are deliberately not removed: first_mb_in_slice
+ * and slice_type sit within a handful of bytes, far short of the 00 00 03
+ * sequence that would need unescaping.
+ */
+typedef struct {
+	const uint8_t *buf;
+	uint32_t       len;
+	uint32_t       bit;
+} jsp_bitrd_t;
+
+static uint32_t jsp_bitrd_u1(jsp_bitrd_t *r)
+{
+	uint32_t byte = r->bit >> 3;
+	uint32_t v;
+
+	if (byte >= r->len)
+	{
+		return 0U;
+	}
+
+	v = (uint32_t)((r->buf[byte] >> (7U - (r->bit & 7U))) & 1U);
+	r->bit++;
+	return v;
+}
+
+/* ue(v) exp-golomb. Returns 0 on truncated input; callers only use the value
+ * for logging, so a bad read degrades to "looks like a P slice", not a fault. */
+static uint32_t jsp_bitrd_ue(jsp_bitrd_t *r)
+{
+	uint32_t lead = 0U;
+	uint32_t rest = 0U;
+	uint32_t k;
+
+	while (lead < 32U && jsp_bitrd_u1(r) == 0U)
+	{
+		if ((r->bit >> 3) >= r->len)
+		{
+			return 0U;
+		}
+		lead++;
+	}
+
+	if (lead >= 32U)
+	{
+		return 0U;
+	}
+
+	for (k = 0; k < lead; k++)
+	{
+		rest = (rest << 1) | jsp_bitrd_u1(r);
+	}
+
+	return ((1U << lead) - 1U) + rest;
+}
+
+/* Reads slice_type out of a slice header starting at buf[0] (NALU header
+ * already consumed) and folds the 5..9 "all slices same type" range down. */
+static uint8_t jsp_h264_slice_type(const uint8_t *buf, uint32_t len)
+{
+	jsp_bitrd_t rd;
+	uint32_t    slice_type;
+
+	rd.buf = buf;
+	rd.len = len;
+	rd.bit = 0U;
+
+	(void)jsp_bitrd_ue(&rd);          /* first_mb_in_slice */
+	slice_type = jsp_bitrd_ue(&rd);
+
+	if (slice_type >= 5U)
+	{
+		slice_type -= 5U;
+	}
+
+	return (slice_type <= JSP_H264_SLICE_SI) ? (uint8_t)slice_type
+											 : JSP_H264_SLICE_UNKNOWN;
+}
+
+static const char *jsp_h264_frame_kind(const jsp_h264_meta_t *m)
+{
+	if (m->has_idr)
+	{
+		return "IDR";
+	}
+
+	switch (m->slice_type)
+	{
+	case JSP_H264_SLICE_P:  return "P";
+	case JSP_H264_SLICE_B:  return "B";
+	case JSP_H264_SLICE_I:  return "I";
+	case JSP_H264_SLICE_SP: return "SP";
+	case JSP_H264_SLICE_SI: return "SI";
+	default:                return "?";
+	}
+}
+
+/*
+ * Classify one access unit. Only the head of the AU is scanned: parameter sets,
+ * SEI and the first slice header all sit there, and walking a full 40 KB AU on
+ * the producer thread for every frame is not worth it.
+ */
+static int jsp_parse_h264_meta(const uint8_t *buf, uint32_t len, jsp_h264_meta_t *m)
+{
+	uint32_t scan_len;
+	uint32_t nalu_seen = 0U;
+	uint32_t i;
+
+	if (buf == NULL || m == NULL)
+	{
+		return 0;
+	}
+
+	os_memset(m, 0, sizeof(*m));
+	m->slice_type = JSP_H264_SLICE_UNKNOWN;
+
+	if (len < 5U)
+	{
+		return 0;
+	}
+
+	scan_len = (len < JSP_H264_SCAN_BYTES) ? len : JSP_H264_SCAN_BYTES;
+
+	for (i = 0; (i + 4U) <= scan_len && nalu_seen < JSP_H264_SCAN_MAX_NALU; )
+	{
+		uint32_t sc_len = 0U;
+		uint8_t  nalu_hdr;
+		uint8_t  nalu_type;
+
+		if (!jsp_h264_start_code(buf, scan_len, i, &sc_len))
+		{
+			i++;
+			continue;
+		}
+
+		/* The start code may be the last thing that fits in the scan window;
+		 * the header byte sits one past it. */
+		if ((i + sc_len) >= scan_len)
+		{
+			break;
+		}
+
+		nalu_hdr = buf[i + sc_len];
+		i += sc_len + 1U;
+
+		/* forbidden_zero_bit must be 0; anything else is not a NALU header. */
+		if ((nalu_hdr & 0x80U) != 0U)
+		{
+			continue;
+		}
+
+		nalu_type = (uint8_t)(nalu_hdr & 0x1FU);
+		switch (nalu_type)
+		{
+		case JSP_H264_NALU_IDR:
+		case JSP_H264_NALU_SLICE:
+			m->is_h264 = 1U;
+			if (nalu_type == JSP_H264_NALU_IDR)
+			{
+				m->has_idr = 1U;
+			}
+			/* Only the first slice of the AU decides the reported frame type. */
+			if (m->slice_type == JSP_H264_SLICE_UNKNOWN)
+			{
+				m->slice_type = jsp_h264_slice_type(&buf[i], scan_len - i);
+			}
+			break;
+		case JSP_H264_NALU_SPS:
+			m->has_sps = 1U;
+			m->is_h264 = 1U;
+			break;
+		case JSP_H264_NALU_SEI:
+		case JSP_H264_NALU_PPS:
+		case JSP_H264_NALU_AUD:
+			m->is_h264 = 1U;
+			break;
+		default:
+			break;
+		}
+
+		nalu_seen++;
+	}
+
+	return m->is_h264 ? 1 : 0;
+}
  
  /* ------------------------------------------------------------------ */
  /* PSRAM FLEXA ring: VCDEC FLEXA path matches SDK jpeg_decoder_flexa_test (psram_malloc). */
@@ -285,15 +532,38 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 			 continue;
 		 }
  
-		 bk_jpeg_decode_input_t input;
-		 os_memset(&input, 0, sizeof(input));
-		 input.stream          = (uint8_t *)entry.jpeg_stream;
-		 input.stream_len      = entry.jpeg_len;
-		 input.out_buffer      = ctx->ring_buf;
-		 input.out_buffer_size = ctx->ring_size;
- 
 		 ctx->dec_seq++;
-		 ret = bk_jpeg_decode_frame(ctx->jpeg_handle, &input);
+		 if (ctx->h264_bond != NULL)
+		 {
+			 bk_h264_decode_input_t input;
+			 os_memset(&input, 0, sizeof(input));
+			 input.stream          = (uint8_t *)entry.jpeg_stream;
+			 input.stream_len      = entry.jpeg_len;
+			 input.out_buffer      = ctx->ring_buf;
+			 input.out_buffer_size = ctx->ring_size;
+
+			 ret = bk_h264_decode_frame(ctx->h264_handle, &input);
+			 if (ret != AVDK_ERR_OK)
+				 LOGE("bk_h264_decode_frame failed: %d\n", (int)ret);
+		 }
+		 else if (ctx->bond != NULL)
+		 {
+			 bk_jpeg_decode_input_t input;
+			 os_memset(&input, 0, sizeof(input));
+			 input.stream          = (uint8_t *)entry.jpeg_stream;
+			 input.stream_len      = entry.jpeg_len;
+			 input.out_buffer      = ctx->ring_buf;
+			 input.out_buffer_size = ctx->ring_size;
+
+			 ret = bk_jpeg_decode_frame(ctx->jpeg_handle, &input);
+			 if (ret != AVDK_ERR_OK)
+				 LOGE("bk_jpeg_decode_frame failed: %d\n", (int)ret);
+		 }
+		 else
+		 {
+			 LOGW("no decoder bond, skip\n");
+			 ret = AVDK_ERR_INVAL;
+		 }
 		 LOGPF("[cast] dec#%u len=%u ret=%d\n",
 			  (unsigned)ctx->dec_seq, (unsigned)entry.jpeg_len, (int)ret);
  
@@ -301,9 +571,6 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 if (ctx->cfg.frame_consumed_cb != NULL)
 			 ctx->cfg.frame_consumed_cb(entry.jpeg_stream, (int)ret, entry.jpeg_owner,
 										ctx->cfg.user_data);
- 
-		 if (ret != AVDK_ERR_OK)
-			 LOGE("bk_jpeg_decode_frame failed: %d\n", (int)ret);
 	 }
  
 	 LOGI("decode task exiting\n");
@@ -398,6 +665,40 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 			 goto err_deinit_jpeg;
 		 }
 	 }
+	 /* ---- Step 2.1: H264 decoder ---- */
+	 {
+		bk_h264_decode_flexa_config_t dec_cfg = DEFAULT_H264_DECODE_FLEXA_CONFIG;
+		dec_cfg.timeout_ms     = ctx->cfg.decode_timeout_ms;
+		dec_cfg.out_width      = config->src_width;
+		dec_cfg.out_height     = config->src_height;
+		dec_cfg.out_format     = BK_PIXEL_FORMAT_NV12;
+		dec_cfg.segment_height = (uint16_t)(ctx->cfg.flexa_lines / 16U);
+		dec_cfg.segment_number = ctx->cfg.flexa_buff_cnt;
+		dec_cfg.frame_done_cb  = jsp_jpeg_frame_done;
+		dec_cfg.frame_done_args= NULL;
+		dec_cfg.flexa_done_cb  = NULL;
+		dec_cfg.flexa_done_args= NULL;
+
+		ret = bk_h264_decode_flexa_ctlr_new(&ctx->h264_handle, &dec_cfg);
+		if (ret != AVDK_ERR_OK)
+		{
+			LOGE("bk_h264_decode_new failed: %d\n", (int)ret);
+			goto err_close_jpeg;
+		}
+		ret = bk_h264_decode_init(ctx->h264_handle);
+		if (ret != AVDK_ERR_OK)
+		{
+			LOGE("%s: bk_h264_decode_init ret=%d\n", __func__, ret);
+			goto err_delete_h264;
+		}
+		ret = bk_h264_decode_open(ctx->h264_handle);
+		if (ret != AVDK_ERR_OK)
+		{
+			LOGE("%s: bk_h264_decode_open ret=%d\n", __func__, ret);
+			goto err_deinit_h264;
+		}
+
+	 }
 	 /* ---- Step 3: GPU controller ---- */
 	 {
 		 bk_gpu_ctlr_config_t gpu_cfg;
@@ -429,7 +730,7 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 if (ret != AVDK_ERR_OK)
 		 {
 			 LOGE("bk_gpu_ctlr_new failed: %d\n", (int)ret);
-			 goto err_close_jpeg;
+			 goto err_close_h264;
 		 }
  
 		 ret = bk_gpu_init(ctx->gpu_handle);
@@ -456,10 +757,17 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 goto err_close_gpu;
 	 }
 	 /* ---- Step 5: Frame queue ---- */
-	 ret = rtos_init_queue(&ctx->frame_queue,
-						   "jsp_q",
-						   sizeof(jsp_frame_entry_t),
-						   ctx->cfg.queue_depth);
+	 {
+		 uint32_t queue_depth = ctx->cfg.queue_depth;
+
+		 if (queue_depth < JSP_QUEUE_DEPTH_H264_MIN)
+			 queue_depth = JSP_QUEUE_DEPTH_H264_MIN;
+
+		 ret = rtos_init_queue(&ctx->frame_queue,
+							   "jsp_q",
+							   sizeof(jsp_frame_entry_t),
+							   queue_depth);
+	 }
 	 if (ret != BK_OK)
 	 {
 		 LOGE("queue init failed: %d\n", (int)ret);
@@ -482,6 +790,13 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
  err_delete_gpu:
 	 (void)bk_gpu_delete(ctx->gpu_handle);
 	 ctx->gpu_handle = NULL;
+ err_close_h264:
+	 (void)bk_h264_decode_close(ctx->h264_handle);
+ err_deinit_h264:
+	 (void)bk_h264_decode_deinit(ctx->h264_handle);
+ err_delete_h264:
+	 (void)bk_h264_decode_delete(ctx->h264_handle);
+	 ctx->h264_handle = NULL;
  err_close_jpeg:
 	 (void)bk_jpeg_decode_close(ctx->jpeg_handle);
  err_deinit_jpeg:
@@ -511,6 +826,8 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 	 if (ret != BK_OK)
 		 return (avdk_err_t)ret;
  
+	 ctx->h264_drop_until_idr = 0;
+	 ctx->h264_gop_dropped    = 0;
 	 ctx->running = 1;
  
 	 ret = rtos_create_thread(&ctx->task_handle,
@@ -534,6 +851,64 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 	 return AVDK_ERR_OK;
  }
  
+/* Pop and release everything still queued. Returns how many frames were dropped. */
+static uint32_t jsp_drain_queue(struct jpeg_stream_pipeline_ctx *ctx)
+{
+	 jsp_frame_entry_t stale;
+	 uint32_t dropped = 0;
+
+	 while (rtos_pop_from_queue(&ctx->frame_queue, &stale, BEKEN_NO_WAIT) == BK_OK)
+	 {
+		 dropped++;
+		 if (ctx->cfg.frame_consumed_cb != NULL)
+			 ctx->cfg.frame_consumed_cb(stale.jpeg_stream, JSP_STATUS_FRAME_DROPPED,
+										stale.jpeg_owner, ctx->cfg.user_data);
+	 }
+
+	 return dropped;
+}
+
+/*
+ * H264 admission control.
+ *
+ * An IDR decodes standalone, so it both resets the drop state and makes every
+ * queued frame stale -- draining there also guarantees the IDR itself gets a
+ * slot. A non-IDR frame is only admitted while its reference chain is intact;
+ * once a frame has been lost, feeding the decoder the rest of the GOP produces
+ * smeared blocks instead of a clean freeze.
+ */
+static avdk_err_t jsp_h264_admit_frame(struct jpeg_stream_pipeline_ctx *ctx,
+									   const jsp_h264_meta_t *m)
+{
+#if JSP_H264_GOP_DROP_ENABLE
+	 if (m->has_idr)
+	 {
+		 (void)jsp_drain_queue(ctx);
+
+		 if (ctx->h264_drop_until_idr)
+		 {
+			 LOGW("[cast] h264 resync on IDR (%u frames dropped since chain break)\n",
+				  (unsigned)ctx->h264_gop_dropped);
+			 ctx->h264_drop_until_idr = 0;
+			 ctx->h264_gop_dropped    = 0;
+		 }
+		 return AVDK_ERR_OK;
+	 }
+
+	 if (ctx->h264_drop_until_idr)
+	 {
+		 ctx->h264_gop_dropped++;
+		 return AVDK_ERR_BUSY;
+	 }
+
+	 return AVDK_ERR_OK;
+#else
+	 (void)ctx;
+	 (void)m;
+	 return AVDK_ERR_OK;
+#endif
+}
+
  avdk_err_t jpeg_stream_pipeline_push_frame(jpeg_stream_pipeline_handle_t handle,
 											   const uint8_t *jpeg_stream,
 											   uint32_t jpeg_len,
@@ -541,6 +916,8 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
  {
 	 struct jpeg_stream_pipeline_ctx *ctx = handle;
 	 jsp_jpeg_meta_t meta;
+	 jsp_h264_meta_t h264_meta;
+	 int      jpeg_ok = 0;
 	 uint32_t seq;
  
 	 if (ctx == NULL || jpeg_stream == NULL || jpeg_len == 0)
@@ -555,16 +932,51 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 .jpeg_owner  = jpeg_owner,
 	 };
 
-	 /* Drop stale queued frames so the display always shows the latest content. */
+	 /* ---- Classify the frame; the codec switch must happen before the frame is
+	  * visible to the decode task, otherwise the task can pick it up while the
+	  * old bond is still active. ---- */
+	 os_memset(&h264_meta, 0, sizeof(h264_meta));
+	 if (ctx->h264_bond != NULL)
 	 {
-		 jsp_frame_entry_t stale;
-		 uint32_t dropped = 0;
-		 while (rtos_pop_from_queue(&ctx->frame_queue, &stale, BEKEN_NO_WAIT) == BK_OK) {
-			 dropped++;
-			 if (ctx->cfg.frame_consumed_cb != NULL)
-				 ctx->cfg.frame_consumed_cb(stale.jpeg_stream, JSP_STATUS_FRAME_DROPPED,
-											stale.jpeg_owner, ctx->cfg.user_data);
+		 (void)jsp_parse_h264_meta(jpeg_stream, jpeg_len, &h264_meta);
+	 }
+	 else
+	 {
+		 jpeg_ok = jsp_parse_jpeg_meta(jpeg_stream, jpeg_len, &meta);
+		 if (!jpeg_ok && jsp_parse_h264_meta(jpeg_stream, jpeg_len, &h264_meta))
+		 {
+			 avdk_err_t bond_ret;
+
+			 LOGI("h264 stream detected, switching mjpegd bond to h264d bond\n");
+			 if (ctx->bond != NULL)
+			 {
+				 bk_flexa_mjpegd_gpu_bond_stop(ctx->bond);
+				 ctx->bond = NULL;
+			 }
+			 bond_ret = bk_flexa_h264d_gpu_bond_start(&ctx->h264_bond, ctx->h264_handle, ctx->gpu_handle);
+			 if (bond_ret != AVDK_ERR_OK)
+			 {
+				 LOGE("%s: bk_flexa_h264d_gpu_bond_start ret=%d\n", __func__, bond_ret);
+				 ctx->h264_bond = NULL;
+				 return bond_ret;
+			 }
 		 }
+	 }
+
+	 /* ---- Admission ---- */
+	 if (ctx->h264_bond != NULL)
+	 {
+		 avdk_err_t admit = jsp_h264_admit_frame(ctx, &h264_meta);
+
+		 if (admit != AVDK_ERR_OK)
+			 return admit;
+	 }
+	 else
+	 {
+		 /* JPEG frames are independent: keep only the newest so the display
+		  * never trails the source. */
+		 uint32_t dropped = jsp_drain_queue(ctx);
+
 		 if (dropped > 0) {
 			 /* Low-latency stale drops are expected during casting; aggregate to
 			  * avoid per-frame log flood while keeping the drop rate observable. */
@@ -583,11 +995,40 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 	 bk_err_t ret = rtos_push_to_queue(&ctx->frame_queue, &entry, BEKEN_NO_WAIT);
 	 if (ret != BK_OK)
 	 {
-		 LOGW("[cast] push qfull %u\n", (unsigned)jpeg_len);
+		 if (ctx->h264_bond != NULL)
+		 {
+#if JSP_H264_GOP_DROP_ENABLE
+			 /* The decoder fell behind far enough to fill the queue. This frame is
+			  * lost, so every following frame references something that never got
+			  * decoded -- drop the rest of the GOP and resync on the next IDR. */
+			 if (!ctx->h264_drop_until_idr)
+			 {
+				 LOGW("[cast] h264 queue full, dropping until next IDR (len=%u)\n",
+					  (unsigned)jpeg_len);
+				 ctx->h264_drop_until_idr = 1;
+				 ctx->h264_gop_dropped    = 0;
+			 }
+			 ctx->h264_gop_dropped++;
+#else
+			 /* Every local loss is reported individually so it can be subtracted
+			  * from the gap seen at the phone. */
+			 LOGW("[cast] h264 push qfull #%u %s len=%u\n",
+				  (unsigned)seq, jsp_h264_frame_kind(&h264_meta), (unsigned)jpeg_len);
+#endif
+		 }
+		 else
+		 {
+			 LOGW("[cast] push qfull %u\n", (unsigned)jpeg_len);
+		 }
 		 return AVDK_ERR_BUSY;
 	 }
  
-	 if (jsp_parse_jpeg_meta(jpeg_stream, jpeg_len, &meta)) {
+	 if (ctx->h264_bond != NULL) {
+		LOGPF("[diag] in#%u h264 %s len=%u%s\n",
+			  (unsigned)seq, jsp_h264_frame_kind(&h264_meta), (unsigned)jpeg_len,
+			  h264_meta.has_sps ? " +sps" : "");
+	 }
+	 else if (jpeg_ok) {
 		 const char *sampling = jsp_infer_sampling(&meta);
 		 int need_log = (seq <= JSP_DIAG_LOG_FIRST_N) || ((seq % JSP_DIAG_LOG_EVERY_N) == 0U) ||
 					(meta.width != ctx->cfg.src_width) || (meta.height != ctx->cfg.src_height);
@@ -610,7 +1051,8 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 				  (unsigned)meta.width, (unsigned)meta.height,
 				  (unsigned)ctx->cfg.src_width, (unsigned)ctx->cfg.src_height);
 		 }
-	 } else if (seq <= JSP_DIAG_LOG_FIRST_N || (seq % JSP_DIAG_LOG_EVERY_N) == 0U) {
+	 }
+	 else if (seq <= JSP_DIAG_LOG_FIRST_N || (seq % JSP_DIAG_LOG_EVERY_N) == 0U) {
 		 LOGW("[diag] in#%u parse_jpeg_meta failed len=%u\n", (unsigned)seq, (unsigned)jpeg_len);
 	 }
  
@@ -661,6 +1103,11 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 	 }
  
 	 /* Tear down bond */
+	 if (ctx->h264_bond != NULL)
+	 {
+		 bk_flexa_h264d_gpu_bond_stop(ctx->h264_bond);
+		 ctx->h264_bond = NULL;
+	 }
 	 if (ctx->bond != NULL)
 	 {
 		 bk_flexa_mjpegd_gpu_bond_stop(ctx->bond);
@@ -689,6 +1136,15 @@ static void jsp_gpu_frame_done(void *frame, uint32_t frame_size, void *args)
 		 (void)bk_jpeg_decode_deinit(ctx->jpeg_handle);
 		 (void)bk_jpeg_decode_delete(ctx->jpeg_handle);
 		 ctx->jpeg_handle = NULL;
+	 }
+ 
+	 /* Close H264 decoder */
+	 if (ctx->h264_handle != NULL)
+	 {
+		 (void)bk_h264_decode_close(ctx->h264_handle);
+		 (void)bk_h264_decode_deinit(ctx->h264_handle);
+		 (void)bk_h264_decode_delete(ctx->h264_handle);
+		 ctx->h264_handle = NULL;
 	 }
  
 	 /* Free frame queue */
