@@ -409,7 +409,7 @@ static void dsp_h264_on_activate(struct decode_stream_pipeline_ctx *ctx)
 	 * decoder never references frames it never received. A stream that
 	 * starts with SPS/PPS/IDR is unaffected -- the IDR clears this on its
 	 * first admit. */
-	ctx->h264.drop_until_idr = 1;
+	ctx->h264.drop_until_idr = 0;
 	ctx->h264.gop_dropped    = 0;
 }
 
