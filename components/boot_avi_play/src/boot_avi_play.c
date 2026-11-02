@@ -17,7 +17,7 @@
 #endif
 
 #include <modules/avilib.h>
-#include "jpeg_stream_pipeline.h"
+#include "decode_stream_pipeline.h"
 #include "boot_sd_mount.h"
 
 #include "display_ui_cast_hooks.h"
@@ -331,8 +331,8 @@ bk_err_t boot_avi_play(void)
     FILINFO fno;
     avi_t *avi = NULL;
     uint8_t *jpeg_buf = NULL;
-    jpeg_stream_pipeline_handle_t pipeline = NULL;
-    jpeg_stream_pipeline_config_t jsp_cfg;
+    decode_stream_pipeline_handle_t pipeline = NULL;
+    decode_stream_pipeline_config_t jsp_cfg;
     avdk_err_t jsp_err;
     long total_frames, frame_len;
     int avi_w, avi_h;
@@ -460,6 +460,7 @@ bk_err_t boot_avi_play(void)
      * This matches the cast pipeline config (defconfig: CAST_JPEG_DST = CAST_JPEG_SRC).
      */
     os_memset(&jsp_cfg, 0, sizeof(jsp_cfg));
+    jsp_cfg.decode_type = DECODE_STREAM_TYPE_JPEG;  /* boot animation is pure MJPEG */
     jsp_cfg.src_width  = (uint16_t)avi_w;
     jsp_cfg.src_height = (uint16_t)avi_h;
     jsp_cfg.dst_width  = gpu_dst_w;
@@ -473,13 +474,13 @@ bk_err_t boot_avi_play(void)
     jsp_cfg.frame_consumed_cb = boot_frame_consumed_cb;
     jsp_cfg.user_data = display_ui_get_dpu_handle();
 
-    jsp_err = jpeg_stream_pipeline_create(&pipeline, &jsp_cfg);
+    jsp_err = decode_stream_pipeline_create(&pipeline, &jsp_cfg);
     if (jsp_err != AVDK_ERR_OK || !pipeline) {
         LOGE("pipeline create failed: %d\n", (int)jsp_err);
         goto cleanup;
     }
 
-    jsp_err = jpeg_stream_pipeline_start(pipeline);
+    jsp_err = decode_stream_pipeline_start(pipeline);
     if (jsp_err != AVDK_ERR_OK) {
         LOGE("pipeline start failed: %d\n", (int)jsp_err);
         goto cleanup;
@@ -540,7 +541,7 @@ bk_err_t boot_avi_play(void)
             push_len = (uint32_t)frame_len + MJPEG_DHT_SIZE;
         }
 
-        jsp_err = jpeg_stream_pipeline_push_frame(pipeline, push_ptr,
+        jsp_err = decode_stream_pipeline_push_frame(pipeline, push_ptr,
                                                    push_len, NULL);
         if (jsp_err != AVDK_ERR_OK) {
             consecutive_fail++;
@@ -560,8 +561,8 @@ bk_err_t boot_avi_play(void)
 
 cleanup:
     if (pipeline) {
-        jpeg_stream_pipeline_stop(pipeline);
-        jpeg_stream_pipeline_destroy(pipeline);
+        decode_stream_pipeline_stop(pipeline);
+        decode_stream_pipeline_destroy(pipeline);
     }
 
     if (jpeg_buf)

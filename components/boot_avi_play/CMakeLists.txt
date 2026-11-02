@@ -24,7 +24,7 @@ set(reqs
     avdk_utils
     bk_gpu
     lvgl
-    jpeg_stream_pipeline
+    decode_stream_pipeline
     display_ui
 )
 

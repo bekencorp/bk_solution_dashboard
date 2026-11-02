@@ -84,7 +84,7 @@ bk_err_t av_server_jpeg_decode_manager_turn_on(void)
 
     set_lcd_use_module(LCD_SOURCE_MODULE_DECODER);
 
-    LOGI("cast jpeg_stream_pipeline on (src=%ux%u dst=%ux%u)\n",
+    LOGI("cast decode_stream_pipeline on (src=%ux%u dst=%ux%u)\n",
          (unsigned)CAST_JPEG_SRC_WIDTH, (unsigned)CAST_JPEG_SRC_HEIGHT,
          (unsigned)CAST_JPEG_DST_WIDTH, (unsigned)CAST_JPEG_DST_HEIGHT);
 
@@ -97,7 +97,7 @@ bk_err_t av_server_jpeg_decode_manager_turn_off(void)
 
     set_lcd_use_module(LCD_SOURCE_MODULE_LVGL);
     ret = cast_jpeg_pipeline_turn_off();
-    LOGI("cast jpeg_stream_pipeline off ret=%d\n", (int)ret);
+    LOGI("cast decode_stream_pipeline off ret=%d\n", (int)ret);
     return ret;
 }
 

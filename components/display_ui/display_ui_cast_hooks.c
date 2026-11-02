@@ -23,7 +23,7 @@ extern void beken_ui_kick_after_display_resume(void);
  * LVGL's own GPU lifecycle (lv_vendor.c): lv_gpu_init == bk_gpu_driver_init +
  * vg_lite_init(0,0), lv_gpu_deinit == vg_lite_close + bk_gpu_driver_deinit.
  * LVGL owns the single global vg_lite context; the cast pipeline's plain teardown
- * (jpeg_stream_pipeline_destroy -> bk_gpu_deinit) closes that shared context, so
+ * (decode_stream_pipeline_destroy -> bk_gpu_deinit) closes that shared context, so
  * we must re-acquire it here BEFORE restarting the LVGL task, exactly like the
  * assist-view path does. Safe to call when vg_lite is still alive: vg_lite_init
  * short-circuits ("already initialized") and bk_gpu_driver_init is a bool guard.
@@ -224,7 +224,7 @@ static void display_ui_cast_pre_start(void)
     /*
      * Stop LVGL and release the single vg_lite/GPU engine BEFORE the cast
      * JPEG->GPU pipeline is created/started (cast_jpeg_pipeline_turn_on calls
-     * this right before jpeg_stream_pipeline_create/start).
+     * this right before decode_stream_pipeline_create/start).
      *
      * The cast decoder's flexa bond needs the GPU to drain its output ring; if
      * LVGL keeps compositing (GPU-compress every frame) the bond starves ->

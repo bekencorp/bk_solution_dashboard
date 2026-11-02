@@ -1,5 +1,5 @@
 /*
- * Casting: JPEG (PSRAM) -> jpeg_stream_pipeline -> bk_display_flush.
+ * Casting: JPEG (PSRAM) -> decode_stream_pipeline -> bk_display_flush.
  *
  * Serial trace: grep "[cast]". Phases: 0=enter 1=lvgl-prep 2=relgpu 3=create 4=start
  * pj=app push fd=frame_display dec=decode jpgc=consumed
@@ -20,7 +20,7 @@
 #include <common/avdk_pixel_types.h>
 #include <modules/vg_lite_gpu/vg_lite.h>
 #include "gpu_core.h"
-#include "jpeg_stream_pipeline.h"
+#include "decode_stream_pipeline.h"
 
 #define TAG "cast_jpeg"
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -82,7 +82,7 @@ void cast_jpeg_pipeline_register_hooks(const cast_jpeg_pipeline_hooks_t *hooks)
 	s_cast_hooks.drain_display = hooks->drain_display ? hooks->drain_display : cast_hooks_noop_void;
 }
 
-static jpeg_stream_pipeline_handle_t s_pipeline;
+static decode_stream_pipeline_handle_t s_pipeline;
 static bk_display_ctlr_handle_t      s_disp;
 static bk_display_ctlr_handle_t      s_pipeline_disp;
 /* Apply ARGB+decompress on first GPU frame, not right after pipeline start — avoids
@@ -92,7 +92,7 @@ static volatile int s_cast_dpu_apply_on_first_frame;
 static volatile uint8_t s_cast_pipeline_running;
 static uint32_t     s_cast_frame_display_seq;
 static uint32_t     s_pipeline_start_ms;
-/* Incremented when cast_gpu_malloc_cb fails (e.g. bk_gpu_open extra allocs); checked after jpeg_stream_pipeline_create. */
+/* Incremented when cast_gpu_malloc_cb fails (e.g. bk_gpu_open extra allocs); checked after decode_stream_pipeline_create. */
 static volatile uint32_t s_cast_gpu_malloc_fail_count;
 static beken_semaphore_t s_cast_flush_sem;
 static volatile uint32_t s_cast_flush_signal_seq;
@@ -185,7 +185,7 @@ bk_err_t cast_jpeg_pipeline_wait_display_flush(uint32_t timeout_ms)
  * (bk_gpu_ctlr_default.c); a third slot covers transient overlap + slow
  * return of buffers to the pool.
  *
- * s_cast_gpu_pool_active must be 1 *before* jpeg_stream_pipeline_create(): inside
+ * s_cast_gpu_pool_active must be 1 *before* decode_stream_pipeline_create(): inside
  * create, bk_gpu_open invokes malloc_cb for flex->dpu_frame_buffers; if active
  * were still 0, the callback would skip the pool and hit bk_frame_buffer_malloc
  * again (same 921600 pressure that pooling was meant to avoid).
@@ -532,7 +532,7 @@ static void cast_frame_consumed_cb(const uint8_t *jpeg_stream, int status, void 
 	void *user_data)
 {
 	(void)user_data;
-	if (status == JSP_STATUS_FRAME_DROPPED)
+	if (status == DSP_STATUS_FRAME_DROPPED)
 		LOGPF("[cast] jpgc frame dropped\n"); /* per-drop noise; aggregated in jsp push */
 	else if (status != 0)
 		LOGE("[cast] jpgc st=%d\n", status);
@@ -550,7 +550,7 @@ static bk_err_t cast_pipeline_push_fb_locked(frame_buffer_t *fb)
 	avdk_err_t err;
 
 	LOGPF("[cast] pjfb %u\n", (unsigned)fb->length);
-	err = jpeg_stream_pipeline_push_frame(s_pipeline, fb->frame, fb->length, fb);
+	err = decode_stream_pipeline_push_frame(s_pipeline, fb->frame, fb->length, fb);
 	if (err != AVDK_ERR_OK) {
 		if (err == AVDK_ERR_BUSY)
 			return BK_ERR_BUSY;
@@ -592,7 +592,7 @@ bk_err_t cast_jpeg_pipeline_push_frame_buffer(frame_buffer_t *fb)
 bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 {
 	avdk_err_t                   err;
-	jpeg_stream_pipeline_config_t cfg;
+	decode_stream_pipeline_config_t cfg;
 
 	/* Block WiFi unfragment malloc until pipeline is ready (or dup / error exit). */
 	cast_video_recv_gate_call(0);
@@ -631,7 +631,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 			LOGI("[cast] 1 cast-prep (reuse)\n");
 			s_cast_hooks.pre_start();
 			s_cast_gpu_pool_active = 1U;
-			err = jpeg_stream_pipeline_start(s_pipeline);
+			err = decode_stream_pipeline_start(s_pipeline);
 			if (err != AVDK_ERR_OK) {
 				LOGE("[cast] reuse start failed %d\n", (int)err);
 				s_cast_gpu_pool_active = 0;
@@ -651,7 +651,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 		}
 
 		LOGW("[cast] display changed, recreate pipeline %p -> %p\n", s_pipeline_disp, disp);
-		(void)jpeg_stream_pipeline_destroy(s_pipeline);
+		(void)decode_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
 		s_pipeline_disp = NULL;
 		cast_gpu_pool_free_all();
@@ -668,6 +668,9 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	LOGI("[cast] 2 relgpu\n");
 
 	os_memset(&cfg, 0, sizeof(cfg));
+	/* Cast source may switch between JPEG and H264 mid-session: start as the
+	 * common JPEG case and let the pipeline switch backends per frame. */
+	cfg.decode_type = DECODE_STREAM_TYPE_AUTO;
 	cfg.src_width  = CAST_JPEG_SRC_WIDTH;
 	cfg.src_height = CAST_JPEG_SRC_HEIGHT;
 	cfg.dst_width  = CAST_JPEG_DST_WIDTH;
@@ -687,7 +690,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 		return BK_FAIL;
 	}
 	/*
-	 * Enable pool for malloc_cb during jpeg_stream_pipeline_create → bk_gpu_open
+	 * Enable pool for malloc_cb during decode_stream_pipeline_create → bk_gpu_open
 	 * (flex dpu_frame_buffers), not only after create returns.
 	 */
 	s_cast_gpu_pool_active = 1U;
@@ -706,7 +709,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	     (unsigned)((cfg.dst_width + 15U) & ~15U));
 
 	s_cast_gpu_malloc_fail_count = 0U;
-	err = jpeg_stream_pipeline_create(&s_pipeline, &cfg);
+	err = decode_stream_pipeline_create(&s_pipeline, &cfg);
 	if (err != AVDK_ERR_OK || s_pipeline == NULL) {
 		LOGE("[cast] 3e %d %p\n", (int)err, s_pipeline);
 		s_pipeline = NULL;
@@ -722,7 +725,7 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	if (s_cast_gpu_malloc_fail_count != 0U) {
 		LOGE("[cast] 3e gpu flex alloc failed during create (fail_cnt=%u), abort\n",
 		     (unsigned)s_cast_gpu_malloc_fail_count);
-		(void)jpeg_stream_pipeline_destroy(s_pipeline);
+		(void)decode_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
 		s_pipeline_disp = NULL;
 		s_disp = NULL;
@@ -734,11 +737,11 @@ bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 	}
 
 	LOGI("[cast] 3 ok %p\n", s_pipeline);
-	err = jpeg_stream_pipeline_start(s_pipeline);
+	err = decode_stream_pipeline_start(s_pipeline);
 	if (err != AVDK_ERR_OK) {
 		LOGE("[cast] 4e %d\n", (int)err);
 		s_cast_gpu_pool_active = 0;
-		(void)jpeg_stream_pipeline_destroy(s_pipeline);
+		(void)decode_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
 		s_pipeline_disp = NULL;
 		s_disp = NULL;
@@ -779,7 +782,7 @@ bk_err_t cast_jpeg_pipeline_turn_off(void)
 	s_cast_dpu_apply_on_first_frame = 0;
 	s_cast_frame_display_seq = 0;
 	if (s_pipeline != NULL && s_cast_pipeline_running) {
-		(void)jpeg_stream_pipeline_stop(s_pipeline);
+		(void)decode_stream_pipeline_stop(s_pipeline);
 		s_cast_pipeline_running = 0;
 	}
 	s_disp = NULL;
@@ -801,7 +804,7 @@ bk_err_t cast_jpeg_pipeline_turn_off(void)
 	 * the LVGL task, so it must run AFTER the teardown, not before.
 	 */
 	if (s_pipeline != NULL) {
-		(void)jpeg_stream_pipeline_destroy(s_pipeline);
+		(void)decode_stream_pipeline_destroy(s_pipeline);
 		s_pipeline = NULL;
 	}
 	s_pipeline_disp = NULL;

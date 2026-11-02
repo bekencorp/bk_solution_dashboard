@@ -4,7 +4,9 @@ set(incs
 )
 
 set(srcs
-    src/jpeg_stream_pipeline.c
+    src/decode_stream_pipeline.c
+    src/decode_stream_pipeline_jpeg.c
+    src/decode_stream_pipeline_h264.c
 )
 
 armino_component_register(

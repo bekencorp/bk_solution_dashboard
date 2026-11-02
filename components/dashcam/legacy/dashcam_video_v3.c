@@ -365,7 +365,7 @@ void dashcam_video_on_frame(const void *frame, uint32_t width, uint32_t height, 
      * The standalone PP wrote this RGB565 frame to PSRAM via DMA. With AP PSRAM
      * D-cache enabled, the CPU could otherwise memcpy stale cached bytes for the
      * output range, so invalidate it before reading. (Mirrors flush_dcache() on
-     * the HW->CPU direction, as in jpeg_stream_pipeline / gerrit 96591.)
+     * the HW->CPU direction, as in decode_stream_pipeline / gerrit 96591.)
      */
     flush_dcache((void *)frame, (long)frame_bytes);
 

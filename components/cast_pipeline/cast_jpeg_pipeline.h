@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2023 - present, armino(Shanghai) Co., Ltd.
- * Casting path: JPEG -> jpeg_stream_pipeline -> DPU.
+ * Casting path: JPEG -> decode_stream_pipeline -> DPU.
  */
 
 #pragma once
@@ -67,7 +67,7 @@ void cast_jpeg_pipeline_register_hooks(const cast_jpeg_pipeline_hooks_t *hooks);
 
 /**
  * Optional: block WiFi unfragment frame_buffer allocation during cast teardown/setup
- * to avoid racing malloc/send with jpeg_stream_pipeline_destroy. Media registers
+ * to avoid racing malloc/send with decode_stream_pipeline_destroy. Media registers
  * media_bk_net_cast_video_alloc_gate; allow 0 = deny malloc, 1 = allow.
  */
 typedef void (*cast_jpeg_video_recv_alloc_gate_fn)(int allow);
