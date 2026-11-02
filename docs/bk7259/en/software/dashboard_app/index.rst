@@ -1,4 +1,4 @@
-dashboard app User Guide
+Dashboard App User Guide
 =======================================
 
 

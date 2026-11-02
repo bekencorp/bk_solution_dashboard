@@ -30,6 +30,7 @@ This solution uses a "maintenance branch + release tag" version management appro
 
 We recommend that customers choose the tag with the highest version number in the `release/v4.0.1.x` series for development and mass production. Only use the `release/v4.0.1` branch when you just want to try the latest features or participate in development.
 
+<!-- readme-get-started:code -->
 ## Get the Code
 
 The BK7259 Two-Wheeler Solution and the Armino SMP SDK are released simultaneously to GitHub, Gitee, and GitLab. Choose the code source based on your network environment and access permissions.
@@ -68,6 +69,7 @@ git clone --branch release/v4.0.1.6 https://github.com/bekencorp/bk_avdk_smp.git
 git clone --branch release/v4.0.1.6 https://github.com/bekencorp/bk_solution_dashboard.git
 ```
 
+<!-- readme-get-started:env -->
 ## Set Up the Build Environment
 
 Armino SMP supports local build and Docker build. Choose one of the following methods to set up the build environment based on your development platform.
@@ -88,10 +90,11 @@ Download and install [Armino Bash](https://dl.bekencorp.com/tools/arminosdk/Wind
 
 ### Docker Build
 
-The Docker build image is [`bekencorp/armino-idk`](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of version `1.5` or higher; it supports Windows / Linux / macOS.
+The Docker build image is [bekencorp/armino-idk](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of `1.5` or higher; it supports Windows / Linux / macOS.
 
-For detailed setup steps, see [Armino SMP Quick Start: Environment deployment and build](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/en/v4.0.1/get-started/index.html).
+For detailed setup steps, see [Environment Deployment and Compilation](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/en/v4.0.1/get-started/index.html#smp-get-started-env).
 
+<!-- readme-get-started:build -->
 ## Build the Project
 
 Taking the `scooter_1280_720_v2` project as an example (located in `projects/scooter_1280_720_v2`), point `SDK_DIR` to the Armino SMP SDK and build locally:
@@ -115,9 +118,10 @@ After a successful build, the firmware file used for flashing is located at the 
 projects/scooter_1280_720_v2/build/bk7259/scooter_1280_720_v2/package/all-app.bin
 ```
 
-For detailed descriptions of the build commands, see [Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/index.html).
-
+<!-- readme-get-started:flash -->
 ## Flash the Firmware
+
+### Flash the main SoC
 
 You can flash the BK7259 main control firmware using either of the following methods:
 
@@ -126,20 +130,20 @@ You can flash the BK7259 main control firmware using either of the following met
 
 When flashing, select the `all-app.bin` firmware file generated in the previous section.
 
-In addition to the BK7259 main control firmware, the BK3515N Bluetooth secondary controller requires flashing its own firmware separately. For the detailed steps, see the online documentation.
+For the main-SoC flashing process, see [Burn Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/en/v4.0.1/get-started/index.html#smp-get-started-flash).
 
-For the detailed flashing process, see [Armino SMP Quick Start](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7259/en/v4.0.1/get-started/index.html).
+### Flash the companion
+
+In addition to the BK7259 main control firmware, the BK3515N Bluetooth secondary controller requires flashing its own firmware separately. For the BK3515N steps, see [BK7259 Two-Wheeler Solution Quick Start](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/get-started/index.html).
 
 ## Reference Projects
-
-| Project | Main features | Details |
-| --- | --- | --- |
-| [scooter_1280_720_v2](../projects/scooter_1280_720_v2/) | V2 product project (1280×720): MIPI DSI + LVGL dashboard, boot AVI, dashcam recording, phone JPEG casting, BLE / Wi-Fi provisioning, classic Bluetooth audio, contacts/dialing, local music, OTA UI, and physical-key interactions. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_1280_720_v2/index.html) |
-| [scooter_dashboard_v1_1280_720_v2](../projects/scooter_dashboard_v1_1280_720_v2/) | Dashboard V1.0 1280×720 landscape: home navigation, dashcam loop recording/playback, local SD-card music (Music Player), phone book, Assist View, Bluetooth calls, provisioning, SD card MTP, and FTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_v1_1280_720_v2/index.html) |
-| [scooter_dashboard_v1_1024_600_v2](../projects/scooter_dashboard_v1_1024_600_v2/) | Dashboard V1.0 1024×600: home navigation, dashcam loop recording/playback, local SD-card music (Music Player), phone book, Assist View, Bluetooth calls, provisioning, and SD card MTP; do not mix firmware or UI resources with the 1280×720 V2 project. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_v1_1024_600_v2/index.html) |
-| [scooter_dashboard_klok_1280_720](../projects/scooter_dashboard_klok_1280_720/) | Dashboard Klok 1280×720 (ER68576B): karaoke and MV playback demo with home/Klok main/song list/playback pages, SD-card A/V scan and play, H.264/AAC decode, full-screen Flexa display with key/touch/CLI control, and SD card MTP. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_klok_1280_720/index.html) |
-| [scooter_dashboard_klok_fl7703_1280_720](../projects/scooter_dashboard_klok_fl7703_1280_720/) | Dashboard Klok 1280×720 (FL7703): same class of features as `scooter_dashboard_klok_1280_720`, fixed for BK7259 + FL7703 boards. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7259/en/v4.0.1/projects/scooter_dashboard_klok_fl7703_1280_720/index.html) |
-
+The following reference projects are listed; click a name for details.<!-- readme-projects:begin -->
+- [scooter_1280_720_v2](/projects/scooter_1280_720_v2/)
+- [scooter_dashboard_klok_1280_720](/projects/scooter_dashboard_klok_1280_720/)
+- [scooter_dashboard_klok_fl7703_1280_720](/projects/scooter_dashboard_klok_fl7703_1280_720/)
+- [scooter_dashboard_v1_1024_600_v2](/projects/scooter_dashboard_v1_1024_600_v2/)
+- [scooter_dashboard_v1_1280_720_v2](/projects/scooter_dashboard_v1_1280_720_v2/)
+<!-- readme-projects:end -->
 ## Beken Resources
 
 - [Beken official website](https://www.bekencorp.com/)
