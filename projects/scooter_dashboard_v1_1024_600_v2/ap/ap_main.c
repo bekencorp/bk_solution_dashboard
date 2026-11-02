@@ -60,7 +60,6 @@
 #define TAG "scooter_dashboard_v1_1024_600_v2"
 #include "avdk_monitor.h"
 
-
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
 #define LOGW(...) BK_LOGW(TAG, ##__VA_ARGS__)
 #define LOGE(...) BK_LOGE(TAG, ##__VA_ARGS__)
@@ -70,40 +69,7 @@ extern void user_app_main(void);
 extern void rtos_set_user_app_entry(beken_thread_function_t entry);
 extern int bk_cli_init(void);
 
-#define SYS_ANA_REG_BASE    (0x44010000)
-#define LDO_ANA_REG         (0x69)
-#define SYS_M55_BASE_ADDR   (0x48000000)
-
 static beken_thread_t s_ap_bt_startup_task_handle = NULL;
-
-
-/* ==================== LDO / Power ==================== */
-
-static void bk_ldo_enable(void)
-{
-    uint32_t reg = REG_READ(SYS_ANA_REG_BASE + LDO_ANA_REG * 4);
-    reg |= (0xF << 28) | (0x2 << 23) | (0x7 << 19) | (0x7 << 15);
-    reg &= ~(0xF << 11);
-    reg |= (0x8 << 11);
-    REG_WRITE(SYS_ANA_REG_BASE + LDO_ANA_REG * 4, reg);
-
-    reg = REG_READ(SYS_M55_BASE_ADDR + 0xA * 4);
-    reg &= ~(1 << 2);  // usb hs clock
-    reg &= ~(1 << 5);  // qspi0 clock
-    reg &= ~(1 << 6);  // qspi1 clock
-    reg &= ~(1 << 7);  // sdio0 clock
-    reg &= ~(1 << 8);  // sdio1 clock
-    reg &= ~(1 << 9);  // isp clock
-    reg &= ~(1 << 10); // gpu clock
-    reg &= ~(1 << 11); // h264e clock
-    reg &= ~(1 << 12); // csi clock
-    reg &= ~(1 << 13); // dsi clock
-    reg &= ~(1 << 14); // dpu clock
-    reg &= ~(1 << 15); // usb fs clock
-    reg &= ~(1 << 22); // npu clock
-    reg &= ~(0x3F << 26);
-    REG_WRITE(SYS_M55_BASE_ADDR + 0xA * 4, reg);
-}
 
 /* ==================== Stub functions for unimplemented features ==================== */
 
@@ -453,9 +419,6 @@ bk_err_t cli_widgets_init(void)
 
 static void app_board_init(void)
 {
-    LOGI("enabling LDO\n");
-    bk_ldo_enable();
-
     LOGI("initializing frame buffer\n");
     bk_frame_buffer_init();
 

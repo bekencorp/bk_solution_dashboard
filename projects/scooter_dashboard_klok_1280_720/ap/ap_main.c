@@ -65,10 +65,6 @@
 #include "components/bk_decode/bk_h264_decode_types.h"
 #endif
 
-#define SYS_ANA_REG_BASE    (0x44010000)
-#define LDO_ANA_REG         (0x69)
-#define SYS_M55_BASE_ADDR   (0x48000000)
-
 #define KLOK_UI_WIDTH        (1280)
 #define KLOK_UI_HEIGHT       (720)
 #define KLOK_DISP_WIDTH      (720)
@@ -208,34 +204,6 @@ static void klok_bt_start(void)
 #else
 static void klok_bt_start(void) {}
 #endif
-
-static void bk_auxldo_enable(void)
-{
-    uint32_t reg = REG_READ(SYS_ANA_REG_BASE + LDO_ANA_REG * 4);
-    reg |= (0xF << 28) | (0x2 << 23) | (0x7 << 19) | (0x7 << 15);
-    reg &= ~(0xF << 11);
-    reg |= (0x8 << 11);
-    REG_WRITE(SYS_ANA_REG_BASE + LDO_ANA_REG * 4, reg);
-
-    /* Match the proven scooter-dashboard board bring-up: release the
-     * peripheral clock gates before DSI/DPU initialization. */
-    reg = REG_READ(SYS_M55_BASE_ADDR + 0xA * 4);
-    reg &= ~(1 << 2);  /* USB HS */
-    reg &= ~(1 << 5);  /* QSPI0 */
-    reg &= ~(1 << 6);  /* QSPI1 */
-    reg &= ~(1 << 7);  /* SDIO0 */
-    reg &= ~(1 << 8);  /* SDIO1 */
-    reg &= ~(1 << 9);  /* ISP */
-    reg &= ~(1 << 10); /* GPU */
-    reg &= ~(1 << 11); /* H264E */
-    reg &= ~(1 << 12); /* CSI */
-    reg &= ~(1 << 13); /* DSI */
-    reg &= ~(1 << 14); /* DPU */
-    reg &= ~(1 << 15); /* USB FS */
-    reg &= ~(1 << 22); /* NPU */
-    reg &= ~(0x3F << 26);
-    REG_WRITE(SYS_M55_BASE_ADDR + 0xA * 4, reg);
-}
 
 #if CONFIG_BK_DECODER && CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_H264_VIDEO_DECODER
 static void h264_hw_decoder_prewarm(void)
@@ -1191,7 +1159,6 @@ int main(void)
 
     gpu_board.flexa.enable = false;
 
-    bk_auxldo_enable();
     bk_frame_buffer_init();
 
 #if CONFIG_BK_DECODER && CONFIG_BK_VIDEO_PLAYER_ENABLE_HW_H264_VIDEO_DECODER
