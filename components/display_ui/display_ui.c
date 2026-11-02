@@ -67,7 +67,7 @@ static rott_angle_t scooter_lvgl_rotation_from_deg(int deg)
  */
 static bk_display_ctlr_handle_t s_dpu_handle = NULL;
 static const bk_display_dsi_panel_t *s_panel_desc = NULL;
-static uint8_t *s_lvgl_fb[2] = {NULL, NULL};
+static uint8_t *s_lvgl_fb[CONFIG_LVGL_FRAME_BUFFER_NUM];
 static uint32_t s_lvgl_fb_size = 0;
 static display_ui_init_callback_t s_ui_init_callback = NULL;
 
@@ -202,43 +202,39 @@ static bk_err_t lvgl_start_internal(void)
     }
 
     /* Compressed output frame buffers are tiled ARGB8888 stored at ~1 byte per
-     * pixel (disp_w * disp_h bytes), smaller than the old RGB565 w*h*2. Mirrors
-     * the reference widgets_v9 sizing for output_compress. */
-    uint32_t fb_sz = (uint32_t)lv_vnd_config.disp_width * lv_vnd_config.disp_height;
-    if (s_lvgl_fb[0] == NULL && s_lvgl_fb[1] == NULL)
-    {
-        s_lvgl_fb[0] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_CODED, fb_sz);
-        s_lvgl_fb[1] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, fb_sz);
-        if (s_lvgl_fb[0] == NULL || s_lvgl_fb[1] == NULL)
-        {
-            LOGE("LVGL frame buffer alloc failed (need %u bytes each)\n", (unsigned)fb_sz);
-            if (s_lvgl_fb[0] != NULL)
-            {
-                bk_frame_buffer_free(s_lvgl_fb[0]);
-                s_lvgl_fb[0] = NULL;
-            }
-            if (s_lvgl_fb[1] != NULL)
-            {
-                bk_frame_buffer_free(s_lvgl_fb[1]);
-                s_lvgl_fb[1] = NULL;
-            }
-            return BK_FAIL;
-        }
-        s_lvgl_fb_size = fb_sz;
+     * pixel (disp_w * disp_h bytes), smaller than the old RGB565 w*h*2. Allocation
+     * mirrors benchmark_v9 (CONFIG_LVGL_FRAME_BUFFER_NUM, CODED/UNCODED alternate).
+     * Buffers are retained across lv_vendor_deinit() so cast/dashcam can still
+     * steer DPU to fb0 and the next start can reuse them. */
+    uint32_t frame_buffer_size = 0;
+    if (lv_vnd_config.output_compress) {
+        frame_buffer_size = (uint32_t)lv_vnd_config.disp_width * lv_vnd_config.disp_height;
+    } else {
+        frame_buffer_size = (uint32_t)lv_vnd_config.disp_width * lv_vnd_config.disp_height * sizeof(bk_color_t);
     }
-    else if (s_lvgl_fb[0] == NULL || s_lvgl_fb[1] == NULL || s_lvgl_fb_size != fb_sz)
-    {
-        LOGE("invalid retained LVGL frame buffers: fb0=%p fb1=%p old=%u new=%u\n",
-             s_lvgl_fb[0], s_lvgl_fb[1], (unsigned)s_lvgl_fb_size, (unsigned)fb_sz);
+
+    if (s_lvgl_fb_size != 0 && s_lvgl_fb_size != frame_buffer_size) {
+        LOGE("invalid retained LVGL frame buffer size: old=%u new=%u\n",
+             (unsigned)s_lvgl_fb_size, (unsigned)frame_buffer_size);
         return BK_FAIL;
     }
-    else
-    {
-        LOGI("reuse LVGL frame buffers: fb0=%p fb1=%p size=%u\n",
-             s_lvgl_fb[0], s_lvgl_fb[1], (unsigned)fb_sz);
+
+    for (int i = 0; i < CONFIG_LVGL_FRAME_BUFFER_NUM; i++) {
+        if (s_lvgl_fb[i] == NULL) {
+            if (i % 2) {
+                s_lvgl_fb[i] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_UNCODED, frame_buffer_size);
+            } else {
+                s_lvgl_fb[i] = bk_frame_buffer_malloc(MEM_SLAB_HEAP_CODED, frame_buffer_size);
+            }
+            if (s_lvgl_fb[i] == NULL) {
+                LOGE("LVGL frame buffer %d alloc failed (need %u bytes, num=%d)\n",
+                     i, (unsigned)frame_buffer_size, CONFIG_LVGL_FRAME_BUFFER_NUM);
+                return BK_FAIL;
+            }
+        }
+        lv_vnd_config.frame_buffer[i] = s_lvgl_fb[i];
     }
-    lv_vnd_config.frame_buffer[0] = s_lvgl_fb[0];
-    lv_vnd_config.frame_buffer[1] = s_lvgl_fb[1];
+    s_lvgl_fb_size = frame_buffer_size;
 
     lv_vnd_config.args = s_dpu_handle;
     lv_vnd_config.flush_cb = bk_widgets_flush_cb;
@@ -340,7 +336,7 @@ bk_err_t display_ui_init(void)
 
 uint8_t *display_ui_get_lvgl_fb(int index)
 {
-    if (index < 0 || index > 1)
+    if (index < 0 || index >= CONFIG_LVGL_FRAME_BUFFER_NUM)
         return NULL;
     return s_lvgl_fb[index];
 }
