@@ -631,6 +631,15 @@ void beken_ui_nav_home(void)
     beken_ui_nav_to_page(HOME_MENU_HOME);
 }
 
+/* LVGL task context only (e.g. an object event callback). Takes no lock on
+ * purpose: the calling task already holds g_disp_mutex while running
+ * lv_task_handler(), so going through beken_ui_nav_to_page() here would take
+ * the same non-recursive mutex twice and deadlock the whole UI task. */
+void beken_ui_nav_home_from_lvgl(void)
+{
+    lv_async_call(home_menu_open_async_cb, (void *)(uintptr_t)HOME_MENU_HOME);
+}
+
 /*
  * Heap probe for the OOM (LV_ASSERT_MALLOC) investigation. Logs the free and
  * lowest-ever-free bytes of the three heaps LVGL can draw from. Compare the

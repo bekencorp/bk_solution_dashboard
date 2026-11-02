@@ -448,6 +448,7 @@ void beken_ui_nav_to_ota_update(void);
 void beken_ui_nav_to_phone_book(void);
 void beken_ui_nav_to_music_player(void);
 void beken_ui_nav_home(void);
+void beken_ui_nav_home_from_lvgl(void);
 void beken_ui_key_enter(void);
 void beken_ui_key_open_assist_view(void);
 void beken_ui_key_home(void);

@@ -309,8 +309,10 @@ static void phone_book_dial_selection(pb_focus_t focus, int sel)
     {
         LOGI("dial %s\n", number);
         hfp_demo_dial(1, (uint8_t *)number);
-        /* Jump back home so the outgoing-call popup is visible right away. */
-        beken_ui_nav_home();
+        /* Jump back home so the outgoing-call popup is visible right away.
+         * We run in the LVGL task (keypad ENTER -> row CLICKED), so the
+         * lock-taking beken_ui_nav_home() would self-deadlock here. */
+        beken_ui_nav_home_from_lvgl();
     }
     else
     {
