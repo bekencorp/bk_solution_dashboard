@@ -97,17 +97,17 @@ Docker 编译镜像为 [bekencorp/armino-idk](https://hub.docker.com/r/bekencorp
 <!-- readme-get-started:build -->
 ## 编译工程
 
-以 `scooter_1280_720_v2` 工程为例（位于 `projects/scooter_1280_720_v2`），通过 `SDK_DIR` 指向 Armino SMP SDK 后本地编译：
+以 `scooter_1280_720` 工程为例（位于 `projects/scooter_1280_720`），通过 `SDK_DIR` 指向 Armino SMP SDK 后本地编译：
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
 make bk7259 SDK_DIR=~/armino/bk_avdk_smp        # 也可先 export SDK_DIR 再执行 make bk7259
 ```
 
 也支持 Docker 编译（Linux / macOS 用 `./dbuild.sh`，Windows PowerShell 用 `.\dbuild.ps1`）：
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720_v2
+cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
 export SDK_DIR=~/armino/bk_avdk_smp
 ./dbuild.sh make bk7259
 ```
@@ -115,7 +115,7 @@ export SDK_DIR=~/armino/bk_avdk_smp
 编译成功后，用于烧录的固件文件位于以下路径（相对于 `bk_solution_dashboard/` 仓库根目录）：
 
 ```text
-projects/scooter_1280_720_v2/build/bk7259/scooter_1280_720_v2/package/all-app.bin
+projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
 ```
 
 <!-- readme-get-started:flash -->
@@ -138,11 +138,13 @@ projects/scooter_1280_720_v2/build/bk7259/scooter_1280_720_v2/package/all-app.bi
 
 ## 参考工程
 以下列出参考工程，可点击查看工程详细说明。<!-- readme-projects:begin -->
-- [scooter_1280_720_v2](/projects/scooter_1280_720_v2/)
+- [scooter_1280_720](/projects/scooter_1280_720/)
+- [scooter_dashboard_1024_600](/projects/scooter_dashboard_1024_600/)
+- [scooter_dashboard_1024_600_128B](/projects/scooter_dashboard_1024_600_128B/)
+- [scooter_dashboard_1280_720](/projects/scooter_dashboard_1280_720/)
+- [scooter_dashboard_1280_720_128B](/projects/scooter_dashboard_1280_720_128B/)
 - [scooter_dashboard_klok_1280_720](/projects/scooter_dashboard_klok_1280_720/)
 - [scooter_dashboard_klok_fl7703_1280_720](/projects/scooter_dashboard_klok_fl7703_1280_720/)
-- [scooter_dashboard_v1_1024_600_v2](/projects/scooter_dashboard_v1_1024_600_v2/)
-- [scooter_dashboard_v1_1280_720_v2](/projects/scooter_dashboard_v1_1280_720_v2/)
 <!-- readme-projects:end -->
 ## BEKEN 相关资源
 
