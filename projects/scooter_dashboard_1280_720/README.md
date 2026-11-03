@@ -1,4 +1,4 @@
-# Scooter Dashboard 1280×720User Guide
+# Scooter Dashboard 1280×720 User Guide
 
 * [中文](./README_CN.md)
 
