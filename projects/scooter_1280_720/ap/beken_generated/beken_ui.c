@@ -342,7 +342,7 @@ static void home_menu_load_selected_page(void)
         if (ui->home == NULL)
         {
             init_page_home(ui);
-            home_ui_install_bg();
+            beken_ui_install_preloaded_bg(ui->home_bg_img);
         }
         target = ui->home;
         break;
@@ -446,7 +446,7 @@ static void home_menu_return_home(void)
     if (ui->home == NULL || !lv_obj_is_valid(ui->home))
     {
         init_page_home(ui);
-        home_ui_install_bg();
+        beken_ui_install_preloaded_bg(ui->home_bg_img);
     }
 
     if (ui->home != NULL && lv_obj_is_valid(ui->home))
@@ -777,7 +777,7 @@ static void beken_ui_schedule_dashcam_boot(void)
 void beken_ui_init(void)
 {
     init_page_home(&bk_lv_tool_ui);
-    home_ui_install_bg();
+    beken_ui_install_preloaded_bg(bk_lv_tool_ui.home_bg_img);
     lv_screen_load(bk_lv_tool_ui.home);
     s_home_menu_selected = HOME_MENU_DASHCAM;
     s_home_menu_active = HOME_MENU_HOME;
@@ -845,7 +845,7 @@ void beken_ui_kick_after_display_resume(void)
     else
     {
         init_page_home(ui);
-        home_ui_install_bg();
+        beken_ui_install_preloaded_bg(ui->home_bg_img);
         lv_screen_load(ui->home);
     }
 

@@ -330,7 +330,7 @@ static lv_obj_t **beken_ui_page_root_slot(bk_lv_ui_t *ui, int32_t page)
 static void beken_ui_create_home(bk_lv_ui_t *ui)
 {
     init_page_home(ui);
-    home_ui_install_bg();
+    beken_ui_install_preloaded_bg(ui->home_bg_img);
 }
 
 static void beken_ui_create_dashcam(bk_lv_ui_t *ui)
