@@ -97,17 +97,17 @@ For detailed setup steps, see [Environment Deployment and Compilation](https://d
 <!-- readme-get-started:build -->
 ## Build the Project
 
-Taking the `scooter_1280_720` project as an example (located in `projects/scooter_1280_720`), point `SDK_DIR` to the Armino SMP SDK and build locally:
+Taking the `scooter_dashboard_1280_720` project as an example (located in `projects/scooter_dashboard_1280_720`), point `SDK_DIR` to the Armino SMP SDK and build locally:
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_dashboard_1280_720
 make bk7259 SDK_DIR=~/armino/bk_avdk_smp        # or export SDK_DIR first, then run make bk7259
 ```
 
 Docker build is also supported (use `./dbuild.sh` on Linux / macOS, and `.\dbuild.ps1` on Windows PowerShell):
 
 ```bash
-cd ~/armino/bk_solution_dashboard/projects/scooter_1280_720
+cd ~/armino/bk_solution_dashboard/projects/scooter_dashboard_1280_720
 export SDK_DIR=~/armino/bk_avdk_smp
 ./dbuild.sh make bk7259
 ```
@@ -115,7 +115,7 @@ export SDK_DIR=~/armino/bk_avdk_smp
 After a successful build, the firmware file used for flashing is located at the following path (relative to the `bk_solution_dashboard/` repository root):
 
 ```text
-projects/scooter_1280_720/build/bk7259/scooter_1280_720/package/all-app.bin
+projects/scooter_dashboard_1280_720/build/bk7259/scooter_dashboard_1280_720/package/all-app.bin
 ```
 
 <!-- readme-get-started:flash -->
@@ -138,7 +138,6 @@ In addition to the BK7259 main control firmware, the BK3515N Bluetooth secondary
 
 ## Reference Projects
 The following reference projects are listed; click a name for details.<!-- readme-projects:begin -->
-- [scooter_1280_720](/projects/scooter_1280_720/)
 - [scooter_dashboard_1024_600](/projects/scooter_dashboard_1024_600/)
 - [scooter_dashboard_1024_600_128B](/projects/scooter_dashboard_1024_600_128B/)
 - [scooter_dashboard_1280_720](/projects/scooter_dashboard_1280_720/)
