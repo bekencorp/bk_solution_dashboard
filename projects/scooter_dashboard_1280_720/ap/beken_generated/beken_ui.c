@@ -1051,6 +1051,15 @@ void beken_ui_key_home(void)
         return;
     }
 
+    /* Cast / clip playback / assist teardown releases the whole LVGL runtime,
+     * which also deinits g_disp_mutex (lv_vendor_deinit leaves it NULL until
+     * the next lv_vendor_init). Taking the disp lock in that window asserts in
+     * xQueueSemaphoreTake with a NULL semaphore, so drop the key instead. */
+    if (!lv_vendor_is_initialized())
+    {
+        return;
+    }
+
     /* Same race as page navigation: do not touch the LVGL timer list
      * from the CLI / app-event thread without g_disp_mutex. */
     lv_vendor_disp_lock();
