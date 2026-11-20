@@ -108,6 +108,34 @@ void cast_jpeg_pipeline_set_frame_buffer_release(void (*fn)(frame_buffer_t *));
  */
 bk_err_t cast_jpeg_pipeline_push_frame_buffer(frame_buffer_t *fb);
 
+/** Video codec currently driven by the cast pipeline. */
+typedef enum {
+	CAST_CODEC_JPEG    = 0,  /**< Independent frames: a loss has no lasting effect */
+	CAST_CODEC_H264    = 1,  /**< Inter frames: a loss breaks the reference chain */
+	CAST_CODEC_UNKNOWN = 2,  /**< Pipeline not running */
+} cast_codec_t;
+
+/**
+ * Active codec of the cast pipeline.
+ * Media uses it to decide whether an upstream frame loss needs recovery
+ * (H264) or not (JPEG).
+ */
+cast_codec_t cast_jpeg_pipeline_active_type(void);
+
+/**
+ * Notify the pipeline that a compressed frame was lost upstream
+ * (e.g. the shared buffer pool was exhausted).
+ *
+ * H264: invalidates the reference chain and drops every following non-IDR
+ * frame until an IDR has actually decoded. JPEG: no-op, its frames are
+ * independent.
+ *
+ * @return true only when H264 is active, i.e. the caller should ask the App
+ *         for an IDR. false for JPEG / pipeline not running: the caller must
+ *         NOT request a keyframe.
+ */
+bool cast_jpeg_pipeline_notify_ref_break(void);
+
 #ifdef __cplusplus
 }
 #endif

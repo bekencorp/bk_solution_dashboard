@@ -31,19 +31,6 @@ static uint16_t dsp_be16(const uint8_t *p)
 	return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
 }
 
-static const char *dsp_jpeg_infer_sampling(const dsp_jpeg_meta_t *m)
-{
-	if (m->components != 3)
-		return "non-3comp";
-	if (m->h[0] == 2U && m->v[0] == 2U && m->h[1] == 1U && m->v[1] == 1U && m->h[2] == 1U && m->v[2] == 1U)
-		return "420";
-	if (m->h[0] == 2U && m->v[0] == 1U && m->h[1] == 1U && m->v[1] == 1U && m->h[2] == 1U && m->v[2] == 1U)
-		return "422";
-	if (m->h[0] == 1U && m->v[0] == 1U && m->h[1] == 1U && m->v[1] == 1U && m->h[2] == 1U && m->v[2] == 1U)
-		return "444";
-	return "other";
-}
-
 /* Scan the SOF segment for size/sampling info. Returns 1 when a usable SOF
  * was found, 0 when the stream does not look like JPEG (or is truncated). */
 static int dsp_parse_jpeg_meta(const uint8_t *buf, uint32_t len, dsp_jpeg_meta_t *m)
@@ -225,15 +212,6 @@ static avdk_err_t dsp_jpeg_admit_frame(struct decode_stream_pipeline_ctx *ctx,
 	return AVDK_ERR_OK;
 }
 
-static void dsp_jpeg_on_push_full(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-				  const dsp_frame_meta_t *meta, uint32_t len)
-{
-	(void)ctx;
-	(void)seq;
-	(void)meta;
-	LOGW("[cast] push qfull %u\n", (unsigned)len);
-}
-
 /* ------------------------------------------------------------------ */
 /* Classification + diagnostics                                        */
 /* ------------------------------------------------------------------ */
@@ -246,24 +224,18 @@ static int dsp_jpeg_parse_meta(const uint8_t *buf, uint32_t len, dsp_frame_meta_
 #define DSP_DIAG_LOG_EVERY_N   120U
 
 static void dsp_jpeg_diag_frame(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-				const dsp_frame_meta_t *meta, uint32_t len)
+				const dsp_frame_meta_t *meta, uint32_t len,
+				uint32_t push_fps, uint32_t decode_fps)
 {
 	const dsp_jpeg_meta_t *m = &meta->jpeg;
-	const char *sampling = dsp_jpeg_infer_sampling(m);
+
+	(void)len;
 	int need_log = (seq <= DSP_DIAG_LOG_FIRST_N) || ((seq % DSP_DIAG_LOG_EVERY_N) == 0U) ||
 		       (m->width != ctx->cfg.src_width) || (m->height != ctx->cfg.src_height);
 
 	if (need_log) {
-		LOGI("[diag] in#%u jpg=%ux%u sof=0x%02x samp=%s Y(%ux%u) Cb(%ux%u) Cr(%ux%u) cfg=%ux%u dst=%ux%u rot=%u cpr=%d scl=%d len=%u\n",
-		     (unsigned)seq,
-		     (unsigned)m->width, (unsigned)m->height, (unsigned)m->sof_marker, sampling,
-		     (unsigned)m->h[0], (unsigned)m->v[0],
-		     (unsigned)m->h[1], (unsigned)m->v[1],
-		     (unsigned)m->h[2], (unsigned)m->v[2],
-		     (unsigned)ctx->cfg.src_width, (unsigned)ctx->cfg.src_height,
-		     (unsigned)ctx->cfg.dst_width, (unsigned)ctx->cfg.dst_height,
-		     (unsigned)ctx->cfg.rotate_degree, (int)ctx->cfg.compress, (int)ctx->cfg.scale,
-		     (unsigned)len);
+		LOGI("[diag] push_fps=%u dec_fps=%u\n",
+		     (unsigned)push_fps, (unsigned)decode_fps);
 	}
 	if (m->width != ctx->cfg.src_width || m->height != ctx->cfg.src_height) {
 		LOGE("[diag] in#%u size mismatch jpg=%ux%u cfg=%ux%u\n",
@@ -285,7 +257,10 @@ const dsp_codec_ops_t dsp_jpeg_ops = {
 	.decode_frame     = dsp_jpeg_decode_frame,
 	.admit_frame      = dsp_jpeg_admit_frame,
 	.on_activate      = NULL,
-	.on_push_full     = dsp_jpeg_on_push_full,
+	/* NULL on purpose: JPEG frames are independent, so a lost frame needs
+	 * no resync and no keyframe request. The core logs queue-full losses
+	 * itself for backends without this hook. */
+	.on_ref_break     = NULL,
 	.parse_meta       = dsp_jpeg_parse_meta,
 	.diag_frame       = dsp_jpeg_diag_frame,
 };

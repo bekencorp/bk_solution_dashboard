@@ -12,10 +12,10 @@
 |------|------|
 | `decoder_setup / decoder_teardown` | 硬件解码器生命周期（幂等，支持惰性创建） |
 | `bond_start / bond_stop` | 该编解码与 GPU 之间的 FLEXA bond 接拆 |
-| `decode_frame` | 提交一帧解码（decode task，持 codec_lock） |
+| `decode_frame` | 提交一帧解码（decode task，持 codec_lock）；含出队门控与解码失败策略，可按策略返回 `DSP_ERR_SKIPPED` 表示未解码直接丢弃 |
 | `admit_frame` | 生产端准入策略（JPEG latest-wins / H264 GOP-aware） |
 | `on_activate` | 后端激活策略（H264：等待首个 IDR） |
-| `on_push_full` | 队列满时的丢帧策略 |
+| `on_ref_break` | 丢帧（上游丢帧或队列满）后的参考链处理；JPEG 为 NULL，表示无需 resync / 无需请求 IDR |
 | `parse_meta` | 码流分类（SOF 解析 / Annex-B NALU 扫描） |
 | `diag_frame` | 每帧诊断日志 |
 

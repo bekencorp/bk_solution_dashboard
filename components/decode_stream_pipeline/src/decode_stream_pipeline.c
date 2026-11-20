@@ -64,6 +64,7 @@
 #define DSP_QUEUE_POP_TIMEOUT_MS      50U
 #define DSP_DIAG_LOG_FIRST_N          10U
 #define DSP_DIAG_LOG_EVERY_N          120U
+#define DSP_DIAG_FPS_WINDOW_MS        1000U
 
 /* ------------------------------------------------------------------ */
 /* PSRAM FLEXA ring: VCDEC FLEXA path matches SDK jpeg_decoder_flexa_test (psram_malloc). */
@@ -146,11 +147,26 @@ void dsp_report_stale_drops(uint32_t dropped)
 	s_stale_drop_total += dropped;
 	if (s_stale_drop_total - s_stale_drop_reported >= 128U)
 	{
-		LOGW("[cast] dropped %u stale frames for low-latency (total %u)\n",
+		LOGW(" dropped %u stale frames for low-latency (total %u)\n",
 		     (unsigned)(s_stale_drop_total - s_stale_drop_reported),
 		     (unsigned)s_stale_drop_total);
 		s_stale_drop_reported = s_stale_drop_total;
 	}
+}
+
+static void dsp_diag_rate_update(dsp_diag_rate_t *rate)
+{
+	uint32_t now = rtos_get_time();
+	uint32_t elapsed;
+
+	rate->window_frames++;
+	elapsed = now - rate->window_start_ms;
+	if (elapsed < DSP_DIAG_FPS_WINDOW_MS)
+		return;
+
+	rate->fps = (rate->window_frames * 1000U + elapsed / 2U) / elapsed;
+	rate->window_start_ms = now;
+	rate->window_frames = 0U;
 }
 
 /* ------------------------------------------------------------------ */
@@ -235,7 +251,12 @@ static void dsp_decode_task(void *arg)
 			continue;
 
 		if (!ctx->running)
+		{
+			if (ctx->cfg.frame_consumed_cb != NULL)
+				ctx->cfg.frame_consumed_cb(entry.stream, AVDK_ERR_SHUTDOWN,
+							   entry.owner, ctx->cfg.user_data);
 			break;
+		}
 
 		if (entry.stream == NULL || entry.len == 0)
 		{
@@ -254,10 +275,25 @@ static void dsp_decode_task(void *arg)
 		ret = entry.ops->decode_frame(ctx, &entry);
 		rtos_unlock_mutex(&ctx->codec_lock);
 
+		if (ret == DSP_ERR_SKIPPED)
+		{
+			/* Codec policy dropped the frame without decoding it (a
+			 * non-IDR frame while the reference chain is broken).
+			 * Release the stream immediately so the producer gets
+			 * its buffer back while waiting for an IDR. */
+			ctx->dec_gated++;
+			if (ctx->cfg.frame_consumed_cb != NULL)
+				ctx->cfg.frame_consumed_cb(entry.stream, DSP_STATUS_FRAME_DROPPED,
+							   entry.owner, ctx->cfg.user_data);
+			continue;
+		}
+
+		dsp_diag_rate_update(&ctx->diag_decode_rate);
+
 		if (ret != AVDK_ERR_OK)
 			LOGE("decode frame failed (%s): %d\n", entry.ops->name, (int)ret);
 
-		LOGPF("[cast] dec#%u len=%u ret=%d\n",
+		LOGPF(" dec#%u len=%u ret=%d\n",
 		      (unsigned)ctx->dec_seq, (unsigned)entry.len, (int)ret);
 
 		/* Notify caller that the stream has been consumed */
@@ -462,6 +498,11 @@ avdk_err_t decode_stream_pipeline_start(decode_stream_pipeline_handle_t handle)
 	if (ret != BK_OK)
 		return ret;
 
+	os_memset(&ctx->diag_push_rate, 0, sizeof(ctx->diag_push_rate));
+	os_memset(&ctx->diag_decode_rate, 0, sizeof(ctx->diag_decode_rate));
+	ctx->diag_push_rate.window_start_ms = rtos_get_time();
+	ctx->diag_decode_rate.window_start_ms = ctx->diag_push_rate.window_start_ms;
+
 	ctx->running = 1;
 
 	/* (Re)run the backend activation policy for the new session (H264:
@@ -547,24 +588,55 @@ avdk_err_t decode_stream_pipeline_push_frame(decode_stream_pipeline_handle_t han
 		.len    = len,
 		.owner  = owner,
 		.ops    = ctx->ops,
+		.meta   = meta,
 	};
 
 	bk_err_t ret = rtos_push_to_queue(&ctx->frame_queue, &entry, BEKEN_NO_WAIT);
 	if (ret != BK_OK)
 	{
-		ctx->ops->on_push_full(ctx, seq, &meta, len);
+		LOGW("%s push fail \n", __func__);
+		/* This frame is lost. Codecs with inter-frame references must
+		 * resync; for the others just keep the loss visible. */
+		if (ctx->ops->on_ref_break != NULL)
+			ctx->ops->on_ref_break(ctx);
+		else
+			LOGW(" %s push qfull len=%u\n", ctx->ops->name, (unsigned)len);
 		return AVDK_ERR_BUSY;
 	}
 
 	/* ---- Diagnostics ---- */
+	dsp_diag_rate_update(&ctx->diag_push_rate);
 	if (classified)
-		ctx->ops->diag_frame(ctx, seq, &meta, len);
+		ctx->ops->diag_frame(ctx, seq, &meta, len,
+				     ctx->diag_push_rate.fps, ctx->diag_decode_rate.fps);
 	else if (seq <= DSP_DIAG_LOG_FIRST_N || (seq % DSP_DIAG_LOG_EVERY_N) == 0U)
 		LOGW("[diag] in#%u unknown frame format len=%u\n",
 		     (unsigned)seq, (unsigned)len);
 
-	LOGPF("[cast] push#%u q+%u\n", (unsigned)seq, (unsigned)len);
+	LOGPF(" push#%u q+%u\n", (unsigned)seq, (unsigned)len);
 	return AVDK_ERR_OK;
+}
+
+bool decode_stream_pipeline_invalidate_reference(decode_stream_pipeline_handle_t handle)
+{
+	struct decode_stream_pipeline_ctx *ctx = handle;
+
+	if (ctx == NULL || ctx->ops == NULL || ctx->ops->on_ref_break == NULL)
+		return false;
+
+	ctx->ops->on_ref_break(ctx);
+	return true;
+}
+
+decode_stream_type_t decode_stream_pipeline_active_type(decode_stream_pipeline_handle_t handle)
+{
+	struct decode_stream_pipeline_ctx *ctx = handle;
+
+	if (ctx == NULL || ctx->ops == NULL)
+		return DECODE_STREAM_TYPE_JPEG;
+
+	return (ctx->ops == &dsp_h264_ops) ? DECODE_STREAM_TYPE_H264
+					  : DECODE_STREAM_TYPE_JPEG;
 }
 
 avdk_err_t decode_stream_pipeline_stop(decode_stream_pipeline_handle_t handle)

@@ -44,9 +44,14 @@ media_video_cfg_t *s_media_video_cfg = NULL;
 
 static volatile uint8_t s_cast_video_alloc_allowed = 0U;
 
+static void media_cast_session_reset(void);
+
 void media_bk_net_cast_video_alloc_gate(int allow)
 {
 	s_cast_video_alloc_allowed = allow ? 1U : 0U;
+	/* Session boundary: forget the previous codec and the request backoff,
+	 * so a stream that starts directly with H264 still asks for an IDR. */
+	media_cast_session_reset();
 }
 
 /*
@@ -176,12 +181,106 @@ bk_err_t media_bk_net_audio_recv(uint8_t *data, uint32_t length)
     return BK_OK;
 }
 
+/*
+ * ------------------------------------------------------------------
+ * Cast loss recovery (H264 only)
+ * ------------------------------------------------------------------
+ * A relayed frame can be lost after it reached this board (buffer pool
+ * exhausted, push rejected). H264 cannot recover from that on its own: every
+ * following P frame references something that was never decoded, which shows
+ * up as smearing until the next IDR. JPEG frames are independent, so a loss
+ * needs no recovery at all.
+ *
+ * Policy (mirrors the doorbell downlink):
+ *   1. tell the pipeline the reference chain is broken -> it drops non-IDR
+ *      frames until the next IDR;
+ *   2. ask the App for an IDR, rate-limited so a persistent failure does not
+ *      flood the control channel (and does not make the App force an IDR on
+ *      every single dropped frame).
+ */
+#define CAST_KEYREQ_INTERVAL_MS       300U
+
+/* JSON-RPC notify, same shape as the doorbell downlink. The method name must
+ * match the App side. Fixed text: the request is only sent while H264 is
+ * active and carries no variable data (reason is always a frame loss). */
+static const char s_keyframe_req_json[] =
+    "{\"jsonrpc\":\"2.0\",\"method\":\"cast.notify.requestKeyFrame\","
+    "\"params\":{\"reason\":\"frameLoss\",\"imageFormat\":\"h264\"}}";
+
+static uint32_t s_keyreq_last_ms;
+static uint32_t s_keyreq_count;
+static uint32_t s_cast_drop_count;
+static cast_codec_t s_cast_last_codec = CAST_CODEC_UNKNOWN;
+
+static void media_cast_session_reset(void)
+{
+	s_cast_last_codec = CAST_CODEC_UNKNOWN;
+	s_keyreq_last_ms = rtos_get_time() - CAST_KEYREQ_INTERVAL_MS;
+}
+
+static void media_cast_request_keyframe(void)
+{
+    uint32_t now = rtos_get_time();
+
+    if ((now - s_keyreq_last_ms) < CAST_KEYREQ_INTERVAL_MS)
+        return;
+
+    int ret = ntwk_trans_ctrl_send((uint8_t *)s_keyframe_req_json,
+                                   sizeof(s_keyframe_req_json) - 1U);
+    /* Rate-limit failures too: with the control channel down, every dropped
+     * frame would otherwise trigger a send attempt. */
+    s_keyreq_last_ms = now;
+
+    if (ret < 0) {
+        static uint32_t s_keyreq_fail;
+        if ((s_keyreq_fail++ % 64U) == 0U)
+            LOGW("keyreq send failed ret=%d total=%u\n", ret, (unsigned)s_keyreq_fail);
+        return;
+    }
+
+    s_keyreq_count++;
+    LOGW("keyreq #%u sent: %s\n", (unsigned)s_keyreq_count, s_keyframe_req_json);
+}
+
+/* Call for every frame this board has to discard. */
+static void media_cast_on_frame_dropped(const char *reason)
+{
+    s_cast_drop_count++;
+
+    /* JPEG: independent frames, nothing to recover and no keyframe request.
+     * notify_ref_break() returns false exactly for that case. */
+    if (!cast_jpeg_pipeline_notify_ref_break())
+        return;
+
+    /* Persist across a whole GOP while waiting for an IDR, so only log the
+     * first drop and then every 64th one. */
+    if ((s_cast_drop_count % 64U) == 0U) {
+        LOGW("cast frame dropped (%s) total=%u, request IDR\n",
+             reason, (unsigned)s_cast_drop_count);
+    }
+    media_cast_request_keyframe();
+}
+
+/* Ask for an IDR as soon as the stream becomes H264 (mid-GOP join would
+ * otherwise stay frozen until the App's next periodic IDR). */
+static void media_cast_track_codec_switch(void)
+{
+    cast_codec_t codec = cast_jpeg_pipeline_active_type();
+
+    if ((codec == CAST_CODEC_H264) && (s_cast_last_codec != CAST_CODEC_H264)) {
+        LOGW("cast codec -> h264, request IDR\n");
+        media_cast_request_keyframe();
+    }
+    s_cast_last_codec = codec;
+}
+
 static uint32_t s_malloc_count = 0;
 frame_buffer_t *media_bk_net_frame_malloc(uint32_t size)
 {
     if (!s_cast_video_alloc_allowed) {
         /* The rx gate normally drops these packets earlier; anything reaching
-         * here is in-flight, so keep the log rate-limited. */
+         * here is in-flight, so keep the log rate-limited. Session teardown is
+         * not a stream loss, so no recovery is triggered. */
         static uint32_t s_denied_count = 0;
         if ((s_denied_count++ % 512U) == 0U) {
             LOGW("frame_malloc: denied (cast alloc gate), size=%u total=%u\n",
@@ -193,6 +292,12 @@ frame_buffer_t *media_bk_net_frame_malloc(uint32_t size)
     frame_buffer_t *fb = media_frame_queue_malloc(size);
     LOGPF("frame_malloc #%u: size=%u, result=%s\n",
          (unsigned)s_malloc_count, (unsigned)size, fb ? "OK" : "FAIL");
+    if (fb == NULL) {
+        /* This is the eof pre-allocation: returning NULL makes the unfragment
+         * layer drop the frame that was just completed. */
+        LOGPF("%s malloc fail \n", __func__);
+        media_cast_on_frame_dropped("malloc");
+    }
     return fb;
 }
 
@@ -214,7 +319,8 @@ bk_err_t media_bk_net_frame_send (frame_buffer_t *data)
     }
 
     s_send_count++;
-    LOGPF("frame_send #%u: len=%u\n", (unsigned)s_send_count, (unsigned)data->length);
+    LOGPF("frame_send #%u: seq=%u len=%u\n", (unsigned)s_send_count,
+         (unsigned)data->sequence, (unsigned)data->length);
 
     data->width = s_media_video_cfg->width;
     data->height = s_media_video_cfg->height;
@@ -224,14 +330,19 @@ bk_err_t media_bk_net_frame_send (frame_buffer_t *data)
     s_media_video_cfg->debug_info.wifi_transfer_frame_size += data->length;
 
     bk_err_t ret = cast_jpeg_pipeline_push_frame_buffer(data);
+    /* The push may have switched the pipeline to H264 even when it is rejected
+     * (admission refuses non-IDR while waiting for one), so track the codec
+     * regardless of the result. */
+    media_cast_track_codec_switch();
     if (ret != BK_OK) {
         /* Backpressure and H264 GOP drops both land here and can persist for a
          * whole GOP, so keep the log rate-limited. */
         static uint32_t s_push_fail_count = 0;
-        if ((s_push_fail_count++ % 128U) == 0U) {
+        if ((s_push_fail_count++ % 64U) == 0U) {
             LOGW("frame_send: cast push rejected, len=%u ret=%d total=%u\n",
-                (unsigned)data->length, (int)ret, (unsigned)s_push_fail_count);
+                 (unsigned)data->length, (int)ret, (unsigned)s_push_fail_count);
         }
+        media_cast_on_frame_dropped("push");
         media_frame_queue_free(data);
         /* Back off so the WiFi recv task does not spin tight on malloc/push. */
         if (ret == BK_ERR_BUSY)

@@ -207,6 +207,29 @@ avdk_err_t decode_stream_pipeline_push_frame(decode_stream_pipeline_handle_t han
 					     void *owner);
 
 /**
+ * @brief Notify the pipeline that a frame was lost upstream.
+ *
+ * The active codec's reference chain is declared broken: H264 drops every
+ * following non-IDR frame (at admission and at the dequeue gate) until the
+ * next IDR is admitted; JPEG is unaffected because its frames are
+ * independent, and this call is then a no-op.
+ *
+ * Intended to be called by the producer when it has to discard a compressed
+ * frame (e.g. the shared buffer pool is exhausted) and by the codec-switch
+ * path. Cheap and lock-free; may be called from the producer thread.
+ *
+ * @return true when the active codec acted on it (H264), false otherwise.
+ */
+bool decode_stream_pipeline_invalidate_reference(decode_stream_pipeline_handle_t handle);
+
+/**
+ * @brief Active codec backend.
+ *
+ * @return DECODE_STREAM_TYPE_H264 or DECODE_STREAM_TYPE_JPEG.
+ */
+decode_stream_type_t decode_stream_pipeline_active_type(decode_stream_pipeline_handle_t handle);
+
+/**
  * @brief Stop the pipeline.
  *
  * Stops accepting new frames and waits for the current frame to finish.

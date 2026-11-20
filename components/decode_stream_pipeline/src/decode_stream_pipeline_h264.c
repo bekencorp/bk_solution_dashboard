@@ -344,6 +344,23 @@ static avdk_err_t dsp_h264_decode_frame(struct decode_stream_pipeline_ctx *ctx,
 					const dsp_frame_entry_t *entry)
 {
 	bk_h264_decode_input_t input;
+	avdk_err_t ret;
+
+#if DSP_H264_GOP_DROP_ENABLE
+	/* Dequeue gate: a frame that was already queued when the chain broke must
+	 * not be decoded either (admission only protects frames pushed after the
+	 * break). Returning DSP_ERR_SKIPPED lets the core release the stream
+	 * buffer right away, which relieves the shared pool while we wait for an
+	 * IDR. */
+	if (ctx->h264.drop_until_idr && !entry->meta.h264.has_idr)
+	{
+		ctx->h264.gop_dropped++;
+		if ((ctx->h264.gop_dropped <= 5U) || ((ctx->h264.gop_dropped % 60U) == 0U))
+			LOGW("h264 dec gate non-IDR (dropped %u since chain break)\n",
+			     (unsigned)ctx->h264.gop_dropped);
+		return DSP_ERR_SKIPPED;
+	}
+#endif
 
 	if (ctx->h264.handle == NULL)
 		return AVDK_ERR_INVAL;
@@ -354,18 +371,42 @@ static avdk_err_t dsp_h264_decode_frame(struct decode_stream_pipeline_ctx *ctx,
 	input.out_buffer      = ctx->ring_buf;
 	input.out_buffer_size = ctx->ring_size;
 
-	return bk_h264_decode_frame(ctx->h264.handle, &input);
+	ret = bk_h264_decode_frame(ctx->h264.handle, &input);
+
+#if DSP_H264_GOP_DROP_ENABLE
+	/* A failed decode breaks the chain. The success path deliberately does
+	 * NOT clear drop_until_idr: clearing happens at IDR admission, and a
+	 * break reported while this frame was decoding refers to a later frame
+	 * in the stream, so clearing here would reopen the gate on a chain that
+	 * is still broken. */
+	if (ret != AVDK_ERR_OK)
+	{
+		if (!ctx->h264.drop_until_idr)
+			LOGW("[cast] h264 decode failed, wait for IDR (dropped=%u)\n",
+			     (unsigned)ctx->h264.gop_dropped);
+		ctx->h264.drop_until_idr = 1;
+	}
+#endif
+
+	return ret;
 }
 
 /* ------------------------------------------------------------------ */
 /* Admission (GOP-aware)                                               */
 /* ------------------------------------------------------------------ */
 /*
- * An IDR decodes standalone, so it both resets the drop state and makes every
- * queued frame stale -- draining there also guarantees the IDR itself gets a
- * slot. A non-IDR frame is only admitted while its reference chain is intact;
- * once a frame has been lost, feeding the decoder the rest of the GOP produces
- * smeared blocks instead of a clean freeze.
+ * An IDR decodes standalone, so it makes every queued frame stale -- draining
+ * there also guarantees the IDR itself gets a slot. A non-IDR frame is only
+ * admitted while its reference chain is intact; once a frame has been lost,
+ * feeding the decoder the rest of the GOP produces smeared blocks instead of a
+ * clean freeze.
+ *
+ * drop_until_idr is cleared here, when the IDR is admitted -- not after it
+ * decodes. The IDR takes hundreds of ms to decode, and the frames that arrive
+ * during that window must still be admitted: rejecting them would break the
+ * chain again right after the resync. If the IDR fails to decode,
+ * dsp_h264_decode_frame sets the flag again and the dequeue gate drops
+ * the frames that were admitted in the meantime.
  */
 static avdk_err_t dsp_h264_admit_frame(struct decode_stream_pipeline_ctx *ctx,
 					const dsp_frame_meta_t *meta)
@@ -409,33 +450,24 @@ static void dsp_h264_on_activate(struct decode_stream_pipeline_ctx *ctx)
 	 * decoder never references frames it never received. A stream that
 	 * starts with SPS/PPS/IDR is unaffected -- the IDR clears this on its
 	 * first admit. */
-	ctx->h264.drop_until_idr = 0;
+	ctx->h264.drop_until_idr = 1;
 	ctx->h264.gop_dropped    = 0;
 }
 
-static void dsp_h264_on_push_full(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-				  const dsp_frame_meta_t *meta, uint32_t len)
+/* A frame was lost, either upstream (the producer could not hand it over) or
+ * locally (the decode queue was full). Every following P frame now references
+ * something that will never be decoded, so hold them until the next IDR. */
+static void dsp_h264_on_ref_break(struct decode_stream_pipeline_ctx *ctx)
 {
 #if DSP_H264_GOP_DROP_ENABLE
-	(void)seq;
-	(void)meta;
-	/* The decoder fell behind far enough to fill the queue. This frame is
-	 * lost, so every following frame references something that never got
-	 * decoded -- drop the rest of the GOP and resync on the next IDR. */
 	if (!ctx->h264.drop_until_idr)
 	{
-		LOGW("[cast] h264 queue full, dropping until next IDR (len=%u)\n",
-		     (unsigned)len);
+		LOGW("[cast] h264 reference chain broken, wait for IDR\n");
 		ctx->h264.drop_until_idr = 1;
 		ctx->h264.gop_dropped    = 0;
 	}
-	ctx->h264.gop_dropped++;
 #else
 	(void)ctx;
-	/* Every local loss is reported individually so it can be subtracted
-	 * from the gap seen at the phone. */
-	LOGW("[cast] h264 push qfull #%u %s len=%u\n",
-	     (unsigned)seq, dsp_h264_frame_kind(&meta->h264), (unsigned)len);
 #endif
 }
 
@@ -448,12 +480,14 @@ static int dsp_h264_parse_meta(const uint8_t *buf, uint32_t len, dsp_frame_meta_
 }
 
 static void dsp_h264_diag_frame(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-				const dsp_frame_meta_t *meta, uint32_t len)
+				const dsp_frame_meta_t *meta, uint32_t len,
+				uint32_t push_fps, uint32_t decode_fps)
 {
 	(void)ctx;
-	LOGPF("[diag] in#%u h264 %s len=%u%s\n",
+	LOGPF("[diag] in#%u h264 %s len=%u%s push_fps=%u dec_fps=%u\n",
 	      (unsigned)seq, dsp_h264_frame_kind(&meta->h264), (unsigned)len,
-	      meta->h264.has_sps ? " +sps" : "");
+	      meta->h264.has_sps ? " +sps" : "",
+	      (unsigned)push_fps, (unsigned)decode_fps);
 }
 
 /* ------------------------------------------------------------------ */
@@ -468,7 +502,7 @@ const dsp_codec_ops_t dsp_h264_ops = {
 	.decode_frame     = dsp_h264_decode_frame,
 	.admit_frame      = dsp_h264_admit_frame,
 	.on_activate      = dsp_h264_on_activate,
-	.on_push_full     = dsp_h264_on_push_full,
+	.on_ref_break     = dsp_h264_on_ref_break,
 	.parse_meta       = dsp_h264_parse_meta,
 	.diag_frame       = dsp_h264_diag_frame,
 };

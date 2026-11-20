@@ -27,7 +27,7 @@
 #define LOGD(...) BK_LOGD(TAG, ##__VA_ARGS__)
 #define LOGV(...) BK_LOGV(TAG, ##__VA_ARGS__)
 
-#define FB_FRAME_QUEUE_MAX_COUNT  (5)
+#define FB_FRAME_QUEUE_MAX_COUNT  (8)
 
 typedef struct
 {

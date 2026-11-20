@@ -110,6 +110,7 @@ typedef struct dsp_frame_entry {
 	uint32_t                    len;
 	void                       *owner;
 	const struct dsp_codec_ops *ops;   /* backend snapshot taken at push time */
+	dsp_frame_meta_t            meta;  /* snapshot taken at push time (dequeue gate) */
 } dsp_frame_entry_t;
 
 /* ------------------------------------------------------------------ */
@@ -121,6 +122,17 @@ struct decode_stream_pipeline_ctx;
  * One codec = one backend. The pipeline core (queue, decode task, GPU, ring)
  * never branches on the codec; everything codec-specific hangs off this table.
  */
+/* decode_frame() may return this to report that codec policy discarded the
+ * frame without decoding it. The core then releases the stream buffer as
+ * DSP_STATUS_FRAME_DROPPED and does not log a decode error. */
+#define DSP_ERR_SKIPPED   ((avdk_err_t)-100)
+
+typedef struct {
+	uint32_t window_start_ms;
+	uint32_t window_frames;
+	uint32_t fps;
+} dsp_diag_rate_t;
+
 typedef struct dsp_codec_ops {
 	const char *name;
 
@@ -137,7 +149,10 @@ typedef struct dsp_codec_ops {
 	void       (*bond_stop)(struct decode_stream_pipeline_ctx *ctx);
 
 	/* Submit one frame to the decoder. Runs on the decode task with
-	 * ctx->codec_lock held. */
+	 * ctx->codec_lock held. May return DSP_ERR_SKIPPED when codec policy
+	 * discards the frame without decoding it (e.g. a non-IDR frame while
+	 * waiting for an IDR); decode failures must be handled by the backend
+	 * itself before returning. */
 	avdk_err_t (*decode_frame)(struct decode_stream_pipeline_ctx *ctx,
 				   const dsp_frame_entry_t *entry);
 
@@ -149,9 +164,13 @@ typedef struct dsp_codec_ops {
 	/* Called once after the backend becomes active. Optional. */
 	void (*on_activate)(struct decode_stream_pipeline_ctx *ctx);
 
-	/* Queue-full policy (what to do when rtos_push_to_queue fails). */
-	void (*on_push_full)(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-			     const dsp_frame_meta_t *meta, uint32_t len);
+	/* A frame was lost, either upstream (the producer could not hand it
+	 * over) or locally (the decode queue was full). Codecs whose frames
+	 * depend on earlier ones use this to stop decoding until the next
+	 * sync point. Optional: JPEG frames are independent, so JPEG leaves
+	 * this NULL -- which is also what tells the caller that no keyframe
+	 * request is needed. */
+	void (*on_ref_break)(struct decode_stream_pipeline_ctx *ctx);
 
 	/* Classify a raw frame for this codec. Returns 1 and fills meta on
 	 * match, 0 otherwise. */
@@ -159,7 +178,8 @@ typedef struct dsp_codec_ops {
 
 	/* Per-frame diagnostics after a successful enqueue. */
 	void (*diag_frame)(struct decode_stream_pipeline_ctx *ctx, uint32_t seq,
-			   const dsp_frame_meta_t *meta, uint32_t len);
+			   const dsp_frame_meta_t *meta, uint32_t len,
+			   uint32_t push_fps, uint32_t decode_fps);
 } dsp_codec_ops_t;
 
 /* Backends implemented in decode_stream_pipeline_{jpeg,h264}.c. */
@@ -214,6 +234,9 @@ struct decode_stream_pipeline_ctx {
 	volatile uint8_t  running;
 	uint32_t          push_seq;
 	uint32_t          dec_seq;
+	uint32_t          dec_gated;        /* frames dropped by the dequeue gate */
+	dsp_diag_rate_t   diag_push_rate;
+	dsp_diag_rate_t   diag_decode_rate;
 };
 
 /* ------------------------------------------------------------------ */

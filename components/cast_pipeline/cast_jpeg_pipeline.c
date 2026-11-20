@@ -589,6 +589,42 @@ bk_err_t cast_jpeg_pipeline_push_frame_buffer(frame_buffer_t *fb)
 	return ret;
 }
 
+cast_codec_t cast_jpeg_pipeline_active_type(void)
+{
+	cast_codec_t type = CAST_CODEC_UNKNOWN;
+
+	if (s_pipeline == NULL || !cast_ops_mutex_ensure())
+		return CAST_CODEC_UNKNOWN;
+
+	rtos_lock_mutex(&s_cast_ops_mutex);
+	if (s_pipeline != NULL) {
+		type = (decode_stream_pipeline_active_type(s_pipeline) == DECODE_STREAM_TYPE_H264)
+		       ? CAST_CODEC_H264 : CAST_CODEC_JPEG;
+	}
+	rtos_unlock_mutex(&s_cast_ops_mutex);
+	return type;
+}
+
+bool cast_jpeg_pipeline_notify_ref_break(void)
+{
+	bool need_idr = false;
+
+	if (s_pipeline == NULL || !cast_ops_mutex_ensure())
+		return false;
+
+	rtos_lock_mutex(&s_cast_ops_mutex);
+	/* H264 -> true (chain invalidated); JPEG -> false (independent frames,
+	 * nothing to recover, so no keyframe request is needed). */
+	if (s_pipeline != NULL)
+		need_idr = decode_stream_pipeline_invalidate_reference(s_pipeline);
+	rtos_unlock_mutex(&s_cast_ops_mutex);
+
+	/* No log here: while waiting for an IDR every rejected frame comes
+	 * through this path. The pipeline logs the 0->1 transition and the media
+	 * layer keeps a rate-limited drop counter. */
+	return need_idr;
+}
+
 bk_err_t cast_jpeg_pipeline_turn_on(bk_display_ctlr_handle_t disp)
 {
 	avdk_err_t                   err;
