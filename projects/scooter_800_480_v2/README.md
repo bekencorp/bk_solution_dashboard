@@ -28,60 +28,65 @@ This project is a Scooter solution based on the BK7258 chip and BK3515NS chip, e
 
 ## 3 Quick Start
 
-### 3.1 Hardware Information
+For source download, the build environment, and general flashing, see
+[BK7258 Two-Wheeler Solution Quick Start](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/get-started/index.html).
+
+Build this project:
+
+```bash
+cd ~/armino/bk_solution_dashboard/projects/scooter_800_480_v2
+make bk7258 SDK_DIR=~/armino/bk_avdk_smp
+```
+
+This project's output:
+
+```text
+build/bk7258/scooter_800_480_v2/package/all-app.bin
+```
+
+Flash that file with the BKFIL steps on the solution Quick Start page. BK3515NS companion flashing is on the same page.
+
+## 4 Usage Instructions
+
+### 4.1 Hardware Information
 - The Two-Wheeled Vehicle Development Board V1.2 20251027 (BK3515NS defaults to using UART1 to connect with BK7258 (UART1 is the first UART marked on the development board))
 - LCD screen: 800x480
 - LCD Adapter Board: v1.1 20251114 (Compatible with CAN function)
 
-.. note::
-    Differences between Two-Wheeled Vehicle Development Board V1.1 20250904 and V1.2 20251027:
-     - On V1.2 20251027 development board, the UART connection between BK7258 and BK3515NS is UART1;
-     - On V1.1 20250904 development board, the UART connection between BK7258 and BK3515NS is UART2.
+> Differences between Two-Wheeled Vehicle Development Board V1.1 20250904 and V1.2 20251027:
+>
+> - On V1.2 20251027 development board, the UART connection between BK7258 and BK3515NS is UART1;
+> - On V1.1 20250904 development board, the UART connection between BK7258 and BK3515NS is UART2.
+>
+> Differences between LCD Adapter Board V1.0 20250905 and V1.1 20251114:
+>
+> - V1.1 20251114 is compatible with CAN function and can only use projects with the V2 suffix;
+> - V1.0 20250905 is not compatible with CAN function and can only use projects without the V2 suffix.
 
-    Differences between LCD Adapter Board V1.0 20250905 and V1.1 20251114:
-     - V1.1 20251114 is compatible with CAN function, can only use projects with V2 suffix;
-     - V1.0 20250905 is not compatible with CAN function, can only use projects without V2 suffix.
+### 4.2 Basic Operation Flow
 
-### 3.2 Compilation and Burning
-
-Please refer to the [Dashboard Solution](../../index.html) for compilation process
-
-Please refer to [Burning Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.0.1/get-started/index.html#burn-code) for burning process
-
-The path of the compiled burning bin file: ``projects/scooter/build/bk7258/scooter/package/all-app.bin``
-
-bk3515ns see: ``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
-
-### 3.3 Basic Operation Flow
-
-For detailed operation flow, please refer to [dashboard_app User Guide](../dashboard_app/index.html).
+For detailed operation flow, please refer to [Dashboard App User Guide](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/software/dashboard_app/index.html).
 
 The mobile app configuration is as follows:
 
-    +---------------+------------+------------+
-    |Mobile Config  |Bluetooth   |WIFI Nav    |
-    +===============+============+============+
-    |Image Width    |800         |480         |
-    +---------------+------------+------------+
-    |Image Height   |480         |320         |
-    +---------------+------------+------------+
-    |Image Quality  |0-100       |0-100       |
-    +---------------+------------+------------+
-    |Rotation Angle |0           |0           |
-    +---------------+------------+------------+
-    |JPEG Convert   |On or Off   |On or Off   |
-    +---------------+------------+------------+
+| Mobile Config | Bluetooth | WIFI Nav |
+| --- | --- | --- |
+| Image Width | 800 | 480 |
+| Image Height | 480 | 320 |
+| Image Quality | 0-100 | 0-100 |
+| Rotation Angle | 0 | 0 |
+| JPEG Convert | On or Off | On or Off |
 
-### 3.4 Basic Usage Scenarios
+### 4.3 Basic Usage Scenarios
 1. Device powers on and displays LVGL interface
 2. Connect to WiFi network, display WiFi image transmission, and switch display from LVGL to WiFi image transmission
 3. Use as audio speaker to play music, use as headset to answer and make calls
 
-## 4 Command Line Interface
+## 5 Command Line Interface
 
 The project provides rich command line interfaces for controlling various functions:
 
-### 4.1 WiFi Control Commands
+### 5.1 WiFi Control Commands
 ```
 // Connect to an existing WiFi network
 ap_cmd test sta [ssid] [password]
@@ -90,7 +95,7 @@ ap_cmd test sta [ssid] [password]
 ap_cmd test ap [ssid] [password]
 ```
 
-### 4.2 Display Switching Commands
+### 5.2 Display Switching Commands
 ```
 // Switch to LVGL interface display
 ap_cmd test switch lvgl
@@ -99,7 +104,7 @@ ap_cmd test switch lvgl
 ap_cmd test switch wifi
 ```
 
-### 4.3 Video Server Control Commands
+### 5.3 Video Server Control Commands
 ```
 // Open video server
 ap_cmd test video_server open
@@ -108,7 +113,7 @@ ap_cmd test video_server open
 ap_cmd test video_server close
 ```
 
-### 4.4 Bluetooth Control Commands
+### 5.4 Bluetooth Control Commands
 - Can only be used after successful connection with mobile phone
 
 ```
@@ -147,18 +152,18 @@ headset pair_mode
 
 ```
 
-## 5 API Reference
+## 6 API Reference
 
-### 5.1 Frame Buffer Queue Management API
+### 6.1 Frame Buffer Queue Management API
 
 This section describes the frame buffer queue management API in the scooter project. The project uses two types of frame buffer queues:
 
 1. frame_buffer_que：use to manage UVC camera output images and H.264 encoded images; UVC images will be decoded and H.264 encoded, and finally stored on the SD card
 2. media_data_process_que：use to manage images received over WiFi during navigation; these images will be decoded and displayed on the LCD screen
 
-#### 5.1.1 frame_buffer_que
+#### 6.1.1 frame_buffer_que
 
-##### 5.1.1.1 frame_queue_init_all
+##### 6.1.1.1 frame_queue_init_all
 ```c
 /**
  * @brief Initialize all frame queue data structures
@@ -168,7 +173,7 @@ This section describes the frame buffer queue management API in the scooter proj
 bk_err_t frame_queue_init_all(void);
 ```
 
-##### 5.1.1.2 frame_queue_deinit_all
+##### 6.1.1.2 frame_queue_deinit_all
 ```c
 /**
  * @brief Deinitialize all frame queue data structures
@@ -178,7 +183,7 @@ bk_err_t frame_queue_init_all(void);
 bk_err_t frame_queue_deinit_all(void);
 ```
 
-##### 5.1.1.3 frame_queue_malloc
+##### 6.1.1.3 frame_queue_malloc
 ```c
 /**
  * @brief Allocate a frame buffer
@@ -190,7 +195,7 @@ bk_err_t frame_queue_deinit_all(void);
 frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 ```
 
-##### 5.1.1.4 frame_queue_get_frame
+##### 6.1.1.4 frame_queue_get_frame
 ```c
 /**
  * @brief Get a frame buffer from the ready queue
@@ -202,7 +207,7 @@ frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 ```
 
-##### 5.1.1.5 frame_queue_complete
+##### 6.1.1.5 frame_queue_complete
 ```c
 /**
  * @brief Return a frame buffer to the ready queue
@@ -214,7 +219,7 @@ frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 ```
 
-##### 5.1.1.6 frame_queue_free
+##### 6.1.1.6 frame_queue_free
 ```c
 /**
  * @brief Free a frame buffer and send message to free queue
@@ -225,9 +230,9 @@ bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 ```
 
-#### 5.1.2 media_data_process_que
+#### 6.1.2 media_data_process_que
 
-##### 5.1.2.1 media_frame_queue_init
+##### 6.1.2.1 media_frame_queue_init
 ```c
 /**
  * @brief Initialize frame_queue data structure
@@ -242,7 +247,7 @@ void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 avdk_err_t media_frame_queue_init(image_format_t format);
 ```
 
-##### 5.1.2.2 media_frame_queue_deinit
+##### 6.1.2.2 media_frame_queue_deinit
 ```c
 /**
  * @brief Deinitialize frame_queue data structure
@@ -256,7 +261,7 @@ avdk_err_t media_frame_queue_init(image_format_t format);
 avdk_err_t media_frame_queue_deinit(void);
 ```
 
-##### 5.1.2.3 media_frame_queue_malloc
+##### 6.1.2.3 media_frame_queue_malloc
 ```c
 /**
  * @brief Allocate a frame buffer from the frame_queue
@@ -271,7 +276,7 @@ avdk_err_t media_frame_queue_deinit(void);
 frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 ```
 
-##### 5.1.2.4 media_frame_queue_get_frame
+##### 6.1.2.4 media_frame_queue_get_frame
 ```c
 /**
  * @brief Get a frame buffer from the ready queue
@@ -286,7 +291,7 @@ frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 ```
 
-##### 5.1.2.5 media_frame_queue_complete
+##### 6.1.2.5 media_frame_queue_complete
 ```c
 /**
  * @brief Return a frame buffer to the ready queue
@@ -301,7 +306,7 @@ frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 avdk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 ```
 
-##### 5.1.2.6 media_frame_queue_free
+##### 6.1.2.6 media_frame_queue_free
 ```c
 /**
  * @brief Free a frame buffer and send message to free queue
@@ -314,9 +319,9 @@ avdk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 void media_frame_queue_free(frame_buffer_t *frame);
 ```
 
-### 5.2 LVGL Application API
+### 6.2 LVGL Application API
 
-#### 5.2.1 lvgl_app_init
+#### 6.2.1 lvgl_app_init
 ```c
 /**
  * @brief Initialize LVGL application
@@ -325,7 +330,7 @@ void media_frame_queue_free(frame_buffer_t *frame);
 void lvgl_app_init(void);
 ```
 
-#### 5.2.2 lvgl_app_deinit
+#### 6.2.2 lvgl_app_deinit
 ```c
 /**
  * @brief Deinitialize LVGL application
@@ -335,7 +340,7 @@ void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
 ```
 
-#### 5.2.3 lvgl_app_suspend_display
+#### 6.2.3 lvgl_app_suspend_display
 ```c
 /**
  * @brief Suspend LVGL display
@@ -345,7 +350,7 @@ bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 ```
 
-#### 5.2.4 lvgl_app_resume_display
+#### 6.2.4 lvgl_app_resume_display
 ```c
 /**
  * @brief Resume LVGL display
@@ -355,7 +360,7 @@ bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 ```
 
-### 5.3 Navigation Application API
+### 6.3 Navigation Application API
 
 For streaming navigation, the basic flow is as follows:
 
@@ -366,17 +371,16 @@ For streaming navigation, the basic flow is as follows:
 5. Display navigation information on LCD
 6. End navigation service
 
-.. note::
-    This solution is based on a custom data transmission protocol and navigation data format. Users can customize the navigation data format and corresponding unpacking process.
+> This solution is based on a custom data transmission protocol and navigation data format. Users can customize the navigation data format and corresponding unpacking process.
 
-#### 5.3.1 Start Navigation Service
+#### 6.3.1 Start Navigation Service
 
 Starting the navigation service includes the following aspects:
 
 1. Initialize the navigation service, prepare to receive navigation data, start the navigation data receiving thread, and listen to the navigation data port
 2. Initialize the decoding service, prepare to read navigation complete frame data, start the decoding thread, and switch the LVGL display to navigation display
 
-##### 5.3.1.1 Initialize Receiving Thread
+##### 6.3.1.1 Initialize Receiving Thread
 ```c
 /**
  * @brief Initialize video data processing thread
@@ -389,7 +393,7 @@ Starting the navigation service includes the following aspects:
 avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format_t format);
 ```
 
-##### 5.3.1.2 Initialize Decoding Thread
+##### 6.3.1.2 Initialize Decoding Thread
 ```c
 /**
  * @brief Initialize JPEG decoding manager
@@ -403,7 +407,7 @@ avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format
 avdk_err_t av_server_jpeg_decode_manager_turn_on(uint32_t queue_size, uint32_t thread_priority, uint32_t stack_size, image_format_t output_format);
 ```
 
-#### 5.3.2 Receive Navigation Data
+#### 6.3.2 Receive Navigation Data
 ```c
 /**
  * @brief Handle video data receive complete callback
@@ -416,11 +420,11 @@ avdk_err_t av_server_jpeg_decode_manager_turn_on(uint32_t queue_size, uint32_t t
 uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_type_t type);
 ```
 
-#### 5.3.3 Navigation Complete Frame Data Management
+#### 6.3.3 Navigation Complete Frame Data Management
 
 Navigation complete frame data management is implemented by the `media_frame_queue_` series functions above. The navigation complete frame data queue needs to be initialized before starting navigation.
 
-#### 5.3.4 Close Navigation Service
+#### 6.3.4 Close Navigation Service
 
 In cases where network disconnection is not a concern, closing the navigation service requires the following steps:
 
@@ -428,7 +432,7 @@ In cases where network disconnection is not a concern, closing the navigation se
 2. Close the JPEG decoding manager
 3. Release the navigation complete frame data queue
 
-##### 5.3.4.1 Release Navigation Receiving Thread
+##### 6.3.4.1 Release Navigation Receiving Thread
 ```c
 /**
  * @brief Close video data processing thread
@@ -438,7 +442,7 @@ In cases where network disconnection is not a concern, closing the navigation se
 avdk_err_t video_data_process_close(void);
 ```
 
-##### 5.3.4.2 Close Decoding Thread
+##### 6.3.4.2 Close Decoding Thread
 ```c
 /**
  * @brief Close JPEG decoding manager
@@ -448,11 +452,11 @@ avdk_err_t video_data_process_close(void);
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-##### 5.3.4.3 Release Navigation Complete Frame Data Queue
+##### 6.3.4.3 Release Navigation Complete Frame Data Queue
 
 Release navigation complete frame data queue is implemented by the `media_frame_queue_deinit` function.
 
-## 6 Notes
+## 7 Notes
 
 1. Ensure the phone and device are on the same WiFi network segment
 2. Device IP address can be viewed through serial commands
@@ -463,7 +467,7 @@ Release navigation complete frame data queue is implemented by the `media_frame_
 7. When modifying WiFi name and password, ensure compliance with WiFi specifications
 8. BK7258 default uses GPIO_28 to control USB LDO, pull high to power on, note GPIO conflict issues
 
-## 7 System Architecture
+## 8 System Architecture
 
 The project adopts a modular design, mainly including the following modules:
 
@@ -476,12 +480,12 @@ Each module interacts through clear API interfaces, ensuring system maintainabil
 
 
 
-## 8 Important Processes
+## 9 Important Processes
 
 Key processes in this project
 
-### 8.1 Bluetooth
-#### 8.1.1 A2DP/AVRCP Initialization
+### 9.1 Bluetooth
+#### 9.1.1 A2DP/AVRCP Initialization
 Initialize A2DP in a2dp_sink_demo_init:
 
 ```c
@@ -542,7 +546,7 @@ ret = bk_bt_a2dp_set_cap(1, &cap);
 bk_bt_a2dp_sink_register_data_callback(&bt_audio_sink_media_data_ind);
 ```
 
-### 8.1.2 A2DP Callback Processing
+### 9.1.2 A2DP Callback Processing
 Process in previously registered bk_bt_app_a2dp_sink_cb:
 
 ```c
@@ -644,7 +648,7 @@ default:
 }
 ```
 
-### 8.1.3 A2DP Audio Data Callback Processing
+### 9.1.3 A2DP Audio Data Callback Processing
 Don't process audio data directly in bt_audio_sink_media_data_ind, but send message to bt_audio_sink_demo_main for processing:
 
 ```c
@@ -741,7 +745,7 @@ static void bt_audio_sink_demo_main(void *arg)
 }
 ```
 
-### 8.1.4 AVRCP Callback Processing
+### 9.1.4 AVRCP Callback Processing
 AVRCP CT
 
 ```c
@@ -837,10 +841,10 @@ static void avrcp_tg_cb(bk_avrcp_tg_cb_event_t event, bk_avrcp_tg_cb_param_t *pa
 }
 ```
 
-### 8.1.5 AVRCP Active Control
+### 9.1.5 AVRCP Active Control
 Call bk_bt_app_avrcp_ct_xxx
 
-### 8.1.6 HFP Initialization
+### 9.1.6 HFP Initialization
 
 ```c
 int hfp_hf_demo_init(uint8_t msbc_supported)
@@ -874,7 +878,7 @@ int hfp_hf_demo_init(uint8_t msbc_supported)
 }
 ```
 
-### 8.1.7 HFP Callback Processing
+### 9.1.7 HFP Callback Processing
 
 ```c
 static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_cb_param_t *param)
@@ -1082,10 +1086,10 @@ static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_
 }
 ```
 
-### 8.1.8 HFP Downstream Data Processing
+### 9.1.8 HFP Downstream Data Processing
 Similar to A2DP audio data callback processing, but the data format is PCM.
 
-### 8.1.9 HFP Upstream Data Processing
+### 9.1.9 HFP Upstream Data Processing
 When BT_AUDIO_VOICE_START_MSG is received, first start blue audio recorder, then call mic_task_init to start mic_task task, read data (currently PCM) from blue audio recorder
 
 ```c
@@ -1159,7 +1163,7 @@ static void mic_task(void *arg)
 
 ```
 
-## 9 Configuration Instructions
+## 10 Configuration Instructions
 
 The main configuration options of the project are located in the Kconfig file. Specific functions can be enabled or disabled by modifying the configuration:
 
@@ -1181,9 +1185,9 @@ The main configuration options of the project are located in the Kconfig file. S
 
 For detailed configuration instructions, please refer to the Kconfig file.
 
-## 10 Troubleshooting
+## 11 Troubleshooting
 
-### 10.1 Common Issues and Solutions
+### 11.1 Common Issues and Solutions
 
 1. **WiFi Connection Failure**
 

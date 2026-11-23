@@ -28,60 +28,65 @@
 
 ## 3 快速开始
 
-### 3.1 硬件信息
+取码、编译环境和通用烧录见
+[BK7258 两轮车方案快速入门](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/get-started/index.html)。
+
+本工程编译：
+
+```bash
+cd ~/armino/bk_solution_dashboard/projects/scooter_480_272_v2
+make bk7258 SDK_DIR=~/armino/bk_avdk_smp
+```
+
+本工程产物：
+
+```text
+build/bk7258/scooter_480_272_v2/package/all-app.bin
+```
+
+将该文件按方案快速入门中的 BKFIL 步骤烧录。BK3515NS 从控烧录见同一页。
+
+## 4 使用说明
+
+### 4.1 硬件信息
 - 两轮车方案开发板V1.2 20251027（BK3515NS默认使用UART1与BK7258连接（开发板上从UART1开始标记））
 - LCD屏幕：480x272
 - LCD转接板：v1.1 20251114(兼容CAN功能)
 
-.. note::
-    两轮车方案开发板V1.1 20250904和V1.2 20251027的差异：
-     - V1.2 20251027开发板上BK7258和BK3515NS的连接串口使用UART1；
-     - V1.1 20250904开发板上BK7258和BK3515NS的连接串口使用UART2。
+> 两轮车方案开发板 V1.1 20250904 和 V1.2 20251027 的差异：
+>
+> - V1.2 20251027 开发板上 BK7258 和 BK3515NS 的连接串口使用 UART1；
+> - V1.1 20250904 开发板上 BK7258 和 BK3515NS 的连接串口使用 UART2。
+>
+> LCD 转接板 V1.0 20250905 和 V1.1 20251114 的差异：
+>
+> - V1.1 20251114 兼容 CAN 功能，只能使用后缀名带 V2 的工程；V1.0 20250905 不兼容 CAN 功能，只能使用后缀名不带 V2 的工程。
 
-    LCD转接板V1.0 20250905和V1.1 20251114的差异：
-     - V1.1 20251114兼容CAN功能，只能使用后缀名带V2的工程，V1.0 20250905不兼容CAN功能，只能使用后缀名不带V2的工程。
+### 4.2 基本操作流程
 
-### 3.2 编译和烧录
-
-编译流程参考 `Dashboard 解决方案 <../../index.html>`_
-
-烧录流程参考 `烧录代码 <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.0.1/get-started/index.html#id7>`_
-
-编译生成的烧录bin文件路径：``projects/scooter/build/bk7258/scooter/package/all-app.bin``
-
-BK3515NS参见：``https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html#id6``
-
-### 3.3 基本操作流程
-
-详细操作流程请参考 `dashboard_app使用指南 <../dashboard_app/index.html>`_ 。
+详细操作流程请参考 [Dashboard App 使用指南](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/software/dashboard_app/index.html)。
 
 手机APP配置参数如下：
 
-    +----------------+------------+------------+
-    | 手机参数配置   | 蓝牙导航   | WIFI导航   |
-    +================+============+============+
-    | 图像宽度       | 265        | 480        |
-    +----------------+------------+------------+
-    | 图像高度       | 195        | 272        |
-    +----------------+------------+------------+
-    | 图像质量       | 0-100      | 0-100      |
-    +----------------+------------+------------+
-    | 旋转角度       | 0          | 0          |
-    +----------------+------------+------------+
-    | JPEG转换       | 必须关闭   | 必须关闭   |
-    +----------------+------------+------------+
+| 手机参数配置 | 蓝牙导航 | WIFI导航 |
+| --- | --- | --- |
+| 图像宽度 | 265 | 480 |
+| 图像高度 | 195 | 272 |
+| 图像质量 | 0-100 | 0-100 |
+| 旋转角度 | 0 | 0 |
+| JPEG转换 | 必须关闭 | 必须关闭 |
 
 
-### 3.4 基本使用场景
+### 4.3 基本使用场景
 1. 设备开机，显示lvgl界面
 2. 连接到WiFi网络，显示wifi图传图像，同时将显示从lvgl切换到wifi图传，
 3. 当做音响播放音乐，当做耳机接听拨打电话
 
-## 4 命令行接口
+## 5 命令行接口
 
 项目提供了丰富的命令行接口，用于控制各种功能：
 
-### 4.1 WiFi控制命令
+### 5.1 WiFi控制命令
 ```
 // 连接到现有WiFi网络
 ap_cmd test sta [ssid] [password]
@@ -90,7 +95,7 @@ ap_cmd test sta [ssid] [password]
 ap_cmd test ap [ssid] [password]
 ```
 
-### 4.2 显示切换命令
+### 5.2 显示切换命令
 ```
 // 切换到LVGL界面显示
 ap_cmd test switch lvgl
@@ -99,7 +104,7 @@ ap_cmd test switch lvgl
 ap_cmd test switch wifi
 ```
 
-### 4.3 视频服务器控制命令
+### 5.3 视频服务器控制命令
 ```
 // 打开视频服务器
 ap_cmd test video_server open
@@ -108,7 +113,7 @@ ap_cmd test video_server open
 ap_cmd test video_server close
 ```
 
-### 4.4 蓝牙控制命令
+### 5.4 蓝牙控制命令
 - 必须和手机连接成功才能使用
 
 ```
@@ -147,18 +152,18 @@ headset pair_mode
 
 ```
 
-## 5 API参考
+## 6 API参考
 
-### 5.1 帧缓冲区队列管理API
+### 6.1 帧缓冲区队列管理API
 
 本方案中存在两种帧缓冲区队列：
 
 1. frame_buffer_que：用于管理UVC摄像头输出的图像，和H264编码输出的图像；这里面UVC的图像会被解码后，经过H264编码成H264图像，最终可以存储到SD卡上
 2. media_data_process_que：用于管理导航时wif收到的图像，这里的图像会被用来解码显示到LCD屏幕上
 
-#### 5.1.1 frame_buffer_que
+#### 6.1.1 frame_buffer_que
 
-##### 5.1.1.1 frame_queue_init_all
+##### 6.1.1.1 frame_queue_init_all
 ```c
 /**
  * @brief 初始化所有帧队列数据结构
@@ -168,7 +173,7 @@ headset pair_mode
 bk_err_t frame_queue_init_all(void);
 ```
 
-##### 5.1.1.2 frame_queue_deinit_all
+##### 6.1.1.2 frame_queue_deinit_all
 ```c
 /**
  * @brief 反初始化所有帧队列数据结构
@@ -178,7 +183,7 @@ bk_err_t frame_queue_init_all(void);
 bk_err_t frame_queue_deinit_all(void);
 ```
 
-##### 5.1.1.3 frame_queue_malloc
+##### 6.1.1.3 frame_queue_malloc
 ```c
 /**
  * @brief 分配帧缓冲区
@@ -190,7 +195,7 @@ bk_err_t frame_queue_deinit_all(void);
 frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 ```
 
-##### 5.1.1.4 frame_queue_get_frame
+##### 6.1.1.4 frame_queue_get_frame
 ```c
 /**
  * @brief 从就绪队列获取帧缓冲区
@@ -202,7 +207,7 @@ frame_buffer_t *frame_queue_malloc(image_format_t format, uint32_t size);
 frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 ```
 
-##### 5.1.1.5 frame_queue_complete
+##### 6.1.1.5 frame_queue_complete
 ```c
 /**
  * @brief 将帧缓冲区返回就绪队列
@@ -214,7 +219,7 @@ frame_buffer_t *frame_queue_get_frame(image_format_t format, uint32_t timeout);
 bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 ```
 
-##### 5.1.1.6 frame_queue_free
+##### 6.1.1.6 frame_queue_free
 ```c
 /**
  * @brief 释放帧缓冲区并发送消息到空闲队列
@@ -225,9 +230,9 @@ bk_err_t frame_queue_complete(image_format_t format, frame_buffer_t *frame);
 void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 ```
 
-#### 5.1.2 media_data_process_que
+#### 6.1.2 media_data_process_que
 
-##### 5.1.2.1 media_frame_queue_init
+##### 6.1.2.1 media_frame_queue_init
 ```c
 /**
  * @brief 初始化frame_queue数据结构
@@ -242,7 +247,7 @@ void frame_queue_free(image_format_t format, frame_buffer_t *frame);
 avdk_err_t media_frame_queue_init(image_format_t format);
 ```
 
-##### 5.1.2.2 media_frame_queue_deinit
+##### 6.1.2.2 media_frame_queue_deinit
 ```c
 /**
  * @brief 释放frame_queue数据结构
@@ -252,7 +257,7 @@ avdk_err_t media_frame_queue_init(image_format_t format);
 avdk_err_t media_frame_queue_deinit(void);
 ```
 
-##### 5.1.2.3 media_frame_queue_malloc
+##### 6.1.2.3 media_frame_queue_malloc
 ```c
 /**
  * @brief 从frame_queue中申请一个frame_buffer
@@ -263,7 +268,7 @@ avdk_err_t media_frame_queue_deinit(void);
 frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 ```
 
-##### 5.1.2.4 media_frame_queue_get_frame
+##### 6.1.2.4 media_frame_queue_get_frame
 ```c
 /**
  * @brief 从frame_queue的ready队列中获取一个frame_buffer
@@ -274,7 +279,7 @@ frame_buffer_t *media_frame_queue_malloc(uint32_t size);
 frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 ```
 
-##### 5.1.2.5 media_frame_queue_complete
+##### 6.1.2.5 media_frame_queue_complete
 ```c
 /**
  * @brief 将frame_buffer放回ready_que队列
@@ -285,7 +290,7 @@ frame_buffer_t *media_frame_queue_get_frame(uint32_t timeout);
 bk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 ```
 
-##### 5.1.2.6 media_frame_queue_free
+##### 6.1.2.6 media_frame_queue_free
 ```c
 /**
  * @brief 根据图像格式释放frame_buffer，并将消息发送到free_que
@@ -296,9 +301,9 @@ bk_err_t media_frame_queue_complete(frame_buffer_t *frame);
 void media_frame_queue_free(frame_buffer_t *frame);
 ```
 
-### 5.2 LVGL应用API
+### 6.2 LVGL应用API
 
-#### 5.2.1 lvgl_app_init
+#### 6.2.1 lvgl_app_init
 ```c
 /**
  * @brief 初始化LVGL应用
@@ -307,7 +312,7 @@ void media_frame_queue_free(frame_buffer_t *frame);
 void lvgl_app_init(void);
 ```
 
-#### 5.2.2 lvgl_app_deinit
+#### 6.2.2 lvgl_app_deinit
 ```c
 /**
  * @brief 反初始化LVGL应用
@@ -317,7 +322,7 @@ void lvgl_app_init(void);
 bk_err_t lvgl_app_deinit(void);
 ```
 
-#### 5.2.3 lvgl_app_suspend_display
+#### 6.2.3 lvgl_app_suspend_display
 ```c
 /**
  * @brief 暂停LVGL显示
@@ -327,7 +332,7 @@ bk_err_t lvgl_app_deinit(void);
 bk_err_t lvgl_app_suspend_display(void);
 ```
 
-#### 5.2.4 lvgl_app_resume_display
+#### 6.2.4 lvgl_app_resume_display
 ```c
 /**
  * @brief 恢复LVGL显示
@@ -337,7 +342,7 @@ bk_err_t lvgl_app_suspend_display(void);
 bk_err_t lvgl_app_resume_display(void);
 ```
 
-### 5.3 导航应用API
+### 6.3 导航应用API
 
 针对流媒体来说导航的基本流程如下：
 
@@ -348,17 +353,16 @@ bk_err_t lvgl_app_resume_display(void);
 5. LCD上显示导航信息
 6. 结束导航服务
 
-.. note::
-    本解决方案是基于自定义的数据传输协议和导航数据格式的，用户可以自定义导航的数据格式和对应的解包流程
+> 本解决方案是基于自定义的数据传输协议和导航数据格式的，用户可以自定义导航的数据格式和对应的解包流程。
 
-#### 5.3.1 启动导航服务
+#### 6.3.1 启动导航服务
 
 启动导航服务包含两个方面：
 
 1. 初始化导航服务，准备接收导航数据，启动导航数据接收线程，监听导航数据端口
 2. 初始化解码服务，准备读取导航完整帧数据，启动解码线程，将LVGL显示切换到导航显示
 
-##### 5.3.1.1 初始化接收线程
+##### 6.3.1.1 初始化接收线程
 ```c
 /**
  * @brief 初始化视频数据处理线程
@@ -371,7 +375,7 @@ bk_err_t lvgl_app_resume_display(void);
 avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format_t format);
 ```
 
-##### 5.3.1.2 初始化解码线程
+##### 6.3.1.2 初始化解码线程
 ```c
 /**
  * @brief 启动JPEG解码管理器
@@ -386,7 +390,7 @@ avdk_err_t video_data_process_open(uint16_t width, uint16_t height, image_format
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-#### 5.3.2 接收导航数据
+#### 6.3.2 接收导航数据
 ```c
 /**
  * @brief 处理视频数据接收完成回调
@@ -399,11 +403,11 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_type_t type);
 ```
 
-#### 5.3.3 导航完整帧数据管理
+#### 6.3.3 导航完整帧数据管理
 
 导航完整的帧数据管理是由上面 `media_frame_queue_` 系列函数实现的，在导航开始之前需要初始化导航完整帧数据队列。
 
-#### 5.3.4 关闭导航
+#### 6.3.4 关闭导航
 
 在不考虑网络连接是否要断开的情况下，关闭导航服务需要执行以下步骤：
 
@@ -411,7 +415,7 @@ uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_
 2. 关闭JPEG解码管理器
 3. 释放导航完整帧数据队列
 
-##### 5.3.4.1 释放导航接收线程
+##### 6.3.4.1 释放导航接收线程
 
 ```c
 /**
@@ -422,7 +426,7 @@ uint32_t video_data_receive_complete(uint8_t *data, uint32_t length, video_send_
 avdk_err_t video_data_process_close(void);
 ```
 
-##### 5.3.4.2 关闭解码线程
+##### 6.3.4.2 关闭解码线程
 ```c
 /**
  * @brief 关闭JPEG解码管理器
@@ -437,11 +441,11 @@ avdk_err_t video_data_process_close(void);
 avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 ```
 
-##### 5.3.4.3 释放导航完整帧数据队列
+##### 6.3.4.3 释放导航完整帧数据队列
 
 释放导航完整帧数据队列是由上面 `media_frame_queue_deinit` 函数实现的
 
-## 6 注意事项
+## 7 注意事项
 
 1. 确保手机与设备在同一WiFi网段
 2. 设备IP地址可通过串口命令查看
@@ -452,7 +456,7 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 7. 修改WiFi名称和密码时，确保符合WiFi规范
 8. BK7258默认使用GPIO_28控制USB的LDO，拉高上电，注意GPIO冲突问题
 
-## 7 系统架构
+## 8 系统架构
 
 项目采用模块化设计，主要包含以下模块：
 
@@ -463,12 +467,12 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
 
 各模块之间通过明确的API接口进行交互，保证了系统的可维护性和扩展性。
 
-## 8 重要流程
+## 9 重要流程
 
 本工程重要流程
 
-### 8.1 蓝牙
-### 8.1.1 a2dp/avrcp 初始化
+### 9.1 蓝牙
+### 9.1.1 a2dp/avrcp 初始化
 在a2dp_sink_demo_init中对a2dp进行初始化：
 
 ```c
@@ -529,7 +533,7 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
    bk_bt_a2dp_sink_register_data_callback(&bt_audio_sink_media_data_ind);
 ```
 
-### 8.1.2 a2dp回调处理
+### 9.1.2 a2dp回调处理
 在先前注册的bk_bt_app_a2dp_sink_cb里处理：
 
 ```c
@@ -632,7 +636,7 @@ avdk_err_t av_server_jpeg_decode_manager_turn_off(void);
    }
 ```
 
-### 8.1.3 a2dp音频数据回调处理
+### 9.1.3 a2dp音频数据回调处理
 在bt_audio_sink_media_data_ind里不直接处理音频数据，而是发送消息至bt_audio_sink_demo_main处理
 
 ```c
@@ -730,7 +734,7 @@ static void bt_audio_sink_demo_main(void *arg)
 }
 ```
 
-### 8.1.4 avrcp回调处理
+### 9.1.4 avrcp回调处理
 avrcp ct
 
 ```c
@@ -826,10 +830,10 @@ static void avrcp_tg_cb(bk_avrcp_tg_cb_event_t event, bk_avrcp_tg_cb_param_t *pa
 }
 ```
 
-### 8.1.5 avrcp主动控制
+### 9.1.5 avrcp主动控制
 调用bk_bt_app_avrcp_ct_xxx
 
-### 8.1.6 hfp初始化
+### 9.1.6 hfp初始化
 
 ```c
 int hfp_hf_demo_init(uint8_t msbc_supported)
@@ -863,7 +867,7 @@ int hfp_hf_demo_init(uint8_t msbc_supported)
 }
 ```
 
-### 8.1.7 hfp回调处理
+### 9.1.7 hfp回调处理
 
 ```c
 static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_cb_param_t *param)
@@ -1071,10 +1075,10 @@ static void bk_bt_app_hfp_client_cb(bk_hf_client_cb_event_t event, bk_hf_client_
 }
 ```
 
-### 8.1.8 hfp下行数据处理
+### 9.1.8 hfp下行数据处理
 同a2dp音频数据回调处理，只不过数据格式是pcm
 
-### 8.1.9 hfp上行数据处理
+### 9.1.9 hfp上行数据处理
 当收到BT_AUDIO_VOICE_START_MSG时，先开启blue audio recorder，再调用mic_task_init，开启mic_task task，从blue audio recorder读取数据(当前是pcm)
 
 ```c
@@ -1149,7 +1153,7 @@ static void mic_task(void *arg)
 ```
 
 
-## 9 配置说明
+## 10 配置说明
 
 项目的主要配置选项位于Kconfig文件中，可以通过修改配置来启用或禁用特定功能：
 
@@ -1169,9 +1173,9 @@ static void mic_task(void *arg)
 - CONFIG_BLUETOOTH_BSC_INIT_BAUD: 外接第二蓝牙controller，初始化时波特率
 - CONFIG_BLUETOOTH_BSC_NEGO_BAUD: 外接第二蓝牙controller，协商后的波特率，用于加大吞吐
 
-## 10 故障排除
+## 11 故障排除
 
-### 10.1 常见问题及解决方案
+### 11.1 常见问题及解决方案
 
 1. **WiFi连接失败**
 
