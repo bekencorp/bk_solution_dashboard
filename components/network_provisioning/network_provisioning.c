@@ -23,6 +23,9 @@
 #include "bk_wifi_types.h"
 #include "bk_cli.h"
 #include "os/str.h"
+#include "os/mem.h"
+#include "os/os.h"
+#include <components/system.h>
 #include "components/log.h"
 #include "cli.h"
 #include "cJSON.h"
@@ -42,6 +45,7 @@
 #include "network_provisioning.h"
 #include "wifi_boarding_demo_service.h"
 #include "wifi_boarding_demo.h"
+#include "ble_ota.h"
 #define TAG "np_demo"
 
 #define LOGI(...) BK_LOGI(TAG, ##__VA_ARGS__)
@@ -53,6 +57,7 @@
 //bk_ble_provisioning_event_notify_with_data
 static void (*s_send)(uint16_t opcode, int status);
 static void (*s_send_data)(uint16_t opcode, int status, char *payload, uint16_t length);
+static f_ota_t *s_ble_ota = NULL;
 static navigation_type_t navigation_type = NAVIGATION_TYPE_WIFI;
 static bool s_casting_active = false;
 //static uint8_t s_reg_method;
@@ -693,6 +698,120 @@ static void bk_sl_np_ble_msg_handle_demo_cb(ble_prov_msg_t *msg)
         case BOARDING_OP_NAVIGATION_TYPE_CONTROL:
         {
             handle_navigation_type_control_msg((uint8_t *)msg->param, (uint16_t)msg->length);
+        }
+        break;
+
+        case BOARDING_OP_OTA_START_DOWNLOAD:
+        {
+            LOGW("start ota dl!\r\n");
+            OTA_MALLOC_WITHOUT_RETURN(s_ble_ota, sizeof(f_ota_t));
+            OTA_MALLOC_WITHOUT_RETURN(s_ble_ota->magic_code, OTA_START_MAGIC_LENGTH);
+            if(msg->length == (OTA_START_MAGIC_LENGTH + OTA_STORE_ENTIRE_IMAGE_SIZE))
+            {
+                os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg->param) , OTA_START_MAGIC_LENGTH);
+                if(os_memcmp(s_ble_ota->magic_code, OTA_START_MAGIC, OTA_START_MAGIC_LENGTH) == 0)
+                {
+                    os_memcpy(&(s_ble_ota->image_size), (uint8_t *)(msg->param + OTA_START_MAGIC_LENGTH) , OTA_STORE_ENTIRE_IMAGE_SIZE);
+                    LOGW("ota_image_size :0x%x!\r\n", s_ble_ota->image_size);
+                    if(f_ota_fun_ptr->init(s_ble_ota) == BK_OK)
+                    {
+                        s_ble_ota->ota_type = OTA_TYPE_BLE;
+                        if(s_send) s_send(BOARDING_OP_OTA_START_DOWNLOAD, F_OTA_COMM_OK);
+                    }
+                    else
+                    {
+                        if(s_send) s_send(BOARDING_OP_OTA_START_DOWNLOAD, F_OTA_COMM_DATA_ERROR);
+                    }
+                }
+                else
+                {
+                    LOGE("magic is error!\r\n");
+                    if(s_send) s_send(BOARDING_OP_OTA_START_DOWNLOAD, F_OTA_START_MAGIC_ERROR);
+                }
+            }
+            else
+            {
+                LOGE("length is error!\r\n");
+                if(s_send) s_send(BOARDING_OP_OTA_START_DOWNLOAD, F_OTA_COMM_LENGTH_ERROR);
+            }
+            OTA_FREE(s_ble_ota->magic_code);
+        }
+        break;
+
+        case BOARDING_OP_OTA_DO_DOWNLOADING:
+        {
+            if(s_ble_ota == NULL)
+            {
+                LOGE("ota is not started !\r\n");
+                break;
+            }
+
+            if(msg->length > OTA_SEQUENCE_NUMBER)
+            {
+                os_memcpy(&(s_ble_ota->new_sequence_number), (uint8_t *)msg->param, OTA_SEQUENCE_NUMBER);
+
+                os_memcpy(s_ble_ota->wr_tmp_buf, (uint8_t *)(msg->param + OTA_SEQUENCE_NUMBER), (msg->length - OTA_SEQUENCE_NUMBER));
+
+                if(f_ota_fun_ptr->data_process(s_ble_ota, (msg->length - OTA_SEQUENCE_NUMBER), s_ble_ota->ota_type, NULL) == BK_OK)
+                {
+                    if(s_send_data) s_send_data(BOARDING_OP_OTA_DO_DOWNLOADING, F_OTA_COMM_OK, (char*)&s_ble_ota->curr_sequence_number, msg->length);
+                }
+                else
+                {
+                    if(s_send_data) s_send_data(BOARDING_OP_OTA_DO_DOWNLOADING, F_OTA_COMM_DATA_ERROR, (char*)&s_ble_ota->new_sequence_number, msg->length);
+                }
+            }
+            else
+            {
+                LOGE("dling length is error !\r\n");
+                if(s_send_data) s_send_data(BOARDING_OP_OTA_DO_DOWNLOADING, F_OTA_COMM_LENGTH_ERROR, (char*)&s_ble_ota->new_sequence_number, msg->length);
+            }
+        }
+        break;
+
+        case BOARDING_OP_OTA_COMPLETE_DOWNLOAD:
+        {
+            uint32_t in_crc = 0;
+
+            LOGW("complete ota dled!\r\n");
+            if(s_ble_ota == NULL)
+            {
+                LOGE("ota is not started !\r\n");
+                break;
+            }
+
+            OTA_MALLOC_WITHOUT_RETURN(s_ble_ota->magic_code, OTA_COMPLETE_MAGIC_LENGTH);
+            if(msg->length == (OTA_COMPLETE_MAGIC_LENGTH + OTA_CHECK_CRC_LENGTH))
+            {
+                os_memcpy(s_ble_ota->magic_code, (uint8_t *)(msg->param) , OTA_COMPLETE_MAGIC_LENGTH);
+                os_memcpy(&in_crc, (uint8_t *)(msg->param + OTA_COMPLETE_MAGIC_LENGTH) , OTA_CHECK_CRC_LENGTH);
+                if(os_memcmp(s_ble_ota->magic_code, OTA_COMPLETE_MAGIC, OTA_COMPLETE_MAGIC_LENGTH) == 0)
+                {
+                    if(f_ota_fun_ptr->crc(s_ble_ota, in_crc) != BK_OK)
+                    {
+                        if(s_send) s_send(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_COMM_CRC_ERROR);
+                        break;
+                    }
+                    OTA_FREE(s_ble_ota->magic_code);
+                    f_ota_fun_ptr->deinit(s_ble_ota);
+                    OTA_FREE(s_ble_ota);
+                    if(s_send) s_send(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_COMM_OK);
+                    LOGW("ota success !\r\n");
+                    rtos_delay_milliseconds(1000);
+                    bk_reboot();   //success need do reboot.
+                }
+                else
+                {
+                    LOGE("finish magic is error !\r\n");
+                    if(s_send) s_send(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_START_MAGIC_ERROR);
+                }
+            }
+            else
+            {
+                LOGE("length is error !\r\n");
+                if(s_send) s_send(BOARDING_OP_OTA_COMPLETE_DOWNLOAD, F_OTA_COMM_LENGTH_ERROR);
+            }
+            OTA_FREE(s_ble_ota->magic_code);
         }
         break;
 
