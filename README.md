@@ -30,6 +30,7 @@ This solution uses a "maintenance branch + release tag" version management appro
 
 We recommend that customers choose the tag with the highest version number in the `release/v3.1.1.x` series for which both the solution and the SDK have been released, for development and mass production. Only use the `release/v3.1.1` branch when you just want to try the latest features or participate in development.
 
+<!-- readme-get-started:code -->
 ## Get the Code
 
 The BK7258 Two-Wheeler Solution and the Armino SMP SDK are released simultaneously to GitHub, Gitee, and GitLab. Choose the code source based on your network environment and access permissions.
@@ -68,6 +69,7 @@ git clone --branch release/v3.1.1.8 https://github.com/bekencorp/bk_avdk_smp.git
 git clone --branch release/v3.1.1.8 https://github.com/bekencorp/bk_solution_dashboard.git
 ```
 
+<!-- readme-get-started:env -->
 ## Set Up the Build Environment
 
 Armino SMP supports local build and Docker build. Choose one of the following methods to set up the build environment based on your development platform.
@@ -88,10 +90,11 @@ Download and install [Armino Bash](https://dl.bekencorp.com/tools/arminosdk/Wind
 
 ### Docker Build
 
-The Docker build image is [`bekencorp/armino-idk`](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of version `1.5` or higher; it supports Windows / Linux / macOS.
+The Docker build image is [bekencorp/armino-idk](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of `1.5` or higher; it supports Windows / Linux / macOS.
 
-For detailed setup steps, see [Armino SMP Quick Start: Environment deployment and build](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
+For detailed setup steps, see [Environment Deployment and Compilation](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html#smp-get-started-env).
 
+<!-- readme-get-started:build -->
 ## Build the Project
 
 Taking the `scooter_800_480` project as an example (located in `projects/scooter_800_480`), point `SDK_DIR` to the Armino SMP SDK and build locally:
@@ -115,29 +118,35 @@ After a successful build, the firmware file used for flashing is located at the 
 projects/scooter_800_480/build/bk7258/scooter_800_480/package/all-app.bin
 ```
 
-For other projects, replace the path in the commands with the corresponding `projects/<project_name>`. For detailed descriptions of the build commands, see [Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/index.html).
+For other projects, replace the path in the commands with the corresponding `projects/<project_name>`.
 
+<!-- readme-get-started:flash -->
 ## Flash the Firmware
 
-The BK7258 main control firmware can be flashed over the serial port by downloading and using the [BKFIL local flashing tool](https://dl.bekencorp.com/tools/flash/). When flashing, select the `all-app.bin` firmware file generated in the previous section.
+### Flash the main SoC
 
-In addition to the BK7258 main control firmware, the BK3515NS Bluetooth secondary controller requires flashing its own firmware separately (firmware directory: [https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller](https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller)). For the detailed steps, see [BK7258 Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/index.html).
+You can flash the BK7258 main control firmware using either of the following methods:
 
-For the detailed flashing process, see [Armino SMP Quick Start](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
+- Download and use the [BKFIL local flashing tool](https://dl.bekencorp.com/tools/bkfil/v4)
+- Use the [BKFIL web flashing tool](https://connect.aclsemi.com/)
+
+When flashing, select the `all-app.bin` firmware file generated in the previous section.
+
+For the main-SoC flashing process, see [Burn Code](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html#smp-get-started-flash).
+
+### Flash the companion
+
+In addition to the BK7258 main control firmware, the BK3515NS Bluetooth secondary controller requires flashing its own firmware separately. For the BK3515NS steps, see [BK7258 Two-Wheeler Solution Quick Start](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/get-started/index.html).
 
 ## Reference Projects
-
-| Project | Main features | Details |
-| --- | --- | --- |
-| [scooter_480_272](../projects/scooter_480_272/) | 480x272 dashboard project: Wi-Fi image transmission and phone navigation casting display, classic Bluetooth audio and HFP hands-free, BLE, Wi-Fi provisioning; adapted for the V1.0 LCD adapter board. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_480_272/index.html) |
-| [scooter_480_272_v2](../projects/scooter_480_272_v2/) | Same features as `scooter_480_272`, adapted for the CAN-capable V1.1 LCD adapter board. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_480_272_v2/index.html) |
-| [scooter_800_480](../projects/scooter_800_480/) | 800x480 dashboard project: Wi-Fi image transmission and phone navigation casting display, classic Bluetooth audio and HFP hands-free, BLE, Wi-Fi provisioning; adapted for the V1.0 LCD adapter board. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_800_480/index.html) |
-| [scooter_800_480_v2](../projects/scooter_800_480_v2/) | Same features as `scooter_800_480`, adapted for the CAN-capable V1.1 LCD adapter board. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_800_480_v2/index.html) |
-| [scooter_1024_600](../projects/scooter_1024_600/) | 1024x600 dashboard project: Wi-Fi image transmission and phone navigation casting display, classic Bluetooth audio and HFP hands-free, BLE, Wi-Fi provisioning. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_1024_600/index.html) |
-| [scooter_uvc_example](../projects/scooter_uvc_example/) | UVC example project: validates UVC device access, preview display, and the decode-display pipeline; navigation casting is not yet supported. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_uvc_example/index.html) |
-
-For the feature scope and selection notes of each project, see the [example projects](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/index.html) page in the online documentation.
-
+The following reference projects are listed; click a name for details.<!-- readme-projects:begin -->
+- [scooter_1024_600](/projects/scooter_1024_600/)
+- [scooter_480_272](/projects/scooter_480_272/)
+- [scooter_480_272_v2](/projects/scooter_480_272_v2/)
+- [scooter_800_480](/projects/scooter_800_480/)
+- [scooter_800_480_v2](/projects/scooter_800_480_v2/)
+- [scooter_uvc_example](/projects/scooter_uvc_example/)
+<!-- readme-projects:end -->
 ## Beken Resources
 
 - [Beken official website](https://www.bekencorp.com/)
