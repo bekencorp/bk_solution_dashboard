@@ -88,7 +88,7 @@ Download and install [Armino Bash](https://dl.bekencorp.com/tools/arminosdk/Wind
 
 ### Docker Build
 
-The Docker build image is [`bekencorp/armino-idk`](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of version `1.5` or higher; it supports Windows / Linux / macOS.
+The Docker build image is [bekencorp/armino-idk](https://hub.docker.com/r/bekencorp/armino-idk/tags). Choose an image tag of version `1.5` or higher; it supports Windows / Linux / macOS.
 
 For detailed setup steps, see [Armino SMP Quick Start: Environment deployment and build](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
 
@@ -115,15 +115,15 @@ After a successful build, the firmware file used for flashing is located at the 
 projects/scooter_800_480/build/bk7258/scooter_800_480/package/all-app.bin
 ```
 
-For other projects, replace the path in the commands with the corresponding `projects/<project_name>`. For detailed descriptions of the build commands, see [Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/index.html).
+For other projects, replace the path in the commands with the corresponding `projects/<project_name>`. For detailed descriptions of the build commands, see [Armino SMP Quick Start](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
 
 ## Flash the Firmware
 
 The BK7258 main control firmware can be flashed over the serial port by downloading and using the [BKFIL local flashing tool](https://dl.bekencorp.com/tools/flash/). When flashing, select the `all-app.bin` firmware file generated in the previous section.
 
-In addition to the BK7258 main control firmware, the BK3515NS Bluetooth secondary controller requires flashing its own firmware separately (firmware directory: [https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller](https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller)). For the detailed steps, see [BK7258 Two-Wheeler Solution online documentation](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/index.html).
+In addition to the BK7258 main control firmware, the BK3515NS Bluetooth secondary controller requires flashing its own firmware separately (firmware directory: [https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller](https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller)). For the BK3515NS steps, see [BK7258 Two-Wheeler Solution Quick Start](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/get-started/index.html).
 
-For the detailed flashing process, see [Armino SMP Quick Start](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
+For the main-SoC flashing process, see [Armino SMP Quick Start](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/en/v3.1.1/get-started/index.html).
 
 ## Reference Projects
 
@@ -136,7 +136,7 @@ For the detailed flashing process, see [Armino SMP Quick Start](https://docs.bek
 | [scooter_1024_600](../projects/scooter_1024_600/) | 1024x600 dashboard project: Wi-Fi image transmission and phone navigation casting display, classic Bluetooth audio and HFP hands-free, BLE, Wi-Fi provisioning. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_1024_600/index.html) |
 | [scooter_uvc_example](../projects/scooter_uvc_example/) | UVC example project: validates UVC device access, preview display, and the decode-display pipeline; navigation casting is not yet supported. | [Detailed and usage documentation (online)](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/scooter_uvc_example/index.html) |
 
-For the feature scope and selection notes of each project, see the [example projects](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/index.html) page in the online documentation.
+For the feature scope and selection notes of each project, see the [reference projects](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/en/v3.1.1/projects/index.html) page in the online documentation.
 
 ## Beken Resources
 

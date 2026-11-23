@@ -1,4 +1,4 @@
-dashboard app User Guide
+Dashboard App User Guide
 =======================================
 
 
@@ -20,7 +20,7 @@ Scan the QR code to download and install.
 This app allows the development board to play navigation voice and display navigation images. According to different image transmission methods, it is divided into Bluetooth image transmission and WiFi image transmission.
 
 3. Development Board Introduction
------------------------
+---------------------------------
 
 The following development board is used as an example.
 
@@ -34,7 +34,7 @@ The following development board is used as an example.
 
 
 4. WiFi Image Transmission Usage Steps
------------------------
+---------------------------------------
 
 Images are transmitted via WiFi, and voice is transmitted via classic Bluetooth.
 
@@ -133,13 +133,13 @@ Click search, select type, and start searching for devices.
    Device Discovery Successful
 
 4.6 Navigation and Image Transmission
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 Click the navigation function button to start navigation. After navigation starts, you can click the screen mirroring button to start screen mirroring.
 
 
 5. Bluetooth Image Transmission Usage Steps
------------------------
+--------------------------------------------
 
 Images are transmitted via BLE, and voice is transmitted via classic Bluetooth.
 
@@ -161,7 +161,7 @@ Select configuration as needed.
 
 
 5.3 Select Image Transmission Device
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 
 .. figure:: ../../../_static/dashboard_app/ble_working_page.png
@@ -196,7 +196,7 @@ Navigation voice is transmitted via classic Bluetooth.
    Bluetooth Pairing
 
 5.5 Navigation and Image Transmission
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 Click the navigation function button to start navigation. After navigation starts, you can click the screen mirroring button to start screen mirroring.
 

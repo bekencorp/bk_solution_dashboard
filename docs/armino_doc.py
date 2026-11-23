@@ -12,6 +12,28 @@ from typing import Match
 PRINT_READ = "\033[91m"
 PRINT_RESET = "\033[0m"
 
+def _cjk_display_width(text: str) -> int:
+    """Return reST title underline width (wide/fullwidth chars count as 2)."""
+    import unicodedata
+    width = 0
+    for ch in text:
+        if unicodedata.east_asian_width(ch) in ('W', 'F'):
+            width += 2
+        else:
+            width += 1
+    return width + 4
+
+def _text_display_width(text: str) -> int:
+    """Grid table 单元格对齐宽度（CJK 等宽字符计 2）。"""
+    import unicodedata
+    width = 0
+    for ch in text:
+        if unicodedata.east_asian_width(ch) in ('W', 'F'):
+            width += 2
+        else:
+            width += 1
+    return width
+
 class MarkdownToRST:
     """Markdown → RST 转换器"""
 
@@ -48,12 +70,16 @@ class MarkdownToRST:
 
         # 然后在完整文本上处理代码块（因为代码块可能跨多行）
         text = self._convert_codeblocks(text)
+        text = self._convert_markdown_tables(text)
 
         # 然后按行处理其他格式
         lines = text.splitlines()
         processed_lines = []
 
         for line in lines:
+            if self._is_grid_table_line(line):
+                processed_lines.append(line)
+                continue
             # 检查是否已经包含reST语法
             if self._contains_rst_syntax(line):
                 # 如果已经包含reST语法，则不进行转换，直接添加到结果中
@@ -67,9 +93,10 @@ class MarkdownToRST:
                 processed_line = self._convert_headings(processed_line)
                 processed_line = self._convert_images(processed_line)
                 processed_line = self._convert_link_to_translation(processed_line)
-                processed_line = self._convert_links(processed_line)
                 processed_line = self._convert_bold(processed_line)
                 processed_line = self._convert_italic(processed_line)
+                # 链接须在 italic 之后，避免 `text <url>`_ 尾部下划线被当成强调
+                processed_line = self._convert_links(processed_line)
                 processed_line = self._convert_unordered_list(processed_line)
                 processed_line = self._convert_ordered_list(processed_line)
                 # 最后处理语言链接转换，避免被行内代码转换影响
@@ -188,6 +215,90 @@ class MarkdownToRST:
         # 使用DOTALL标志使.匹配换行符，使用贪婪模式确保完整匹配代码块
         return re.sub(r"```(\w*)\n(.*?)```", repl, text, flags=re.DOTALL)
 
+    def _convert_markdown_tables(self, text: str) -> str:
+        """将 Markdown 表格转为 RST grid table，避免 |---| 被当成替换引用。"""
+        lines = text.splitlines()
+        result = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if re.match(r'^\s', line):
+                result.append(line)
+                i += 1
+                continue
+            if '|' in line and i + 1 < len(lines) and re.match(r'^\s*\|?[\s:\-|]+\|', lines[i + 1]):
+                table_lines = [line]
+                i += 1
+                while i < len(lines) and '|' in lines[i]:
+                    table_lines.append(lines[i])
+                    i += 1
+                result.append(self._markdown_table_to_grid(table_lines))
+                result.append('')
+                continue
+            result.append(line)
+            i += 1
+        return '\n'.join(result)
+
+    @staticmethod
+    def _parse_md_table_row(line: str) -> list:
+        line = line.strip()
+        if line.startswith('|'):
+            line = line[1:]
+        if line.endswith('|'):
+            line = line[:-1]
+        return [cell.strip() for cell in line.split('|')]
+
+    def _convert_table_cell(self, text: str) -> str:
+        text = self._convert_links(text)
+        text = self._convert_inline_code(text)
+        return text
+
+    @staticmethod
+    def _format_grid_cell(text: str, col_width: int) -> str:
+        pad = col_width + 1 - _text_display_width(text)
+        return ' ' + text + ' ' * max(pad, 1)
+
+    @staticmethod
+    def _grid_table_border(col_widths, char='-') -> str:
+        return '+' + '+'.join(char * (w + 2) for w in col_widths) + '+'
+
+    def _grid_table_row(self, cells, col_widths) -> str:
+        parts = [self._format_grid_cell(c, col_widths[i]) for i, c in enumerate(cells)]
+        return '|' + '|'.join(parts) + '|'
+
+    def _markdown_table_to_grid(self, table_lines: list) -> str:
+        parsed = [self._parse_md_table_row(l) for l in table_lines]
+        if len(parsed) < 2:
+            return '\n'.join(table_lines)
+        header = parsed[0]
+        body = parsed[2:] if len(parsed) > 2 else []
+        all_rows = [header] + body
+        num_cols = max(len(r) for r in all_rows)
+        for row in all_rows:
+            while len(row) < num_cols:
+                row.append('')
+        converted = [[self._convert_table_cell(c) for c in row] for row in all_rows]
+        col_widths = [0] * num_cols
+        for row in converted:
+            for i, cell in enumerate(row):
+                col_widths[i] = max(col_widths[i], _text_display_width(cell))
+        out = [self._grid_table_border(col_widths, '-')]
+        out.append(self._grid_table_row(converted[0], col_widths))
+        out.append(self._grid_table_border(col_widths, '='))
+        for row in converted[1:]:
+            out.append(self._grid_table_row(row, col_widths))
+            out.append(self._grid_table_border(col_widths, '-'))
+        return '\n'.join(out)
+
+    @staticmethod
+    def _is_grid_table_line(line: str) -> bool:
+        s = line.strip()
+        if not s:
+            return False
+        if s.startswith('+') and re.match(r'^\+[-=+]+\+$', s):
+            return True
+        return s.startswith('|') and s.endswith('|')
+
     def _clean_text_before_conversion(self, text: str) -> str:
         """在转换前清理文本，移除可能导致问题的内容"""
         # 移除编辑器相关的标记或注释
@@ -227,6 +338,104 @@ def translate_md2rst(src_path, dst_path, lan):
     # 使用类的方法进行文件转换
     converter = MarkdownToRST(src_path, dst_path)
     converter.convert_file(src_file, dst_file)
+
+
+# 快速入门页只抽这些二级标题；概述 / 文档 / 硬件 / 参考工程等留在仓库 README。
+HOMEPAGE_H2 = {
+	"zh_CN": (
+		"获取代码",
+		"编译环境安装",
+		"编译工程",
+		"烧录固件",
+	),
+	"en": (
+		"Get the Code",
+		"Set Up the Build Environment",
+		"Build the Project",
+		"Flash the Firmware",
+	),
+}
+
+
+def extract_readme_homepage_md(md_text, lan):
+	"""从仓库 README 抽出指定二级节，供官网快速入门 include。"""
+	keep = set(HOMEPAGE_H2.get(lan, ()))
+	lines = md_text.splitlines(keepends=True)
+	out = []
+	i = 0
+	while i < len(lines) and not lines[i].startswith("## "):
+		i += 1
+	while i < len(lines):
+		m = re.match(r"^## (.+?)\s*$", lines[i])
+		title = m.group(1).strip() if m else ""
+		start = i
+		i += 1
+		while i < len(lines) and not lines[i].startswith("## "):
+			i += 1
+		if title in keep:
+			out.extend(lines[start:i])
+	return "".join(out)
+
+
+def drop_companion_flash_pointer(md_text):
+	"""快速入门第 5 节已有 3515 烧录步骤，抽出的第 4 节不显示 README 里的转链入口。不改方案 README。"""
+	keep = []
+	for line in md_text.splitlines(keepends=True):
+		if "3515n_controller" in line and (
+			"单独烧录" in line or "flashing its own firmware separately" in line
+		):
+			continue
+		keep.append(line)
+	return re.sub(r"\n{3,}", "\n\n", "".join(keep))
+
+
+def generate_solution_homepage(chip_docs_path, lan):
+	"""docs/README*.md → <lang>/_readme_body.rst，供快速入门 include。"""
+	if lan not in ("en", "zh_CN"):
+		return
+	src_dir = os.path.normpath(os.path.join(chip_docs_path, ".."))
+	dst_dir = os.path.join(chip_docs_path, lan)
+	src_file = "README.md" if lan == "en" else "README_CN.md"
+	src_path = os.path.join(src_dir, src_file)
+	if not os.path.isfile(src_path):
+		return
+	os.makedirs(dst_dir, exist_ok=True)
+	with open(src_path, "r", encoding="utf-8") as f:
+		md_text = drop_companion_flash_pointer(
+			extract_readme_homepage_md(f.read(), lan)
+		)
+	converter = MarkdownToRST(src_dir, dst_dir)
+	rst = converter.convert(md_text)
+	rst = re.sub(r"\.\./projects/([^/\s>`]+)/?", r"projects/\1/index.html", rst)
+	rst = re.sub(
+		r"^(获取代码|Get the Code)\n([=\-~`:'\"^+*#<>]{3,})",
+		r".. _quick-start:\n\n\1\n\2",
+		rst,
+		count=1,
+		flags=re.MULTILINE,
+	)
+	# 仅快速入门页加序号，不改方案 README。
+	for i, title in enumerate(HOMEPAGE_H2.get(lan, ()), 1):
+		numbered = f"{i}. {title}"
+		rst = re.sub(
+			rf"^{re.escape(title)}\n([=\-~`:'\"^+*#<>]{{3,}})",
+			lambda m, n=numbered: f"{n}\n{m.group(1)[0] * _cjk_display_width(n)}",
+			rst,
+			count=1,
+			flags=re.MULTILINE,
+		)
+	# README 三级标题不进侧栏，只作页内小标题。
+	rst = re.sub(
+		r"^(.+)\n[,]{3,}\s*\n",
+		r".. rubric:: \1\n\n",
+		rst,
+		flags=re.MULTILINE,
+	)
+	body_path = os.path.join(dst_dir, "_readme_body.rst")
+	with open(body_path, "w", encoding="utf-8") as f:
+		f.write(rst)
+	print(f"generate_solution_homepage: {src_file} -> {body_path}")
+
 
 def copy_projects_doc(src_path, dst_path, lan):
     print(f"copy_projects_doc: {src_path} -> {dst_path}")
@@ -410,6 +619,7 @@ def build_doc(target, docs_path, build_path, version):
 			return
 
 		copy_projects_doc(f'{docs_path}/../../projects', f'{docs_path}/{subdir}/projects', f'{subdir}')
+		generate_solution_homepage(docs_path, subdir)
 
 		source_path = docs_path + "/" + subdir
 		#dest_path = build_path + "/" + target + "/" + subdir

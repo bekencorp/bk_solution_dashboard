@@ -1,4 +1,4 @@
-dashboard app使用指南
+Dashboard App 使用指南
 =======================================
 
 
@@ -25,7 +25,7 @@ dashboard app使用指南
 以如下开发板举例。
 
 - reset 按键：复位开发板
-- k1按键: 清除配网信息并复位开发板
+- K1 按键：清除配网信息并复位开发板
 
 .. figure:: ../../../_static/dashboard_app/board.png
    :alt: board

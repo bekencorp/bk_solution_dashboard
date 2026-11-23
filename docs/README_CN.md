@@ -88,7 +88,7 @@ sudo bash tools/env_tools/setup/armino_env_setup.sh
 
 ### Docker 编译
 
-Docker 编译镜像为 [`bekencorp/armino-idk`](https://hub.docker.com/r/bekencorp/armino-idk/tags)，请选择 `1.5` 或更高版本的镜像标签，支持 Windows / Linux / macOS。
+Docker 编译镜像为 [bekencorp/armino-idk](https://hub.docker.com/r/bekencorp/armino-idk/tags)，请选择 `1.5` 或更高版本的镜像标签，支持 Windows / Linux / macOS。
 
 详细安装步骤请参阅 [Armino SMP 快速入门：环境部署及编译](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.1.1/get-started/index.html)。
 
@@ -115,15 +115,15 @@ export SDK_DIR=~/armino/bk_avdk_smp
 projects/scooter_800_480/build/bk7258/scooter_800_480/package/all-app.bin
 ```
 
-其他工程请将命令中的路径替换为对应的 `projects/<工程名>`。编译命令的详细说明请参阅 [两轮车方案在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html)。
+其他工程请将命令中的路径替换为对应的 `projects/<工程名>`。编译命令的详细说明请参阅 [Armino SMP 快速入门](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.1.1/get-started/index.html)。
 
 ## 烧录固件
 
 BK7258 主控固件可下载并使用 [BKFIL 本地烧录工具](https://dl.bekencorp.com/tools/flash/) 通过串口烧录，烧录时请选择上一节编译生成的 `all-app.bin` 固件文件。
 
-除 BK7258 主控固件外，BK3515NS 蓝牙从控还需单独烧录对应固件（固件目录：[https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller](https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller)），详细步骤请参阅 [BK7258 两轮车方案在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/index.html)。
+除 BK7258 主控固件外，BK3515NS 蓝牙从控还需单独烧录对应固件（固件目录：[https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller](https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller)），详细步骤请参阅 [BK7258 两轮车方案快速入门](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/get-started/index.html)。
 
-详细烧录流程请参阅 [Armino SMP 快速入门](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.1.1/get-started/index.html)。
+主控详细烧录流程请参阅 [Armino SMP 快速入门](https://docs.bekencorp.com/arminodoc/bk_avdk_smp/smp_doc/bk7258/zh_CN/v3.1.1/get-started/index.html)。
 
 ## 参考工程
 
@@ -136,7 +136,7 @@ BK7258 主控固件可下载并使用 [BKFIL 本地烧录工具](https://dl.beke
 | [scooter_1024_600](../projects/scooter_1024_600/)       | 1024x600 分辨率仪表工程：Wi-Fi 图传与手机导航投屏显示、经典蓝牙音频与 HFP 免提、BLE、Wi-Fi 配网。                | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/projects/scooter_1024_600/index.html)    |
 | [scooter_uvc_example](../projects/scooter_uvc_example/) | UVC 示例工程：验证 UVC 设备接入、预览显示与解码显示链路，暂不支持导航投屏。                                     | [详细说明及使用说明在线文档](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/projects/scooter_uvc_example/index.html) |
 
-各工程的功能范围与选型说明详见在线 [示例工程](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/projects/index.html) 页面。
+各工程的功能范围与选型说明详见在线 [参考工程](https://docs.bekencorp.com/arminodoc/bk_dashboard/bk7258/zh_CN/v3.1.1/projects/index.html) 页面。
 
 ## BEKEN 相关资源
 
