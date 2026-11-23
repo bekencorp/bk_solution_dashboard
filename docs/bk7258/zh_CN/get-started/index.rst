@@ -7,10 +7,11 @@
 
 .. include:: ../_readme_body.rst
 
-5. BK3515NS 烧录
---------------------------------
+烧录从控
+,,,,,,,,,,,,
 
 除 BK7258 主控固件外，BK3515NS 蓝牙从控还需单独烧录。
+支持使用 BKFIL 烧录。
 
 步骤 1：引出母板上 H2 的 BT_P0 / BT_P1 / BT_RST / VBAT / GND，按以下方法接入串口小板
 
@@ -20,9 +21,7 @@
    - VBAT: 3.3V 供电
    - GND: 地
 
-步骤 2：下载 `Beken_BT_Toolkit_V7.6.0.14 <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ 或更新版本
-
-步骤 3：下载 `3515 固件 <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+下载 `3515 固件 <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
 
 对应关系:
 
@@ -34,24 +33,26 @@
 | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1         | P30 P31        |
 +------------------+----------------------+---------------+----------------+
 
-步骤 4：打开 Beken_BT_Toolkit，chipset 选择 bk3296，点击 login
+步骤 2：打开 BKFIL
 
-步骤 5：选择 flash 烧录，选择刚刚下载的 3515 固件。选择串口设置，更改对应的串口号
+步骤 3：选择 flash 烧录，选择刚刚下载的 3515 固件。选择串口设置，更改对应的串口号
 
-步骤 6：同时按住母板的 3515NS RESET / 7258 RESET 键，等待 5 秒，点击 Beken_BT_Toolkit 下载按钮
+步骤 4：同时按住母板的 3515NS RESET / 7258 RESET 键，等待 5 秒，点击 BKFIL 下载按钮
 
-步骤 7：松开 3515NS RESET，此时可以看到正在下载；如果失败，从步骤 6 重试
+步骤 5：松开 3515NS RESET，此时可以看到正在下载；如果失败，从步骤 4 重试
 
-步骤 8：烧录成功会提示 Download successful，此时可以松开 7258 RESET
+步骤 6：烧录成功会提示 Download successful，此时可以松开 7258 RESET
 
-步骤 9：拔掉所有引出的线，按 7258 RESET 复位
+步骤 7：拔掉所有引出的线，按 7258 RESET 复位
+
+也支持 `Beken_BT_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ 烧录方式，步骤同上，更换工具即可。
 
 .. note::
 
    尽量让母板不工作可以提高烧录成功率。
 
-6. BK3515NS 校准
---------------------------------
+BK3515NS 校准
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 步骤 1：3515NS 需要发送命令校准，请参考
 
@@ -66,7 +67,7 @@
 
    如果从主控端下发，可以通过 ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` 和 ``TCI_READ_POWER_FROM_FLASH`` 读取，和现有的比较，以避免每次开机写入。
 
-7. 相关资源
+相关资源
 --------------------------------
 
 - 应用处理器 AP 配置和使用，请参考 `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7258/zh_CN/v3.1.1/index.html>`_

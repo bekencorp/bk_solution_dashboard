@@ -7,10 +7,11 @@ This section explains how to get the BK7258 Two-Wheeler Solution code, set up th
 
 .. include:: ../_readme_body.rst
 
-5. BK3515NS flashing
---------------------------------
+Flash the companion
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 In addition to the BK7258 main firmware, the BK3515NS Bluetooth companion must be flashed separately.
+BKFIL is supported.
 
 Step 1: Lead out BT_P0 / BT_P1 / BT_RST / VBAT / GND from connector H2 on the mother board, and connect them to a UART board as follows:
 
@@ -20,9 +21,7 @@ Step 1: Lead out BT_P0 / BT_P1 / BT_RST / VBAT / GND from connector H2 on the mo
    - VBAT: 3.3 V
    - GND: ground
 
-Step 2: Download `Beken_BT_Toolkit_V7.6.0.14 <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ or a newer version
-
-Step 3: Download the `3515 firmware <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
+Download the `3515 firmware <https://dl.bekencorp.com/armino_bin/smp_solution/bk_solution_dashboard/3515n_controller>`_
 
 Mapping:
 
@@ -34,24 +33,26 @@ Mapping:
 | V1.2 20251027    | EVB_v1.2_20251027    | P0 P1          | P30 P31          |
 +------------------+----------------------+----------------+------------------+
 
-Step 4: Launch Beken_BT_Toolkit, set chipset to bk3296, and click login
+Step 2: Launch BKFIL
 
-Step 5: Select flash download with the 3515 firmware above. Open UART settings and select the correct port
+Step 3: Select flash download with the 3515 firmware above. Open UART settings and select the correct port
 
-Step 6: Press 3515NS RESET and 7258 RESET on the mother board at the same time, wait 5 seconds, then click the Beken_BT_Toolkit download button
+Step 4: Press 3515NS RESET and 7258 RESET on the mother board at the same time, wait 5 seconds, then click the BKFIL download button
 
-Step 7: Release 3515NS RESET. You should see the download progress; if it fails, retry from Step 6
+Step 5: Release 3515NS RESET. You should see the download progress; if it fails, retry from Step 4
 
-Step 8: When it prompts Download successful, you can release 7258 RESET
+Step 6: When it prompts Download successful, you can release 7258 RESET
 
-Step 9: Disconnect the wires above and press 7258 RESET
+Step 7: Disconnect the wires above and press 7258 RESET
+
+`Beken_BT_Toolkit <https://dl.bekencorp.com/tools/Beken_Toolkit>`_ is also supported; follow the same steps and only change the tool.
 
 .. note::
 
    The download success rate is higher when the mother board is not running.
 
-6. BK3515NS calibration
---------------------------------
+BK3515NS calibration
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 Step 1: The 3515NS must be calibrated by sending commands. Please refer to:
 
@@ -66,7 +67,7 @@ Step 3: Calibration values can be saved by sending commands to the 3515 over fly
 
    If values are provisioned from the host, you can read them back via ``TCI_READ_FRQ_OFFSET_FROM_FLASH`` and ``TCI_READ_POWER_FROM_FLASH``, compare with the current values, and avoid writing on every boot when they already match.
 
-7. Related resources
+Related resources
 --------------------------------
 
 - For Application Processor (AP) configuration and usage, see `Armino AP <https://docs.bekencorp.com/arminodoc/bk_avdk_smp/ap_doc/bk7258/en/v3.1.1/index.html>`_
